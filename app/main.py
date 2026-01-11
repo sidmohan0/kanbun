@@ -136,5 +136,4 @@ async def list_jobs():
 
 # Mount static files last to avoid conflicting with API routes
 # The index.html will be served for the root path
-# Note: Commented out until app/static directory exists (Task 12)
-# app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
+app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
