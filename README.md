@@ -24,8 +24,8 @@ A lightweight lead enrichment and CRM tool with Kanban pipeline management. Uplo
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/sidmohan0/conbun.git
-   cd conbun
+   git clone https://github.com/sidmohan0/kanbun.git
+   cd kanbun
    ```
 
 2. Create a virtual environment and install dependencies:
