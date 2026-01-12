@@ -5,7 +5,7 @@ Uses Firecrawl v2 SDK for website scraping.
 """
 import json
 from typing import Optional
-from firecrawl import Firecrawl
+from firecrawl import FirecrawlApp
 
 
 # Schema for structured data extraction
@@ -45,7 +45,7 @@ class FirecrawlClient:
     """Firecrawl client for website scraping using v2 SDK."""
 
     def __init__(self, api_key: str):
-        self.client = Firecrawl(api_key=api_key)
+        self.client = FirecrawlApp(api_key=api_key)
 
     def scrape_company_sync(self, website_url: str) -> dict:
         """Synchronous scrape of company website."""
