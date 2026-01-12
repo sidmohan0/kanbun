@@ -6,74 +6,104 @@
     <title>kanbun</title>
     <link rel="icon" type="image/png" href="/images/icon.png">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        sage: {
+                            50: '#f6f7f6',
+                            100: '#e3e7e4',
+                            200: '#c7d0c9',
+                            300: '#a3b1a7',
+                            400: '#7d9183',
+                            500: '#627567',
+                            600: '#4d5d51',
+                            700: '#404c43',
+                            800: '#363f38',
+                            900: '#2f3530',
+                        },
+                        terracotta: {
+                            50: '#fdf6f4',
+                            100: '#fbeae5',
+                            200: '#f7d5cc',
+                            300: '#f0b5a6',
+                            400: '#e58d78',
+                            500: '#d46b52',
+                            600: '#c15640',
+                            700: '#a14535',
+                            800: '#853b30',
+                            900: '#6e342c',
+                        },
+                        cream: {
+                            50: '#fdfcf9',
+                            100: '#f9f6f0',
+                            200: '#f3ede1',
+                            300: '#e9dfcc',
+                            400: '#dcc9a9',
+                            500: '#cfb48a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
     <style>
+        body {
+            background: linear-gradient(135deg, #f6f7f6 0%, #f9f6f0 100%);
+        }
         .kanban-column [draggable="true"].opacity-50 {
             opacity: 0.5;
         }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="min-h-screen">
     <div class="container mx-auto px-4 py-8 max-w-6xl">
-        <div class="flex items-center gap-3 mb-4">
-            <img src="/images/icon.png" alt="kanbun" class="w-10 h-10 rounded-xl shadow-sm">
-            <h1 class="text-3xl font-bold text-gray-800">kanbun</h1>
+        <div class="flex items-center gap-3 mb-6">
+            <img src="/images/icon.png" alt="kanbun" class="w-12 h-12 rounded-2xl shadow-md">
+            <h1 class="text-3xl font-bold text-sage-700">kanbun</h1>
         </div>
 
         <!-- Tabs -->
-        <div class="flex space-x-4 mb-6 border-b">
-            <button id="tabHome" onclick="showTab('home')" class="px-4 py-2 font-medium border-b-2 border-blue-500 text-blue-600">
+        <div class="flex space-x-1 mb-6 bg-cream-200 rounded-xl p-1">
+            <button id="tabHome" onclick="showTab('home')" class="px-4 py-2 font-medium rounded-lg bg-white text-sage-700 shadow-sm">
                 Home
             </button>
-            <button id="tabPipeline" onclick="showTab('pipeline')" class="px-4 py-2 font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+            <button id="tabPipeline" onclick="showTab('pipeline')" class="px-4 py-2 font-medium rounded-lg text-sage-600 hover:bg-cream-100 transition-colors">
                 Pipeline
             </button>
-            <button id="tabDatabase" onclick="showTab('database')" class="px-4 py-2 font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+            <button id="tabDatabase" onclick="showTab('database')" class="px-4 py-2 font-medium rounded-lg text-sage-600 hover:bg-cream-100 transition-colors">
                 People
             </button>
-            <button id="tabContacts" onclick="showTab('contacts')" class="px-4 py-2 font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+            <button id="tabContacts" onclick="showTab('contacts')" class="px-4 py-2 font-medium rounded-lg text-sage-600 hover:bg-cream-100 transition-colors">
                 Companies
             </button>
-            <button id="tabJobs" onclick="showTab('jobs')" class="px-4 py-2 font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+            <button id="tabJobs" onclick="showTab('jobs')" class="px-4 py-2 font-medium rounded-lg text-sage-600 hover:bg-cream-100 transition-colors">
                 Jobs
             </button>
         </div>
 
         <!-- Home Tab Content -->
         <div id="homeContent">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div class="bg-white rounded-lg shadow p-6 text-center">
-                    <div id="homeStatPeople" class="text-4xl font-bold text-indigo-600 mb-2">-</div>
-                    <div class="text-gray-500">People</div>
-                </div>
-                <div class="bg-white rounded-lg shadow p-6 text-center">
-                    <div id="homeStatCompanies" class="text-4xl font-bold text-blue-600 mb-2">-</div>
-                    <div class="text-gray-500">Companies</div>
-                </div>
-                <div class="bg-white rounded-lg shadow p-6 text-center">
-                    <div id="homeStatEnriched" class="text-4xl font-bold text-green-600 mb-2">-</div>
-                    <div class="text-gray-500">Enriched</div>
-                </div>
-            </div>
-
-            <div class="bg-white rounded-lg shadow p-6">
-                <h2 class="text-xl font-semibold mb-4">Quick Actions</h2>
+            <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
+                <h2 class="text-xl font-semibold text-sage-700 mb-4">Quick Actions</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <button onclick="showTab('jobs')" class="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors text-left">
-                        <div class="font-medium text-gray-800">Upload CSV</div>
-                        <div class="text-sm text-gray-500">Import new contacts and companies</div>
+                    <button onclick="showTab('jobs')" class="p-4 border-2 border-dashed border-cream-300 rounded-xl hover:border-terracotta-400 hover:bg-terracotta-50 transition-colors text-left">
+                        <div class="font-medium text-sage-800">Upload CSV</div>
+                        <div class="text-sm text-sage-500">Import new contacts and companies</div>
                     </button>
-                    <button onclick="showTab('database')" class="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors text-left">
-                        <div class="font-medium text-gray-800">Browse People</div>
-                        <div class="text-sm text-gray-500">View and search all contacts</div>
+                    <button onclick="showTab('pipeline')" class="p-4 border-2 border-dashed border-cream-300 rounded-xl hover:border-terracotta-400 hover:bg-terracotta-50 transition-colors text-left">
+                        <div class="font-medium text-sage-800">View Pipeline</div>
+                        <div class="text-sm text-sage-500">Track your outreach progress</div>
                     </button>
                 </div>
             </div>
 
             <!-- Upcoming Reminders -->
-            <div class="bg-white rounded-lg shadow p-6 mt-6">
-                <h2 class="text-xl font-semibold mb-4">Upcoming Reminders</h2>
+            <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6 mt-6">
+                <h2 class="text-xl font-semibold text-sage-700 mb-4">Upcoming Reminders</h2>
                 <div id="homeReminders" class="space-y-2">
-                    <p class="text-gray-500">Loading...</p>
+                    <p class="text-sage-400">Loading...</p>
                 </div>
             </div>
         </div>
@@ -87,45 +117,45 @@
 
             <!-- Kanban Board -->
             <div class="flex gap-2" id="kanbanBoard">
-                <div class="kanban-column flex-1 min-w-0 bg-gray-100 rounded-lg p-2" data-stage="new">
-                    <h3 class="font-medium text-gray-700 mb-2 text-sm flex justify-between">
+                <div class="kanban-column flex-1 min-w-0 bg-cream-100 rounded-xl p-2" data-stage="new">
+                    <h3 class="font-medium text-sage-600 mb-2 text-sm flex justify-between">
                         <span>New</span>
-                        <span id="count-new" class="text-gray-500">0</span>
+                        <span id="count-new" class="text-sage-400">0</span>
                     </h3>
                     <div class="space-y-2 min-h-[150px]" id="column-new"></div>
                 </div>
-                <div class="kanban-column flex-1 min-w-0 bg-blue-100 rounded-lg p-2" data-stage="reaching_out">
-                    <h3 class="font-medium text-blue-700 mb-2 text-sm flex justify-between">
+                <div class="kanban-column flex-1 min-w-0 bg-sage-100 rounded-xl p-2" data-stage="reaching_out">
+                    <h3 class="font-medium text-sage-700 mb-2 text-sm flex justify-between">
                         <span>Reaching Out</span>
-                        <span id="count-reaching_out" class="text-blue-500">0</span>
+                        <span id="count-reaching_out" class="text-sage-500">0</span>
                     </h3>
                     <div class="space-y-2 min-h-[150px]" id="column-reaching_out"></div>
                 </div>
-                <div class="kanban-column flex-1 min-w-0 bg-purple-100 rounded-lg p-2" data-stage="engaged">
-                    <h3 class="font-medium text-purple-700 mb-2 text-sm flex justify-between">
+                <div class="kanban-column flex-1 min-w-0 bg-terracotta-100 rounded-xl p-2" data-stage="engaged">
+                    <h3 class="font-medium text-terracotta-700 mb-2 text-sm flex justify-between">
                         <span>Engaged</span>
-                        <span id="count-engaged" class="text-purple-500">0</span>
+                        <span id="count-engaged" class="text-terracotta-500">0</span>
                     </h3>
                     <div class="space-y-2 min-h-[150px]" id="column-engaged"></div>
                 </div>
-                <div class="kanban-column flex-1 min-w-0 bg-yellow-100 rounded-lg p-2" data-stage="meeting">
-                    <h3 class="font-medium text-yellow-700 mb-2 text-sm flex justify-between">
+                <div class="kanban-column flex-1 min-w-0 bg-cream-300 rounded-xl p-2" data-stage="meeting">
+                    <h3 class="font-medium text-sage-700 mb-2 text-sm flex justify-between">
                         <span>Meeting</span>
-                        <span id="count-meeting" class="text-yellow-600">0</span>
+                        <span id="count-meeting" class="text-sage-600">0</span>
                     </h3>
                     <div class="space-y-2 min-h-[150px]" id="column-meeting"></div>
                 </div>
-                <div class="kanban-column flex-1 min-w-0 bg-green-100 rounded-lg p-2" data-stage="won">
-                    <h3 class="font-medium text-green-700 mb-2 text-sm flex justify-between">
+                <div class="kanban-column flex-1 min-w-0 bg-sage-200 rounded-xl p-2" data-stage="won">
+                    <h3 class="font-medium text-sage-800 mb-2 text-sm flex justify-between">
                         <span>Won</span>
-                        <span id="count-won" class="text-green-600">0</span>
+                        <span id="count-won" class="text-sage-600">0</span>
                     </h3>
                     <div class="space-y-2 min-h-[150px]" id="column-won"></div>
                 </div>
-                <div class="kanban-column flex-1 min-w-0 bg-red-100 rounded-lg p-2" data-stage="lost">
-                    <h3 class="font-medium text-red-700 mb-2 text-sm flex justify-between">
+                <div class="kanban-column flex-1 min-w-0 bg-terracotta-200 rounded-xl p-2" data-stage="lost">
+                    <h3 class="font-medium text-terracotta-800 mb-2 text-sm flex justify-between">
                         <span>Lost</span>
-                        <span id="count-lost" class="text-red-600">0</span>
+                        <span id="count-lost" class="text-terracotta-600">0</span>
                     </h3>
                     <div class="space-y-2 min-h-[150px]" id="column-lost"></div>
                 </div>
@@ -357,12 +387,12 @@
     </div>
 
     <!-- Contact Detail Modal -->
-    <div id="contactModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-        <div class="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+    <div id="contactModal" class="fixed inset-0 bg-sage-900 bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto border border-cream-200">
             <div class="p-6">
                 <div class="flex justify-between items-start mb-4">
-                    <h3 id="contactModalName" class="text-xl font-semibold"></h3>
-                    <button onclick="closeContactModal()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+                    <h3 id="contactModalName" class="text-xl font-semibold text-sage-800"></h3>
+                    <button onclick="closeContactModal()" class="text-sage-400 hover:text-sage-600 text-2xl">&times;</button>
                 </div>
 
                 <!-- Contact Info -->
@@ -371,30 +401,30 @@
                 <!-- Quick Actions -->
                 <div class="flex gap-2 mb-2">
                     <button id="emailContactBtn" onclick="emailContact()"
-                            class="flex-1 bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600 text-sm">
+                            class="flex-1 bg-terracotta-500 text-white px-3 py-2 rounded-xl hover:bg-terracotta-600 text-sm transition-colors">
                         ✉️ Email
                     </button>
                     <a id="linkedinContactBtn" href="#" target="_blank" onclick="openLinkedIn()"
-                       class="flex-1 bg-indigo-500 text-white px-3 py-2 rounded hover:bg-indigo-600 text-sm text-center hidden">
+                       class="flex-1 bg-sage-600 text-white px-3 py-2 rounded-xl hover:bg-sage-700 text-sm text-center hidden transition-colors">
                         LinkedIn
                     </a>
                 </div>
                 <div class="flex gap-2 mb-6">
                     <button onclick="logOutreach('email')"
-                            class="flex-1 bg-gray-100 text-gray-700 px-3 py-1 rounded hover:bg-gray-200 text-xs border">
+                            class="flex-1 bg-cream-100 text-sage-700 px-3 py-1 rounded-lg hover:bg-cream-200 text-xs border border-cream-300 transition-colors">
                         ✓ Log Email Sent
                     </button>
                     <button onclick="logOutreach('linkedin')"
-                            class="flex-1 bg-gray-100 text-gray-700 px-3 py-1 rounded hover:bg-gray-200 text-xs border">
+                            class="flex-1 bg-cream-100 text-sage-700 px-3 py-1 rounded-lg hover:bg-cream-200 text-xs border border-cream-300 transition-colors">
                         ✓ Log LinkedIn Sent
                     </button>
                 </div>
 
                 <!-- Stage Selector -->
                 <div class="mb-6">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Pipeline Stage</label>
+                    <label class="block text-sm font-medium text-sage-700 mb-1">Pipeline Stage</label>
                     <select id="contactStageSelect" onchange="updateContactStage()"
-                            class="w-full border rounded px-3 py-2">
+                            class="w-full border border-cream-300 rounded-xl px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300">
                         <option value="new">New</option>
                         <option value="reaching_out">Reaching Out</option>
                         <option value="engaged">Engaged</option>
@@ -405,14 +435,14 @@
                 </div>
 
                 <!-- Reminders Section -->
-                <div class="border-t pt-4">
-                    <h4 class="font-medium mb-3">Reminders</h4>
+                <div class="border-t border-cream-200 pt-4">
+                    <h4 class="font-medium text-sage-700 mb-3">Reminders</h4>
 
                     <!-- Add Reminder Form -->
                     <div class="flex gap-2 mb-4">
-                        <input type="date" id="reminderDate" class="border rounded px-2 py-1 text-sm flex-1">
-                        <input type="text" id="reminderNote" placeholder="Note..." class="border rounded px-2 py-1 text-sm flex-1">
-                        <button onclick="addReminder()" class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600">Add</button>
+                        <input type="date" id="reminderDate" class="border border-cream-300 rounded-lg px-2 py-1 text-sm flex-1 text-sage-700">
+                        <input type="text" id="reminderNote" placeholder="Note..." class="border border-cream-300 rounded-lg px-2 py-1 text-sm flex-1 text-sage-700">
+                        <button onclick="addReminder()" class="bg-terracotta-500 text-white px-3 py-1 rounded-lg text-sm hover:bg-terracotta-600 transition-colors">Add</button>
                     </div>
 
                     <!-- Reminders List -->
@@ -420,8 +450,8 @@
                 </div>
 
                 <!-- Outreach History Section -->
-                <div class="border-t pt-4 mt-4">
-                    <h4 class="font-medium mb-3">Outreach History</h4>
+                <div class="border-t border-cream-200 pt-4 mt-4">
+                    <h4 class="font-medium text-sage-700 mb-3">Outreach History</h4>
                     <div id="outreachHistory" class="space-y-2"></div>
                 </div>
             </div>
@@ -454,47 +484,41 @@
 
             // Reset all tabs
             [tabHome, tabPipeline, tabJobs, tabDatabase, tabContacts].forEach(t => {
-                t.classList.remove('border-blue-500', 'text-blue-600');
-                t.classList.add('border-transparent', 'text-gray-500');
+                t.classList.remove('bg-white', 'text-sage-700', 'shadow-sm');
+                t.classList.add('text-sage-600');
             });
             [homeContent, pipelineContent, jobsContent, databaseContent, contactsContent].forEach(c => c.classList.add('hidden'));
 
+            const activateTab = (tab) => {
+                tab.classList.add('bg-white', 'text-sage-700', 'shadow-sm');
+                tab.classList.remove('text-sage-600');
+            };
+
             if (tab === 'home') {
                 homeContent.classList.remove('hidden');
-                tabHome.classList.add('border-blue-500', 'text-blue-600');
-                tabHome.classList.remove('border-transparent', 'text-gray-500');
+                activateTab(tabHome);
                 loadHomeStats();
             } else if (tab === 'pipeline') {
                 pipelineContent.classList.remove('hidden');
-                tabPipeline.classList.add('border-blue-500', 'text-blue-600');
-                tabPipeline.classList.remove('border-transparent', 'text-gray-500');
+                activateTab(tabPipeline);
                 loadPipeline();
             } else if (tab === 'jobs') {
                 jobsContent.classList.remove('hidden');
-                tabJobs.classList.add('border-blue-500', 'text-blue-600');
-                tabJobs.classList.remove('border-transparent', 'text-gray-500');
+                activateTab(tabJobs);
             } else if (tab === 'database') {
                 databaseContent.classList.remove('hidden');
-                tabDatabase.classList.add('border-blue-500', 'text-blue-600');
-                tabDatabase.classList.remove('border-transparent', 'text-gray-500');
+                activateTab(tabDatabase);
                 loadDatabaseStats();
                 loadPeopleTable();
             } else if (tab === 'contacts') {
                 contactsContent.classList.remove('hidden');
-                tabContacts.classList.add('border-blue-500', 'text-blue-600');
-                tabContacts.classList.remove('border-transparent', 'text-gray-500');
+                activateTab(tabContacts);
                 loadCompaniesTable();
             }
         }
 
         // Load home stats
         async function loadHomeStats() {
-            const response = await fetch('/api/database/stats');
-            const stats = await response.json();
-            document.getElementById('homeStatPeople').textContent = stats.total_contacts;
-            document.getElementById('homeStatCompanies').textContent = stats.total_companies;
-            document.getElementById('homeStatEnriched').textContent = stats.completed_companies;
-
             loadUpcomingReminders();
         }
 
@@ -1117,18 +1141,18 @@
         function createContactCard(contact) {
             const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unknown';
             const reminderBadge = contact.next_reminder
-                ? `<div class="text-xs text-orange-600 mt-1">⏰ ${contact.next_reminder}</div>`
+                ? `<div class="text-xs text-terracotta-500 mt-1">⏰ ${contact.next_reminder}</div>`
                 : '';
 
             return `
-                <div class="bg-white rounded-lg shadow-sm p-3 cursor-move hover:shadow-md transition-shadow"
+                <div class="bg-white rounded-xl shadow-sm p-3 cursor-move hover:shadow-md transition-all hover:-translate-y-0.5 border border-cream-200"
                      draggable="true"
                      data-contact-id="${contact.id}"
                      ondragstart="handleDragStart(event)"
                      onclick="showContactDetail('${contact.id}')">
-                    <div class="font-medium text-sm">${name}</div>
-                    <div class="text-xs text-gray-500">${contact.company_name || 'No company'}</div>
-                    ${contact.title ? `<div class="text-xs text-gray-400">${contact.title}</div>` : ''}
+                    <div class="font-medium text-sm text-sage-800">${name}</div>
+                    <div class="text-xs text-sage-500">${contact.company_name || 'No company'}</div>
+                    ${contact.title ? `<div class="text-xs text-sage-400">${contact.title}</div>` : ''}
                     ${reminderBadge}
                 </div>
             `;
@@ -1141,16 +1165,16 @@
 
         function handleDragOver(event) {
             event.preventDefault();
-            event.currentTarget.classList.add('bg-blue-200');
+            event.currentTarget.classList.add('ring-2', 'ring-terracotta-400', 'ring-inset');
         }
 
         function handleDragLeave(event) {
-            event.currentTarget.classList.remove('bg-blue-200');
+            event.currentTarget.classList.remove('ring-2', 'ring-terracotta-400', 'ring-inset');
         }
 
         async function handleDrop(event) {
             event.preventDefault();
-            event.currentTarget.classList.remove('bg-blue-200');
+            event.currentTarget.classList.remove('ring-2', 'ring-terracotta-400', 'ring-inset');
 
             const contactId = event.dataTransfer.getData('text/plain');
             const newStage = event.currentTarget.dataset.stage;
@@ -1306,7 +1330,7 @@ Best,
             const container = document.getElementById('outreachHistory');
 
             if (data.outreach.length === 0) {
-                container.innerHTML = '<div class="text-gray-400 text-sm">No outreach yet</div>';
+                container.innerHTML = '<div class="text-sage-400 text-sm">No outreach yet</div>';
                 return;
             }
 
@@ -1319,11 +1343,11 @@ Best,
                                  o.outreach_type === 'call' ? '📞' : '📝';
 
                 return `
-                    <div class="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
+                    <div class="flex items-center gap-2 p-2 bg-cream-50 rounded-lg text-sm border border-cream-200">
                         <span>${typeIcon}</span>
-                        <span class="text-gray-600">${date}</span>
-                        <span class="capitalize">${o.outreach_type}</span>
-                        ${o.note ? `<span class="text-gray-500 text-xs">- ${o.note}</span>` : ''}
+                        <span class="text-sage-600">${date}</span>
+                        <span class="capitalize text-sage-700">${o.outreach_type}</span>
+                        ${o.note ? `<span class="text-sage-500 text-xs">- ${o.note}</span>` : ''}
                     </div>
                 `;
             }).join('');
@@ -1368,23 +1392,23 @@ Best,
             const container = document.getElementById('contactReminders');
 
             if (data.reminders.length === 0) {
-                container.innerHTML = '<div class="text-gray-400 text-sm">No reminders</div>';
+                container.innerHTML = '<div class="text-sage-400 text-sm">No reminders</div>';
                 return;
             }
 
             container.innerHTML = data.reminders.map(r => {
                 const isOverdue = !r.completed && new Date(r.due_date) < new Date();
-                const dateClass = isOverdue ? 'text-red-600' : 'text-gray-600';
-                const completedClass = r.completed ? 'line-through text-gray-400' : '';
+                const dateClass = isOverdue ? 'text-terracotta-600' : 'text-sage-600';
+                const completedClass = r.completed ? 'line-through text-sage-300' : '';
 
                 return `
-                    <div class="flex items-center gap-2 p-2 bg-gray-50 rounded ${completedClass}">
+                    <div class="flex items-center gap-2 p-2 bg-cream-50 rounded-lg border border-cream-200 ${completedClass}">
                         <input type="checkbox" ${r.completed ? 'checked' : ''}
                                onchange="toggleReminder('${r.id}', this.checked)"
-                               class="rounded">
+                               class="rounded text-terracotta-500 focus:ring-terracotta-400">
                         <span class="${dateClass} text-sm">${r.due_date}</span>
-                        <span class="text-sm flex-1">${r.note || ''}</span>
-                        <button onclick="deleteReminder('${r.id}')" class="text-red-500 hover:text-red-700 text-sm">×</button>
+                        <span class="text-sm text-sage-700 flex-1">${r.note || ''}</span>
+                        <button onclick="deleteReminder('${r.id}')" class="text-terracotta-400 hover:text-terracotta-600 text-sm">×</button>
                     </div>
                 `;
             }).join('');
@@ -1455,26 +1479,26 @@ Best,
             const container = document.getElementById('homeReminders');
 
             if (data.reminders.length === 0) {
-                container.innerHTML = '<p class="text-gray-400 text-sm">No upcoming reminders</p>';
+                container.innerHTML = '<p class="text-sage-400 text-sm">No upcoming reminders</p>';
                 return;
             }
 
             container.innerHTML = data.reminders.slice(0, 5).map(r => {
                 const isOverdue = new Date(r.due_date) < new Date();
-                const dateClass = isOverdue ? 'text-red-600 font-medium' : 'text-gray-600';
+                const dateClass = isOverdue ? 'text-terracotta-600 font-medium' : 'text-sage-600';
 
                 return `
-                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded hover:bg-gray-100 cursor-pointer"
+                    <div class="flex items-center justify-between p-3 bg-cream-50 rounded-xl hover:bg-cream-100 cursor-pointer transition-colors border border-cream-200"
                          onclick="showContactDetail('${r.contact_id}')">
                         <div>
-                            <div class="font-medium text-sm">${r.contact_name || 'Unknown'}</div>
-                            <div class="text-xs text-gray-500">${r.company_name || ''}</div>
-                            ${r.note ? `<div class="text-xs text-gray-600 mt-1">${r.note}</div>` : ''}
+                            <div class="font-medium text-sm text-sage-800">${r.contact_name || 'Unknown'}</div>
+                            <div class="text-xs text-sage-500">${r.company_name || ''}</div>
+                            ${r.note ? `<div class="text-xs text-sage-600 mt-1">${r.note}</div>` : ''}
                         </div>
                         <div class="text-right">
                             <div class="${dateClass} text-sm">${r.due_date}</div>
                             <button onclick="event.stopPropagation(); quickCompleteReminder('${r.reminder_id}')"
-                                    class="text-xs text-green-600 hover:text-green-800">✓ Done</button>
+                                    class="text-xs text-sage-600 hover:text-sage-800">✓ Done</button>
                         </div>
                     </div>
                 `;
