@@ -64,6 +64,14 @@
                     </button>
                 </div>
             </div>
+
+            <!-- Upcoming Reminders -->
+            <div class="bg-white rounded-lg shadow p-6 mt-6">
+                <h2 class="text-xl font-semibold mb-4">Upcoming Reminders</h2>
+                <div id="homeReminders" class="space-y-2">
+                    <p class="text-gray-500">Loading...</p>
+                </div>
+            </div>
         </div>
 
         <!-- Pipeline Tab Content -->
@@ -344,6 +352,50 @@
         </div>
     </div>
 
+    <!-- Contact Detail Modal -->
+    <div id="contactModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-start mb-4">
+                    <h3 id="contactModalName" class="text-xl font-semibold"></h3>
+                    <button onclick="closeContactModal()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+                </div>
+
+                <!-- Contact Info -->
+                <div id="contactModalInfo" class="space-y-3 mb-6"></div>
+
+                <!-- Stage Selector -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Pipeline Stage</label>
+                    <select id="contactStageSelect" onchange="updateContactStage()"
+                            class="w-full border rounded px-3 py-2">
+                        <option value="new">New</option>
+                        <option value="contacted">Contacted</option>
+                        <option value="meeting">Meeting</option>
+                        <option value="proposal">Proposal</option>
+                        <option value="won">Won</option>
+                        <option value="lost">Lost</option>
+                    </select>
+                </div>
+
+                <!-- Reminders Section -->
+                <div class="border-t pt-4">
+                    <h4 class="font-medium mb-3">Reminders</h4>
+
+                    <!-- Add Reminder Form -->
+                    <div class="flex gap-2 mb-4">
+                        <input type="date" id="reminderDate" class="border rounded px-2 py-1 text-sm flex-1">
+                        <input type="text" id="reminderNote" placeholder="Note..." class="border rounded px-2 py-1 text-sm flex-1">
+                        <button onclick="addReminder()" class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600">Add</button>
+                    </div>
+
+                    <!-- Reminders List -->
+                    <div id="contactReminders" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let currentJobId = null;
         let pollInterval = null;
@@ -353,6 +405,7 @@
         let contactPage = 0;
         let totalContacts = 0;
         let currentScreenshotCompanyId = null;
+        let currentContactId = null;
 
         // Tab switching
         function showTab(tab) {
@@ -409,6 +462,8 @@
             document.getElementById('homeStatPeople').textContent = stats.total_contacts;
             document.getElementById('homeStatCompanies').textContent = stats.total_companies;
             document.getElementById('homeStatEnriched').textContent = stats.completed_companies;
+
+            loadUpcomingReminders();
         }
 
         // Clear database
@@ -1085,11 +1140,221 @@
             }
         }
 
+        // Contact Detail Modal Functions
+        async function showContactDetail(contactId) {
+            currentContactId = contactId;
+
+            // Fetch contact data from database/contacts (find by id)
+            const response = await fetch(`/api/database/contacts?limit=1000`);
+            const data = await response.json();
+            const contact = data.contacts.find(c => c.id === contactId);
+
+            if (!contact) {
+                alert('Contact not found');
+                return;
+            }
+
+            // Set name
+            const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unknown';
+            document.getElementById('contactModalName').textContent = name;
+
+            // Build info section
+            const infoHtml = `
+                ${contact.title ? `<div><span class="text-gray-500 text-sm">Title:</span> ${contact.title}</div>` : ''}
+                ${contact.email ? `<div><span class="text-gray-500 text-sm">Email:</span> <a href="mailto:${contact.email}" class="text-blue-600">${contact.email}</a></div>` : ''}
+                ${contact.phone ? `<div><span class="text-gray-500 text-sm">Phone:</span> ${contact.phone}</div>` : ''}
+                ${contact.linkedin_url ? `<div><span class="text-gray-500 text-sm">LinkedIn:</span> <a href="${contact.linkedin_url}" target="_blank" class="text-blue-600">Profile</a></div>` : ''}
+                ${contact.company_name ? `<div class="pt-2 border-t"><span class="text-gray-500 text-sm">Company:</span> ${contact.company_name}</div>` : ''}
+                ${contact.company_website ? `<div><span class="text-gray-500 text-sm">Website:</span> <a href="${contact.company_website}" target="_blank" class="text-blue-600">${contact.company_website}</a></div>` : ''}
+            `;
+            document.getElementById('contactModalInfo').innerHTML = infoHtml;
+
+            // Set stage
+            document.getElementById('contactStageSelect').value = contact.stage || 'new';
+
+            // Load reminders
+            await loadContactReminders();
+
+            // Show modal
+            const modal = document.getElementById('contactModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            // Set default date to today
+            document.getElementById('reminderDate').value = new Date().toISOString().split('T')[0];
+        }
+
+        function closeContactModal() {
+            const modal = document.getElementById('contactModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            currentContactId = null;
+        }
+
+        async function updateContactStage() {
+            if (!currentContactId) return;
+
+            const stage = document.getElementById('contactStageSelect').value;
+
+            try {
+                const response = await fetch(`/api/contacts/${currentContactId}/stage`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stage })
+                });
+
+                if (response.ok) {
+                    // Refresh pipeline if visible
+                    if (!document.getElementById('pipelineContent').classList.contains('hidden')) {
+                        loadPipeline();
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to update stage:', err);
+            }
+        }
+
+        async function loadContactReminders() {
+            if (!currentContactId) return;
+
+            const response = await fetch(`/api/contacts/${currentContactId}/reminders`);
+            const data = await response.json();
+
+            const container = document.getElementById('contactReminders');
+
+            if (data.reminders.length === 0) {
+                container.innerHTML = '<div class="text-gray-400 text-sm">No reminders</div>';
+                return;
+            }
+
+            container.innerHTML = data.reminders.map(r => {
+                const isOverdue = !r.completed && new Date(r.due_date) < new Date();
+                const dateClass = isOverdue ? 'text-red-600' : 'text-gray-600';
+                const completedClass = r.completed ? 'line-through text-gray-400' : '';
+
+                return `
+                    <div class="flex items-center gap-2 p-2 bg-gray-50 rounded ${completedClass}">
+                        <input type="checkbox" ${r.completed ? 'checked' : ''}
+                               onchange="toggleReminder('${r.id}', this.checked)"
+                               class="rounded">
+                        <span class="${dateClass} text-sm">${r.due_date}</span>
+                        <span class="text-sm flex-1">${r.note || ''}</span>
+                        <button onclick="deleteReminder('${r.id}')" class="text-red-500 hover:text-red-700 text-sm">×</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function addReminder() {
+            if (!currentContactId) return;
+
+            const date = document.getElementById('reminderDate').value;
+            const note = document.getElementById('reminderNote').value;
+
+            if (!date) {
+                alert('Please select a date');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/contacts/${currentContactId}/reminders`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ due_date: date, note: note || '' })
+                });
+
+                if (response.ok) {
+                    document.getElementById('reminderNote').value = '';
+                    await loadContactReminders();
+                    // Refresh pipeline to update reminder badges
+                    if (!document.getElementById('pipelineContent').classList.contains('hidden')) {
+                        loadPipeline();
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to add reminder:', err);
+            }
+        }
+
+        async function toggleReminder(reminderId, completed) {
+            try {
+                await fetch(`/api/reminders/${reminderId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ completed })
+                });
+                await loadContactReminders();
+            } catch (err) {
+                console.error('Failed to update reminder:', err);
+            }
+        }
+
+        async function deleteReminder(reminderId) {
+            try {
+                await fetch(`/api/reminders/${reminderId}`, { method: 'DELETE' });
+                await loadContactReminders();
+                // Refresh pipeline to update reminder badges
+                if (!document.getElementById('pipelineContent').classList.contains('hidden')) {
+                    loadPipeline();
+                }
+            } catch (err) {
+                console.error('Failed to delete reminder:', err);
+            }
+        }
+
+        // Home Tab Reminders Functions
+        async function loadUpcomingReminders() {
+            const response = await fetch('/api/reminders/upcoming');
+            const data = await response.json();
+
+            const container = document.getElementById('homeReminders');
+
+            if (data.reminders.length === 0) {
+                container.innerHTML = '<p class="text-gray-400 text-sm">No upcoming reminders</p>';
+                return;
+            }
+
+            container.innerHTML = data.reminders.slice(0, 5).map(r => {
+                const isOverdue = new Date(r.due_date) < new Date();
+                const dateClass = isOverdue ? 'text-red-600 font-medium' : 'text-gray-600';
+
+                return `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded hover:bg-gray-100 cursor-pointer"
+                         onclick="showContactDetail('${r.contact_id}')">
+                        <div>
+                            <div class="font-medium text-sm">${r.contact_name || 'Unknown'}</div>
+                            <div class="text-xs text-gray-500">${r.company_name || ''}</div>
+                            ${r.note ? `<div class="text-xs text-gray-600 mt-1">${r.note}</div>` : ''}
+                        </div>
+                        <div class="text-right">
+                            <div class="${dateClass} text-sm">${r.due_date}</div>
+                            <button onclick="event.stopPropagation(); quickCompleteReminder('${r.reminder_id}')"
+                                    class="text-xs text-green-600 hover:text-green-800">✓ Done</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function quickCompleteReminder(reminderId) {
+            try {
+                await fetch(`/api/reminders/${reminderId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ completed: true })
+                });
+                await loadUpcomingReminders();
+            } catch (err) {
+                console.error('Failed to complete reminder:', err);
+            }
+        }
+
         // Close modals on escape key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 closeModal();
                 closeScreenshotModal();
+                closeContactModal();
             }
         });
 
