@@ -1,6 +1,0 @@
-2026/01/11-10:17:22.808 37c71f Reusing MANIFEST /Users/sid/projects/sidcrm/data/browser_profile/Default/Local Storage/leveldb/MANIFEST-000001
-2026/01/11-10:17:22.810 37c71f Recovering log #3
-2026/01/11-10:17:22.811 37c71f Reusing old log /Users/sid/projects/sidcrm/data/browser_profile/Default/Local Storage/leveldb/000003.log 
-2026/01/11-10:17:54.934 37c722 Level-0 table #5: started
-2026/01/11-10:17:54.936 37c722 Level-0 table #5: 16757 bytes OK
-2026/01/11-10:17:54.938 37c722 Delete type=0 #3
