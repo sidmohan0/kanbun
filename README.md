@@ -2,6 +2,8 @@
 
 A lightweight lead enrichment and CRM tool with Kanban pipeline management. Upload a CSV of companies/contacts, enrich with website data and screenshots, then track your outreach through a drag-and-drop pipeline.
 
+![kanbun screenshot](docs/screenshot.png)
+
 ## Features
 
 - **CSV Import**: Upload company/contact lists from Apollo, LinkedIn exports, etc.
