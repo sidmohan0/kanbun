@@ -387,8 +387,8 @@
     </div>
 
     <!-- Contact Detail Modal -->
-    <div id="contactModal" class="fixed inset-0 bg-sage-900 bg-opacity-50 hidden items-center justify-center z-50">
-        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto border border-cream-200">
+    <div id="contactModal" class="fixed inset-0 bg-sage-900 bg-opacity-50 hidden items-center justify-center z-50" onclick="if(event.target === this) closeContactModal()">
+        <div class="bg-white rounded-2xl shadow-xl w-full mx-4 md:mx-8 lg:mx-16 max-w-5xl max-h-[90vh] overflow-y-auto border border-cream-200">
             <div class="p-6">
                 <div class="flex justify-between items-start mb-4">
                     <h3 id="contactModalName" class="text-xl font-semibold text-sage-800"></h3>
@@ -1232,6 +1232,21 @@
                 ${contact.linkedin_url ? `<div><span class="text-gray-500 text-sm">LinkedIn:</span> <a href="${contact.linkedin_url}" target="_blank" class="text-blue-600">Profile</a></div>` : ''}
                 ${contact.company_name ? `<div class="pt-2 border-t"><span class="text-gray-500 text-sm">Company:</span> ${contact.company_name}</div>` : ''}
                 ${contact.company_website ? `<div><span class="text-gray-500 text-sm">Website:</span> <a href="${contact.company_website}" target="_blank" class="text-blue-600">${contact.company_website}</a></div>` : ''}
+                ${contact.company_description ? `
+                    <div class="pt-2 mt-2 border-t border-cream-200">
+                        <div class="text-gray-500 text-sm mb-1">About Company:</div>
+                        <div class="text-sage-700 text-sm bg-cream-50 p-2 rounded-lg">${contact.company_description}</div>
+                    </div>
+                ` : ''}
+                ${contact.company_id ? `
+                    <div class="mt-2">
+                        <img src="/api/screenshots/${contact.company_id}"
+                             class="w-full rounded-lg border border-cream-200 cursor-pointer hover:opacity-90"
+                             onclick="window.open('/api/screenshots/${contact.company_id}', '_blank')"
+                             onerror="this.style.display='none'"
+                             alt="Company screenshot">
+                    </div>
+                ` : ''}
             `;
             document.getElementById('contactModalInfo').innerHTML = infoHtml;
 
@@ -1243,9 +1258,13 @@
             const linkedinBtn = document.getElementById('linkedinContactBtn');
 
             if (contact.email) {
-                emailBtn.classList.remove('hidden');
+                emailBtn.disabled = false;
+                emailBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                emailBtn.title = '';
             } else {
-                emailBtn.classList.add('hidden');
+                emailBtn.disabled = true;
+                emailBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                emailBtn.title = 'No email address';
             }
 
             if (contact.linkedin_url) {
