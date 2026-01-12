@@ -19,5 +19,5 @@ def test_settings_has_defaults(monkeypatch):
     from app.config import Settings
     settings = Settings()
 
-    assert settings.database_path == "data/sidcrm.db"
+    assert settings.database_path == "data/kanbun.db"
     assert settings.mcp_server_url == "http://localhost:3000"

@@ -1,0 +1,13 @@
+company_name,website,company linkedin url,first_name,last_name,email,title,phone,person linkedin url
+Acme Technologies,https://acme-tech.example.com,https://linkedin.com/company/acme-tech,Jane,Smith,jane.smith@acme-tech.example.com,VP of Engineering,555-0101,https://linkedin.com/in/janesmith
+Acme Technologies,https://acme-tech.example.com,https://linkedin.com/company/acme-tech,Bob,Johnson,bob.j@acme-tech.example.com,CTO,555-0102,https://linkedin.com/in/bobjohnson
+CloudScale Inc,https://cloudscale.example.com,https://linkedin.com/company/cloudscale,Sarah,Williams,sarah@cloudscale.example.com,CEO,555-0201,https://linkedin.com/in/sarahw
+DataFlow Systems,https://dataflow.example.com,https://linkedin.com/company/dataflow,Michael,Chen,m.chen@dataflow.example.com,Head of Sales,555-0301,https://linkedin.com/in/michaelchen
+DataFlow Systems,https://dataflow.example.com,https://linkedin.com/company/dataflow,Emily,Davis,emily.d@dataflow.example.com,Marketing Director,555-0302,https://linkedin.com/in/emilydavis
+GreenEnergy Solutions,https://greenenergy.example.com,https://linkedin.com/company/greenenergy,David,Martinez,david@greenenergy.example.com,Founder,555-0401,https://linkedin.com/in/davidmartinez
+InnovateLab,https://innovatelab.example.com,https://linkedin.com/company/innovatelab,Lisa,Anderson,lisa.a@innovatelab.example.com,Product Manager,555-0501,https://linkedin.com/in/lisaanderson
+InnovateLab,https://innovatelab.example.com,https://linkedin.com/company/innovatelab,James,Wilson,james@innovatelab.example.com,Lead Developer,555-0502,https://linkedin.com/in/jameswilson
+NextGen AI,https://nextgen-ai.example.com,https://linkedin.com/company/nextgenai,Amanda,Brown,amanda@nextgen-ai.example.com,AI Research Lead,555-0601,https://linkedin.com/in/amandabrown
+PeakPerformance Co,https://peakperf.example.com,https://linkedin.com/company/peakperformance,Chris,Taylor,chris.t@peakperf.example.com,Operations Manager,555-0701,https://linkedin.com/in/christaylor
+SwiftLogistics,https://swiftlogistics.example.com,https://linkedin.com/company/swiftlogistics,Rachel,Lee,rachel@swiftlogistics.example.com,Supply Chain Director,555-0801,https://linkedin.com/in/rachellee
+TechBridge Solutions,https://techbridge.example.com,https://linkedin.com/company/techbridge,Kevin,Garcia,kevin.g@techbridge.example.com,Solutions Architect,555-0901,https://linkedin.com/in/kevingarcia

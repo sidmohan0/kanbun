@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     firecrawl_api_key: str = ""
     linkedin_li_at: str = ""
     mcp_server_url: str = "http://localhost:3000"
-    database_path: str = "data/sidcrm.db"
+    database_path: str = "data/kanbun.db"
 
     class Config:
         env_file = ".env"

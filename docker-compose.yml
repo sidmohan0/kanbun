@@ -6,7 +6,7 @@ services:
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}
-      - DATABASE_PATH=/data/sidcrm.db
+      - DATABASE_PATH=/data/kanbun.db
       - SCREENSHOTS_DIR=/data/screenshots
     volumes:
       - ./data:/data

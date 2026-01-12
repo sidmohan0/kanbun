@@ -1,0 +1,52 @@
+# Environment and secrets
+.env
+*.env.local
+
+# Data files (contain personal/business data)
+data/*.db
+data/*.json
+data/screenshots/
+data/browser_profile/
+
+# Keep the data directory structure
+!data/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploaded CSVs (may contain real data)
+*.csv
+!sample-data.csv
+
+# Logs
+*.log
+
+# Claude
+.claude/

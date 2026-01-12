@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="sidcrm", lifespan=lifespan)
+app = FastAPI(title="kanbun", lifespan=lifespan)
 
 
 @app.post("/api/jobs/upload", response_model=UploadResponse)

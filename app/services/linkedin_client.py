@@ -23,7 +23,7 @@ class LinkedInMCPClient:
             "params": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "sidcrm", "version": "1.0"}
+                "clientInfo": {"name": "kanbun", "version": "1.0"}
             }
         }
 
