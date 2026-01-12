@@ -3,17 +3,132 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lead Enrichment</title>
+    <title>sidcrm</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .kanban-column [draggable="true"].opacity-50 {
+            opacity: 0.5;
+        }
+    </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
     <div class="container mx-auto px-4 py-8 max-w-6xl">
-        <h1 class="text-3xl font-bold text-gray-800 mb-8">Lead Enrichment</h1>
+        <h1 class="text-3xl font-bold text-gray-800 mb-4">sidcrm</h1>
 
-        <!-- Upload Section -->
-        <div class="bg-white rounded-lg shadow p-6 mb-8">
-            <h2 class="text-xl font-semibold mb-4">Upload CSV</h2>
-            <p class="text-gray-600 mb-4">CSV must have columns: <code class="bg-gray-100 px-2 py-1 rounded">company_name</code> and <code class="bg-gray-100 px-2 py-1 rounded">website_url</code></p>
+        <!-- Tabs -->
+        <div class="flex space-x-4 mb-6 border-b">
+            <button id="tabHome" onclick="showTab('home')" class="px-4 py-2 font-medium border-b-2 border-blue-500 text-blue-600">
+                Home
+            </button>
+            <button id="tabPipeline" onclick="showTab('pipeline')" class="px-4 py-2 font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+                Pipeline
+            </button>
+            <button id="tabDatabase" onclick="showTab('database')" class="px-4 py-2 font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+                People
+            </button>
+            <button id="tabContacts" onclick="showTab('contacts')" class="px-4 py-2 font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+                Companies
+            </button>
+            <button id="tabJobs" onclick="showTab('jobs')" class="px-4 py-2 font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+                Jobs
+            </button>
+        </div>
+
+        <!-- Home Tab Content -->
+        <div id="homeContent">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="bg-white rounded-lg shadow p-6 text-center">
+                    <div id="homeStatPeople" class="text-4xl font-bold text-indigo-600 mb-2">-</div>
+                    <div class="text-gray-500">People</div>
+                </div>
+                <div class="bg-white rounded-lg shadow p-6 text-center">
+                    <div id="homeStatCompanies" class="text-4xl font-bold text-blue-600 mb-2">-</div>
+                    <div class="text-gray-500">Companies</div>
+                </div>
+                <div class="bg-white rounded-lg shadow p-6 text-center">
+                    <div id="homeStatEnriched" class="text-4xl font-bold text-green-600 mb-2">-</div>
+                    <div class="text-gray-500">Enriched</div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-semibold mb-4">Quick Actions</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button onclick="showTab('jobs')" class="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors text-left">
+                        <div class="font-medium text-gray-800">Upload CSV</div>
+                        <div class="text-sm text-gray-500">Import new contacts and companies</div>
+                    </button>
+                    <button onclick="showTab('database')" class="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors text-left">
+                        <div class="font-medium text-gray-800">Browse People</div>
+                        <div class="text-sm text-gray-500">View and search all contacts</div>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pipeline Tab Content -->
+        <div id="pipelineContent" class="hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Pipeline</h2>
+                <span id="pipelineCount" class="text-gray-500 text-sm"></span>
+            </div>
+
+            <!-- Kanban Board -->
+            <div class="flex gap-4 overflow-x-auto pb-4" id="kanbanBoard">
+                <div class="kanban-column flex-shrink-0 w-64 bg-gray-100 rounded-lg p-3" data-stage="new">
+                    <h3 class="font-medium text-gray-700 mb-3 flex justify-between">
+                        <span>New</span>
+                        <span id="count-new" class="text-gray-500 text-sm">0</span>
+                    </h3>
+                    <div class="space-y-2 min-h-[200px]" id="column-new"></div>
+                </div>
+                <div class="kanban-column flex-shrink-0 w-64 bg-gray-100 rounded-lg p-3" data-stage="contacted">
+                    <h3 class="font-medium text-gray-700 mb-3 flex justify-between">
+                        <span>Contacted</span>
+                        <span id="count-contacted" class="text-gray-500 text-sm">0</span>
+                    </h3>
+                    <div class="space-y-2 min-h-[200px]" id="column-contacted"></div>
+                </div>
+                <div class="kanban-column flex-shrink-0 w-64 bg-gray-100 rounded-lg p-3" data-stage="meeting">
+                    <h3 class="font-medium text-gray-700 mb-3 flex justify-between">
+                        <span>Meeting</span>
+                        <span id="count-meeting" class="text-gray-500 text-sm">0</span>
+                    </h3>
+                    <div class="space-y-2 min-h-[200px]" id="column-meeting"></div>
+                </div>
+                <div class="kanban-column flex-shrink-0 w-64 bg-gray-100 rounded-lg p-3" data-stage="proposal">
+                    <h3 class="font-medium text-gray-700 mb-3 flex justify-between">
+                        <span>Proposal</span>
+                        <span id="count-proposal" class="text-gray-500 text-sm">0</span>
+                    </h3>
+                    <div class="space-y-2 min-h-[200px]" id="column-proposal"></div>
+                </div>
+                <div class="kanban-column flex-shrink-0 w-64 bg-green-100 rounded-lg p-3" data-stage="won">
+                    <h3 class="font-medium text-green-700 mb-3 flex justify-between">
+                        <span>Won</span>
+                        <span id="count-won" class="text-green-600 text-sm">0</span>
+                    </h3>
+                    <div class="space-y-2 min-h-[200px]" id="column-won"></div>
+                </div>
+                <div class="kanban-column flex-shrink-0 w-64 bg-red-100 rounded-lg p-3" data-stage="lost">
+                    <h3 class="font-medium text-red-700 mb-3 flex justify-between">
+                        <span>Lost</span>
+                        <span id="count-lost" class="text-red-600 text-sm">0</span>
+                    </h3>
+                    <div class="space-y-2 min-h-[200px]" id="column-lost"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Jobs Tab Content -->
+        <div id="jobsContent" class="hidden">
+            <!-- Upload Section -->
+            <div class="bg-white rounded-lg shadow p-6 mb-8">
+                <h2 class="text-xl font-semibold mb-4">Upload CSV</h2>
+                <p class="text-gray-600 mb-4">
+                    CSV must have columns: <code class="bg-gray-100 px-2 py-1 rounded">company_name</code> and <code class="bg-gray-100 px-2 py-1 rounded">website_url</code>
+                    <br><span class="text-sm text-gray-500">Optional: linkedin_url, first_name, last_name, email, phone, title</span>
+                </p>
 
             <div id="dropzone" class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 transition-colors">
                 <input type="file" id="fileInput" accept=".csv" class="hidden">
@@ -36,9 +151,17 @@
         <div id="jobDetail" class="bg-white rounded-lg shadow p-6 hidden">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold">Job Details</h2>
-                <button id="exportBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 hidden">
-                    Export CSV
-                </button>
+                <div class="space-x-2">
+                    <button id="retryFailedBtn" class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600 hidden">
+                        Retry Failed
+                    </button>
+                    <button id="cancelBtn" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 hidden">
+                        Cancel Job
+                    </button>
+                    <button id="exportBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 hidden">
+                        Export CSV
+                    </button>
+                </div>
             </div>
 
             <!-- Progress -->
@@ -57,9 +180,11 @@
                 <table class="w-full text-sm">
                     <thead class="bg-gray-50">
                         <tr>
+                            <th class="px-4 py-2 text-left w-16">Screenshot</th>
                             <th class="px-4 py-2 text-left">Company</th>
+                            <th class="px-4 py-2 text-left">Industry</th>
                             <th class="px-4 py-2 text-left">Status</th>
-                            <th class="px-4 py-2 text-left">Verified</th>
+                            <th class="px-4 py-2 text-left">Contacts</th>
                             <th class="px-4 py-2 text-left">Keywords</th>
                         </tr>
                     </thead>
@@ -67,11 +192,569 @@
                 </table>
             </div>
         </div>
+        </div><!-- End Jobs Tab Content -->
+
+        <!-- Database Tab Content (Contact-Centric) -->
+        <div id="databaseContent" class="hidden">
+            <!-- Header with Buttons -->
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">People</h2>
+                <div class="flex space-x-2">
+                    <button id="bulkScreenshotBtn" onclick="regenerateAllScreenshots()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm">
+                        Regenerate Screenshots
+                    </button>
+                    <button onclick="clearDatabase()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 text-sm">
+                        Clear Database
+                    </button>
+                </div>
+            </div>
+
+            <!-- Bulk Screenshot Progress -->
+            <div id="bulkScreenshotProgress" class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 hidden">
+                <div class="flex justify-between text-sm text-blue-800 mb-1">
+                    <span>Regenerating screenshots...</span>
+                    <span id="bulkProgressText">0 / 0</span>
+                </div>
+                <div class="w-full bg-blue-200 rounded-full h-2">
+                    <div id="bulkProgressBar" class="bg-blue-500 h-2 rounded-full transition-all" style="width: 0%"></div>
+                </div>
+                <div id="bulkProgressFailed" class="text-red-600 text-sm mt-1 hidden"></div>
+            </div>
+
+            <!-- Stats -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-white rounded-lg shadow p-4 text-center">
+                    <div id="statContacts" class="text-2xl font-bold text-indigo-600">-</div>
+                    <div class="text-gray-500 text-sm">People</div>
+                </div>
+                <div class="bg-white rounded-lg shadow p-4 text-center">
+                    <div id="statCompanies" class="text-2xl font-bold text-blue-600">-</div>
+                    <div class="text-gray-500 text-sm">Companies</div>
+                </div>
+                <div class="bg-white rounded-lg shadow p-4 text-center">
+                    <div id="statCompleted" class="text-2xl font-bold text-green-600">-</div>
+                    <div class="text-gray-500 text-sm">Enriched</div>
+                </div>
+                <div class="bg-white rounded-lg shadow p-4 text-center">
+                    <div id="statJobs" class="text-2xl font-bold text-gray-600">-</div>
+                    <div class="text-gray-500 text-sm">Jobs</div>
+                </div>
+            </div>
+
+            <!-- Search/Filter -->
+            <div class="bg-white rounded-lg shadow p-4 mb-6">
+                <div class="flex items-center space-x-4">
+                    <input type="text" id="contactSearch" placeholder="Search by name, email, company..."
+                           class="border rounded px-3 py-2 flex-1" onkeyup="debounceSearch()">
+                    <span id="contactCount" class="text-gray-500 text-sm"></span>
+                </div>
+            </div>
+
+            <!-- Contacts Table -->
+            <div class="bg-white rounded-lg shadow overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-3 py-3 text-left w-16"></th>
+                            <th class="px-4 py-3 text-left">Name</th>
+                            <th class="px-4 py-3 text-left">Title</th>
+                            <th class="px-4 py-3 text-left">Company</th>
+                            <th class="px-4 py-3 text-left">Email</th>
+                            <th class="px-4 py-3 text-left">Phone</th>
+                            <th class="px-4 py-3 text-left">LinkedIn</th>
+                        </tr>
+                    </thead>
+                    <tbody id="contactsTableBody"></tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="flex justify-between items-center mt-4">
+                <button id="prevPage" onclick="changePage(-1)" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50" disabled>
+                    Previous
+                </button>
+                <span id="pageInfo" class="text-gray-600">Page 1</span>
+                <button id="nextPage" onclick="changePage(1)" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50">
+                    Next
+                </button>
+            </div>
+        </div>
+
+        <!-- Companies Tab Content -->
+        <div id="contactsContent" class="hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Companies</h2>
+                <span id="companyCount" class="text-gray-500 text-sm"></span>
+            </div>
+
+            <!-- Companies Table -->
+            <div class="bg-white rounded-lg shadow overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-3 py-3 text-left w-16"></th>
+                            <th class="px-4 py-3 text-left">Company</th>
+                            <th class="px-4 py-3 text-left">Industry</th>
+                            <th class="px-4 py-3 text-left">Website</th>
+                            <th class="px-4 py-3 text-left">Status</th>
+                            <th class="px-4 py-3 text-left">People</th>
+                        </tr>
+                    </thead>
+                    <tbody id="companiesBody"></tbody>
+                </table>
+            </div>
+
+            <!-- Companies Pagination -->
+            <div class="flex justify-between items-center mt-4">
+                <button id="prevCompanyPage" onclick="changeCompanyPage(-1)" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50" disabled>
+                    Previous
+                </button>
+                <span id="companyPageInfo" class="text-gray-600">Page 1</span>
+                <button id="nextCompanyPage" onclick="changeCompanyPage(1)" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50">
+                    Next
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screenshot Modal -->
+    <div id="screenshotModal" class="fixed inset-0 bg-black bg-opacity-75 hidden items-center justify-center z-50" onclick="closeScreenshotModal()">
+        <div class="relative max-w-4xl max-h-[90vh] mx-4" onclick="event.stopPropagation()">
+            <button onclick="closeScreenshotModal()" class="absolute -top-10 right-0 text-white text-2xl hover:text-gray-300">&times;</button>
+            <div class="flex items-center justify-between mb-2">
+                <div id="screenshotTitle" class="text-white text-lg"></div>
+                <button id="regenerateBtn" onclick="regenerateScreenshot()" class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600">
+                    Regenerate
+                </button>
+            </div>
+            <img id="screenshotImage" class="max-w-full max-h-[80vh] rounded-lg shadow-2xl" src="" alt="Screenshot">
+        </div>
+    </div>
+
+    <!-- Company Detail Modal -->
+    <div id="companyModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-start mb-4">
+                    <h3 id="modalCompanyName" class="text-xl font-semibold"></h3>
+                    <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+                </div>
+                <div id="modalContent" class="space-y-4"></div>
+            </div>
+        </div>
     </div>
 
     <script>
         let currentJobId = null;
         let pollInterval = null;
+        let currentPage = 0;
+        let pageSize = 50;
+        let totalCompanies = 0;
+        let contactPage = 0;
+        let totalContacts = 0;
+        let currentScreenshotCompanyId = null;
+
+        // Tab switching
+        function showTab(tab) {
+            const homeContent = document.getElementById('homeContent');
+            const pipelineContent = document.getElementById('pipelineContent');
+            const jobsContent = document.getElementById('jobsContent');
+            const databaseContent = document.getElementById('databaseContent');
+            const contactsContent = document.getElementById('contactsContent');
+            const tabHome = document.getElementById('tabHome');
+            const tabPipeline = document.getElementById('tabPipeline');
+            const tabJobs = document.getElementById('tabJobs');
+            const tabDatabase = document.getElementById('tabDatabase');
+            const tabContacts = document.getElementById('tabContacts');
+
+            // Reset all tabs
+            [tabHome, tabPipeline, tabJobs, tabDatabase, tabContacts].forEach(t => {
+                t.classList.remove('border-blue-500', 'text-blue-600');
+                t.classList.add('border-transparent', 'text-gray-500');
+            });
+            [homeContent, pipelineContent, jobsContent, databaseContent, contactsContent].forEach(c => c.classList.add('hidden'));
+
+            if (tab === 'home') {
+                homeContent.classList.remove('hidden');
+                tabHome.classList.add('border-blue-500', 'text-blue-600');
+                tabHome.classList.remove('border-transparent', 'text-gray-500');
+                loadHomeStats();
+            } else if (tab === 'pipeline') {
+                pipelineContent.classList.remove('hidden');
+                tabPipeline.classList.add('border-blue-500', 'text-blue-600');
+                tabPipeline.classList.remove('border-transparent', 'text-gray-500');
+                loadPipeline();
+            } else if (tab === 'jobs') {
+                jobsContent.classList.remove('hidden');
+                tabJobs.classList.add('border-blue-500', 'text-blue-600');
+                tabJobs.classList.remove('border-transparent', 'text-gray-500');
+            } else if (tab === 'database') {
+                databaseContent.classList.remove('hidden');
+                tabDatabase.classList.add('border-blue-500', 'text-blue-600');
+                tabDatabase.classList.remove('border-transparent', 'text-gray-500');
+                loadDatabaseStats();
+                loadPeopleTable();
+            } else if (tab === 'contacts') {
+                contactsContent.classList.remove('hidden');
+                tabContacts.classList.add('border-blue-500', 'text-blue-600');
+                tabContacts.classList.remove('border-transparent', 'text-gray-500');
+                loadCompaniesTable();
+            }
+        }
+
+        // Load home stats
+        async function loadHomeStats() {
+            const response = await fetch('/api/database/stats');
+            const stats = await response.json();
+            document.getElementById('homeStatPeople').textContent = stats.total_contacts;
+            document.getElementById('homeStatCompanies').textContent = stats.total_companies;
+            document.getElementById('homeStatEnriched').textContent = stats.completed_companies;
+        }
+
+        // Clear database
+        async function clearDatabase() {
+            if (!confirm('Are you sure you want to clear ALL data? This cannot be undone.')) return;
+            if (!confirm('This will delete all jobs, companies, contacts, and keywords. Are you absolutely sure?')) return;
+
+            try {
+                const response = await fetch('/api/database/clear', { method: 'DELETE' });
+                if (response.ok) {
+                    alert('Database cleared successfully');
+                    loadDatabaseStats();
+                    loadPeopleTable();
+                    loadJobs();
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Failed to clear database');
+                }
+            } catch (err) {
+                console.error('Failed to clear database:', err);
+                alert('Failed to clear database');
+            }
+        }
+
+        // Database stats
+        async function loadDatabaseStats() {
+            const response = await fetch('/api/database/stats');
+            const stats = await response.json();
+            document.getElementById('statJobs').textContent = stats.total_jobs;
+            document.getElementById('statCompanies').textContent = stats.total_companies;
+            document.getElementById('statCompleted').textContent = stats.completed_companies;
+            document.getElementById('statContacts').textContent = stats.total_contacts;
+        }
+
+        // Search debounce
+        let searchTimeout = null;
+        function debounceSearch() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                currentPage = 0;
+                loadPeopleTable();
+            }, 300);
+        }
+
+        // Load people (contacts) for database view - contact-centric
+        async function loadPeopleTable() {
+            const search = document.getElementById('contactSearch')?.value || '';
+            const params = new URLSearchParams({
+                limit: pageSize,
+                offset: currentPage * pageSize
+            });
+            if (search) params.append('search', search);
+
+            const response = await fetch(`/api/database/contacts?${params}`);
+            const data = await response.json();
+            totalContacts = data.total;
+
+            document.getElementById('contactCount').textContent = `${data.total} people`;
+            updatePagination();
+
+            const tbody = document.getElementById('contactsTableBody');
+            if (data.contacts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">No people found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.contacts.map(c => `
+                <tr class="border-t hover:bg-gray-50">
+                    <td class="px-3 py-2">
+                        ${c.company_id ? `
+                            <img src="/api/screenshots/${c.company_id}"
+                                 class="w-12 h-8 object-cover rounded border cursor-pointer hover:opacity-80"
+                                 onclick="showScreenshot('${c.company_id}', '${(c.company_name || '').replace(/'/g, '')}')"
+                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div class="w-12 h-8 bg-gray-100 rounded border hidden items-center justify-center text-gray-400 text-xs">-</div>
+                        ` : '<div class="w-12 h-8 bg-gray-100 rounded border flex items-center justify-center text-gray-400 text-xs">-</div>'}
+                    </td>
+                    <td class="px-4 py-2">
+                        <div class="font-medium">${[c.first_name, c.last_name].filter(Boolean).join(' ') || '-'}</div>
+                    </td>
+                    <td class="px-4 py-2 text-xs text-gray-600">${c.title || '-'}</td>
+                    <td class="px-4 py-2 text-xs">
+                        <div class="font-medium">${c.company_name || '-'}</div>
+                    </td>
+                    <td class="px-4 py-2 text-xs">
+                        ${c.email ? `<a href="mailto:${c.email}" class="text-blue-600 hover:underline">${c.email}</a>` : '-'}
+                    </td>
+                    <td class="px-4 py-2 text-xs">${c.phone || '-'}</td>
+                    <td class="px-4 py-2 text-xs">
+                        ${c.linkedin_url ? `<a href="${c.linkedin_url}" target="_blank" class="text-blue-600 hover:underline">Profile</a>` : '-'}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Load companies for Companies tab
+        async function loadCompaniesTable() {
+            const params = new URLSearchParams({
+                limit: pageSize,
+                offset: contactPage * pageSize
+            });
+
+            const response = await fetch(`/api/database/companies?${params}`);
+            const data = await response.json();
+            totalCompanies = data.total;
+
+            const companyCountEl = document.getElementById('companyCount');
+            if (companyCountEl) companyCountEl.textContent = `${data.total} companies`;
+            updateCompanyPagination();
+
+            const tbody = document.getElementById('companiesBody');
+            if (!tbody) return;
+
+            if (data.companies.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">No companies found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.companies.map(c => {
+                const keywords = c.all_keywords ? c.all_keywords.split(', ').slice(0, 3).map(k =>
+                    `<span class="bg-gray-100 px-1 rounded text-xs">${k}</span>`
+                ).join(' ') : '-';
+
+                return `
+                    <tr class="border-t hover:bg-gray-50 cursor-pointer" onclick="showCompanyDetail('${c.id}')">
+                        <td class="px-3 py-2">
+                            <img src="/api/screenshots/${c.id}"
+                                 class="w-12 h-8 object-cover rounded border cursor-pointer hover:opacity-80"
+                                 onclick="event.stopPropagation(); showScreenshot('${c.id}', '${(c.name || '').replace(/'/g, '')}')"
+                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div class="w-12 h-8 bg-gray-100 rounded border hidden items-center justify-center text-gray-400 text-xs">-</div>
+                        </td>
+                        <td class="px-4 py-2">
+                            <div class="font-medium">${c.name || '-'}</div>
+                            <div class="text-xs text-gray-500">${truncate(c.company_description || '', 50)}</div>
+                        </td>
+                        <td class="px-4 py-2 text-xs">${c.industry || '-'}</td>
+                        <td class="px-4 py-2 text-xs">
+                            ${c.website_url ? `<a href="${c.website_url}" target="_blank" class="text-blue-600 hover:underline" onclick="event.stopPropagation()">${truncate(c.website_url, 25)}</a>` : '-'}
+                        </td>
+                        <td class="px-4 py-2">
+                            <span class="px-2 py-1 rounded text-xs ${getStatusClass(c.status)}">${c.status}</span>
+                        </td>
+                        <td class="px-4 py-2 text-xs">${c.contact_count || 0}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function updateCompanyPagination() {
+            const totalPages = Math.ceil(totalCompanies / pageSize);
+            const pageInfo = document.getElementById('companyPageInfo');
+            const prevBtn = document.getElementById('prevCompanyPage');
+            const nextBtn = document.getElementById('nextCompanyPage');
+            if (pageInfo) pageInfo.textContent = `Page ${contactPage + 1} of ${totalPages || 1}`;
+            if (prevBtn) prevBtn.disabled = contactPage === 0;
+            if (nextBtn) nextBtn.disabled = contactPage >= totalPages - 1;
+        }
+
+        function changeCompanyPage(delta) {
+            contactPage += delta;
+            loadCompaniesTable();
+        }
+
+        // Show company detail modal
+        async function showCompanyDetail(companyId) {
+            const response = await fetch(`/api/database/companies?limit=1000`);
+            const data = await response.json();
+            const company = data.companies.find(c => c.id === companyId);
+
+            if (!company) return;
+
+            document.getElementById('modalCompanyName').textContent = company.name;
+
+            const fields = [
+                { label: 'Website', value: company.website_url, link: true },
+                { label: 'Description', value: company.company_description },
+                { label: 'Industry', value: company.industry },
+                { label: 'Headquarters', value: company.headquarters },
+                { label: 'Founded', value: company.founded_year },
+                { label: 'Company Size', value: company.company_size },
+                { label: 'Pricing Model', value: company.pricing_model },
+                { label: 'Products/Services', value: company.products_services },
+                { label: 'Target Customers', value: company.target_customers },
+                { label: 'Technologies', value: company.technologies },
+                { label: 'Mission', value: company.mission_statement },
+                { label: 'Keywords', value: company.all_keywords },
+            ];
+
+            const html = fields.map(f => {
+                if (!f.value) return '';
+                const val = f.link ? `<a href="${f.value}" target="_blank" class="text-blue-600 hover:underline">${f.value}</a>` : f.value;
+                return `
+                    <div>
+                        <div class="text-xs text-gray-500 uppercase tracking-wide">${f.label}</div>
+                        <div class="text-gray-800">${val}</div>
+                    </div>
+                `;
+            }).filter(Boolean).join('');
+
+            document.getElementById('modalContent').innerHTML = html || '<p class="text-gray-500">No enrichment data available</p>';
+
+            const modal = document.getElementById('companyModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('companyModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function showScreenshot(companyId, companyName) {
+            currentScreenshotCompanyId = companyId;
+            document.getElementById('screenshotTitle').textContent = companyName;
+            document.getElementById('screenshotImage').src = `/api/screenshots/${companyId}?t=${Date.now()}`;
+            const modal = document.getElementById('screenshotModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeScreenshotModal() {
+            const modal = document.getElementById('screenshotModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            currentScreenshotCompanyId = null;
+        }
+
+        async function regenerateScreenshot() {
+            if (!currentScreenshotCompanyId) return;
+
+            const btn = document.getElementById('regenerateBtn');
+            const originalText = btn.textContent;
+            btn.textContent = 'Capturing...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(`/api/screenshots/${currentScreenshotCompanyId}/regenerate`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    // Refresh the image with cache-busting
+                    document.getElementById('screenshotImage').src = `/api/screenshots/${currentScreenshotCompanyId}?t=${Date.now()}`;
+                    btn.textContent = 'Done!';
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.disabled = false;
+                    }, 1500);
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Failed to regenerate screenshot');
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                console.error('Failed to regenerate screenshot:', err);
+                alert('Failed to regenerate screenshot');
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        let bulkScreenshotPollInterval = null;
+
+        async function regenerateAllScreenshots() {
+            if (!confirm('This will regenerate screenshots for all completed companies. Continue?')) return;
+
+            const btn = document.getElementById('bulkScreenshotBtn');
+            btn.disabled = true;
+            btn.textContent = 'Starting...';
+
+            try {
+                const response = await fetch('/api/screenshots/regenerate-all', { method: 'POST' });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('bulkScreenshotProgress').classList.remove('hidden');
+                    btn.textContent = 'In Progress...';
+
+                    // Start polling for progress
+                    bulkScreenshotPollInterval = setInterval(pollBulkScreenshotProgress, 1000);
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Failed to start bulk regeneration');
+                    btn.disabled = false;
+                    btn.textContent = 'Regenerate All Screenshots';
+                }
+            } catch (err) {
+                console.error('Failed to start bulk regeneration:', err);
+                alert('Failed to start bulk regeneration');
+                btn.disabled = false;
+                btn.textContent = 'Regenerate All Screenshots';
+            }
+        }
+
+        async function pollBulkScreenshotProgress() {
+            try {
+                const response = await fetch('/api/screenshots/regenerate-all/status');
+                const status = await response.json();
+
+                const completed = status.completed + status.failed;
+                const percent = status.total > 0 ? (completed / status.total * 100) : 0;
+
+                document.getElementById('bulkProgressText').textContent = `${completed} / ${status.total}`;
+                document.getElementById('bulkProgressBar').style.width = `${percent}%`;
+
+                if (status.failed > 0) {
+                    const failedEl = document.getElementById('bulkProgressFailed');
+                    failedEl.textContent = `${status.failed} failed`;
+                    failedEl.classList.remove('hidden');
+                }
+
+                if (!status.running) {
+                    clearInterval(bulkScreenshotPollInterval);
+                    const btn = document.getElementById('bulkScreenshotBtn');
+                    btn.disabled = false;
+                    btn.textContent = 'Regenerate All Screenshots';
+
+                    // Hide progress after a delay
+                    setTimeout(() => {
+                        document.getElementById('bulkScreenshotProgress').classList.add('hidden');
+                        document.getElementById('bulkProgressFailed').classList.add('hidden');
+                    }, 3000);
+                }
+            } catch (err) {
+                console.error('Failed to poll bulk progress:', err);
+            }
+        }
+
+        function truncate(str, len) {
+            return str && str.length > len ? str.substring(0, len) + '...' : str;
+        }
+
+        function updatePagination() {
+            const totalPages = Math.ceil(totalContacts / pageSize);
+            document.getElementById('pageInfo').textContent = `Page ${currentPage + 1} of ${totalPages || 1}`;
+            document.getElementById('prevPage').disabled = currentPage === 0;
+            document.getElementById('nextPage').disabled = currentPage >= totalPages - 1;
+        }
+
+        function changePage(delta) {
+            currentPage += delta;
+            loadPeopleTable();
+        }
 
         // File upload handling
         const dropzone = document.getElementById('dropzone');
@@ -119,7 +802,11 @@
                 }
 
                 const data = await response.json();
-                successEl.textContent = `Uploaded! Job ID: ${data.job_id} (${data.total_companies} companies)`;
+                let msg = `Uploaded! Job ID: ${data.job_id} (${data.total_companies} companies, ${data.total_contacts} contacts)`;
+                if (data.duplicates_skipped > 0) {
+                    msg += ` - ${data.duplicates_skipped} duplicates skipped`;
+                }
+                successEl.textContent = msg;
                 successEl.classList.remove('hidden');
 
                 loadJobs();
@@ -159,7 +846,51 @@
                 case 'completed': return 'bg-green-100 text-green-800';
                 case 'processing': return 'bg-blue-100 text-blue-800';
                 case 'failed': return 'bg-red-100 text-red-800';
+                case 'cancelled': return 'bg-gray-100 text-gray-800';
                 default: return 'bg-gray-100 text-gray-800';
+            }
+        }
+
+        async function cancelJob(jobId) {
+            if (!confirm('Are you sure you want to cancel this job?')) return;
+
+            try {
+                const response = await fetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
+                if (response.ok) {
+                    loadJobs();
+                    updateJobDetail();
+                }
+            } catch (err) {
+                console.error('Failed to cancel job:', err);
+            }
+        }
+
+        async function retryFailed(jobId) {
+            const btn = document.getElementById('retryFailedBtn');
+            const originalText = btn.textContent;
+            btn.textContent = 'Retrying...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(`/api/jobs/${jobId}/retry-failed`, { method: 'POST' });
+                const data = await response.json();
+
+                if (response.ok) {
+                    btn.classList.add('hidden');
+                    loadJobs();
+                    // Restart polling since job is now processing again
+                    if (pollInterval) clearInterval(pollInterval);
+                    pollInterval = setInterval(updateJobDetail, 2000);
+                    updateJobDetail();
+                } else {
+                    alert(data.detail || 'Failed to retry');
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                console.error('Failed to retry:', err);
+                btn.textContent = originalText;
+                btn.disabled = false;
             }
         }
 
@@ -193,12 +924,30 @@
             badge.textContent = status.status;
             badge.className = `px-2 py-1 rounded text-xs font-medium ${getStatusClass(status.status)}`;
 
-            // Show export button when completed
+            // Show/hide buttons based on status
             const exportBtn = document.getElementById('exportBtn');
-            if (status.status === 'completed') {
+            const cancelBtn = document.getElementById('cancelBtn');
+            const retryFailedBtn = document.getElementById('retryFailedBtn');
+
+            if (status.status === 'completed' || status.status === 'cancelled' || status.status === 'failed') {
                 exportBtn.classList.remove('hidden');
                 exportBtn.onclick = () => window.location.href = `/api/jobs/${currentJobId}/export`;
+                cancelBtn.classList.add('hidden');
                 clearInterval(pollInterval);
+
+                // Show retry button if there are failed companies
+                if (status.failed_count > 0) {
+                    retryFailedBtn.classList.remove('hidden');
+                    retryFailedBtn.textContent = `Retry Failed (${status.failed_count})`;
+                    retryFailedBtn.onclick = () => retryFailed(currentJobId);
+                } else {
+                    retryFailedBtn.classList.add('hidden');
+                }
+            } else if (status.status === 'processing' || status.status === 'pending') {
+                cancelBtn.classList.remove('hidden');
+                cancelBtn.onclick = () => cancelJob(currentJobId);
+                exportBtn.classList.add('hidden');
+                retryFailedBtn.classList.add('hidden');
             }
 
             // Update results table
@@ -206,23 +955,38 @@
             tbody.innerHTML = results.results.map(r => {
                 const c = r.company;
                 const kw = r.keywords || {};
+                const contacts = r.contacts || [];
                 const allKeywords = [
                     ...kw.core_product || [],
                     ...kw.category_language || [],
                     ...kw.customer_segments || []
                 ].slice(0, 5);
 
+                const contactNames = contacts.slice(0, 2).map(ct =>
+                    [ct.first_name, ct.last_name].filter(Boolean).join(' ')
+                ).filter(Boolean);
+
                 return `
                     <tr class="border-t">
                         <td class="px-4 py-2">
-                            <div class="font-medium">${c.name}</div>
-                            <div class="text-gray-500 text-xs">${c.website_url}</div>
+                            <img src="/api/screenshots/${c.id}"
+                                 class="w-16 h-10 object-cover rounded border cursor-pointer hover:opacity-80"
+                                 onclick="showScreenshot('${c.id}', '${(c.name || '').replace(/'/g, '')}')"
+                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                            >
+                            <div class="w-16 h-10 bg-gray-100 rounded border hidden items-center justify-center text-gray-400 text-xs">No img</div>
                         </td>
+                        <td class="px-4 py-2">
+                            <div class="font-medium">${c.name}</div>
+                            <div class="text-gray-500 text-xs">${truncate(c.company_description || c.website_url, 40)}</div>
+                        </td>
+                        <td class="px-4 py-2 text-xs">${c.industry || '-'}</td>
                         <td class="px-4 py-2">
                             <span class="px-2 py-1 rounded text-xs ${getStatusClass(c.status)}">${c.status}</span>
+                            ${c.error_message ? `<div class="text-red-500 text-xs mt-1">${truncate(c.error_message, 30)}</div>` : ''}
                         </td>
-                        <td class="px-4 py-2">
-                            ${c.url_verified === true ? '✓' : c.url_verified === false ? '✗' : '-'}
+                        <td class="px-4 py-2 text-xs">
+                            ${contacts.length > 0 ? `${contactNames.join(', ')}${contacts.length > 2 ? ` +${contacts.length - 2}` : ''}` : '-'}
                         </td>
                         <td class="px-4 py-2 text-xs">
                             ${allKeywords.map(k => `<span class="bg-gray-100 px-1 rounded mr-1">${k}</span>`).join('')}
@@ -232,7 +996,105 @@
             }).join('');
         }
 
+        // Pipeline / Kanban
+        async function loadPipeline() {
+            const response = await fetch('/api/pipeline');
+            const pipeline = await response.json();
+
+            const stages = ['new', 'contacted', 'meeting', 'proposal', 'won', 'lost'];
+            let totalContacts = 0;
+
+            stages.forEach(stage => {
+                const contacts = pipeline[stage] || [];
+                totalContacts += contacts.length;
+
+                document.getElementById(`count-${stage}`).textContent = contacts.length;
+
+                const column = document.getElementById(`column-${stage}`);
+                if (contacts.length === 0) {
+                    column.innerHTML = '<div class="text-gray-400 text-sm text-center py-4">No contacts</div>';
+                } else {
+                    column.innerHTML = contacts.map(c => createContactCard(c)).join('');
+                }
+
+                // Setup drop zone
+                column.addEventListener('dragover', handleDragOver);
+                column.addEventListener('drop', handleDrop);
+                column.addEventListener('dragleave', handleDragLeave);
+            });
+
+            document.getElementById('pipelineCount').textContent = `${totalContacts} contacts`;
+        }
+
+        function createContactCard(contact) {
+            const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unknown';
+            const reminderBadge = contact.next_reminder
+                ? `<div class="text-xs text-orange-600 mt-1">⏰ ${contact.next_reminder}</div>`
+                : '';
+
+            return `
+                <div class="bg-white rounded-lg shadow-sm p-3 cursor-move hover:shadow-md transition-shadow"
+                     draggable="true"
+                     data-contact-id="${contact.id}"
+                     ondragstart="handleDragStart(event)"
+                     onclick="showContactDetail('${contact.id}')">
+                    <div class="font-medium text-sm">${name}</div>
+                    <div class="text-xs text-gray-500">${contact.company_name || 'No company'}</div>
+                    ${contact.title ? `<div class="text-xs text-gray-400">${contact.title}</div>` : ''}
+                    ${reminderBadge}
+                </div>
+            `;
+        }
+
+        function handleDragStart(event) {
+            event.dataTransfer.setData('text/plain', event.target.dataset.contactId);
+            event.target.classList.add('opacity-50');
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault();
+            event.currentTarget.classList.add('bg-blue-200');
+        }
+
+        function handleDragLeave(event) {
+            event.currentTarget.classList.remove('bg-blue-200');
+        }
+
+        async function handleDrop(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('bg-blue-200');
+
+            const contactId = event.dataTransfer.getData('text/plain');
+            const newStage = event.currentTarget.parentElement.dataset.stage;
+
+            try {
+                const response = await fetch(`/api/contacts/${contactId}/stage`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stage: newStage })
+                });
+
+                if (response.ok) {
+                    loadPipeline(); // Refresh the board
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Failed to update stage');
+                }
+            } catch (err) {
+                console.error('Failed to update stage:', err);
+            }
+        }
+
+        // Close modals on escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                closeScreenshotModal();
+            }
+        });
+
         // Initial load
+        loadHomeStats();
         loadJobs();
     </script>
 </body>
