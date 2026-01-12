@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>kanbun</title>
-    <link rel="icon" type="image/png" href="/images/icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="any" href="/images/favicon.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -104,6 +105,34 @@
                 <h2 class="text-xl font-semibold text-sage-700 mb-4">Upcoming Reminders</h2>
                 <div id="homeReminders" class="space-y-2">
                     <p class="text-sage-400">Loading...</p>
+                </div>
+            </div>
+
+            <!-- Email Templates -->
+            <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6 mt-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-sage-700">Email Templates</h2>
+                    <button onclick="openTemplateEditor()"
+                            class="bg-terracotta-500 text-white px-3 py-1 rounded-lg hover:bg-terracotta-600 text-sm transition-colors">
+                        + New Template
+                    </button>
+                </div>
+                <div id="homeTemplates" class="space-y-3">
+                    <p class="text-sage-400">Loading...</p>
+                </div>
+            </div>
+
+            <!-- Settings -->
+            <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6 mt-6">
+                <h2 class="text-xl font-semibold text-sage-700 mb-4">Settings</h2>
+                <div class="flex items-center gap-4">
+                    <label class="text-sm text-sage-600">Open emails in:</label>
+                    <select id="emailClientSetting" onchange="saveEmailClientSetting()"
+                            class="border border-cream-300 rounded-lg px-3 py-1.5 text-sage-700 text-sm focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300">
+                        <option value="mailto">Default email app</option>
+                        <option value="gmail">Gmail (web)</option>
+                        <option value="outlook">Outlook (web)</option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -398,6 +427,18 @@
                 <!-- Contact Info -->
                 <div id="contactModalInfo" class="space-y-3 mb-4"></div>
 
+                <!-- Email Template Selector -->
+                <div class="mb-3">
+                    <label class="block text-sm font-medium text-sage-700 mb-1">Email Template</label>
+                    <select id="templateSelect" onchange="updateTemplatePreview()"
+                            class="w-full border border-cream-300 rounded-xl px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300 text-sm">
+                        <option value="">Select a template...</option>
+                    </select>
+                    <div id="templateSubjectPreview" class="text-xs text-sage-500 mt-1 hidden">
+                        Subject: <span id="templateSubjectText"></span>
+                    </div>
+                </div>
+
                 <!-- Quick Actions -->
                 <div class="flex gap-2 mb-2">
                     <button id="emailContactBtn" onclick="emailContact()"
@@ -421,7 +462,7 @@
                 </div>
 
                 <!-- Stage Selector -->
-                <div class="mb-6">
+                <div class="mb-4">
                     <label class="block text-sm font-medium text-sage-700 mb-1">Pipeline Stage</label>
                     <select id="contactStageSelect" onchange="updateContactStage()"
                             class="w-full border border-cream-300 rounded-xl px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300">
@@ -432,6 +473,14 @@
                         <option value="won">Won</option>
                         <option value="lost">Lost</option>
                     </select>
+                </div>
+
+                <!-- Notes Section -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-sage-700 mb-1">Notes</label>
+                    <textarea id="contactNotes" rows="3" onblur="saveContactNotes()"
+                              class="w-full border border-cream-300 rounded-xl px-3 py-2 text-sage-700 text-sm focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300"
+                              placeholder="Add notes about this contact..."></textarea>
                 </div>
 
                 <!-- Reminders Section -->
@@ -453,6 +502,70 @@
                 <div class="border-t border-cream-200 pt-4 mt-4">
                     <h4 class="font-medium text-sage-700 mb-3">Outreach History</h4>
                     <div id="outreachHistory" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Template Editor Modal -->
+    <div id="templateEditorModal" class="fixed inset-0 bg-sage-900 bg-opacity-50 hidden items-center justify-center z-50" onclick="if(event.target === this) closeTemplateEditor()">
+        <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto border border-cream-200">
+            <div class="p-6">
+                <div class="flex justify-between items-start mb-4">
+                    <h3 id="templateEditorTitle" class="text-xl font-semibold text-sage-800">New Template</h3>
+                    <button onclick="closeTemplateEditor()" class="text-sage-400 hover:text-sage-600 text-2xl">&times;</button>
+                </div>
+
+                <div class="space-y-4">
+                    <!-- Name -->
+                    <div>
+                        <label class="block text-sm font-medium text-sage-700 mb-1">Template Name</label>
+                        <input type="text" id="templateName"
+                               class="w-full border border-cream-300 rounded-xl px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300"
+                               placeholder="e.g., Cold Outreach Intro">
+                    </div>
+
+                    <!-- Category -->
+                    <div>
+                        <label class="block text-sm font-medium text-sage-700 mb-1">Category</label>
+                        <input type="text" id="templateCategory" list="categoryList"
+                               class="w-full border border-cream-300 rounded-xl px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300"
+                               placeholder="e.g., Cold Outreach, Follow-up">
+                        <datalist id="categoryList"></datalist>
+                    </div>
+
+                    <!-- Subject -->
+                    <div>
+                        <label class="block text-sm font-medium text-sage-700 mb-1">Subject Line</label>
+                        <input type="text" id="templateSubject"
+                               class="w-full border border-cream-300 rounded-xl px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300"
+                               placeholder="e.g., Quick question for {{first_name}}">
+                    </div>
+
+                    <!-- Body -->
+                    <div>
+                        <label class="block text-sm font-medium text-sage-700 mb-1">Email Body</label>
+                        <textarea id="templateBody" rows="8"
+                                  class="w-full border border-cream-300 rounded-xl px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300"
+                                  placeholder="Hi {{first_name}},&#10;&#10;I came across {{company_name}}..."></textarea>
+                    </div>
+
+                    <!-- Variable hints -->
+                    <div class="bg-cream-50 rounded-lg p-3 text-xs text-sage-600">
+                        <strong>Available variables:</strong> {{first_name}}, {{last_name}}, {{title}}, {{email}}, {{company_name}}, {{company_website}}, {{company_description}}, {{core_product}}, {{industry}}, {{pain_points}}
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="flex gap-2 pt-2">
+                        <button onclick="saveTemplate()"
+                                class="flex-1 bg-terracotta-500 text-white px-4 py-2 rounded-xl hover:bg-terracotta-600 transition-colors">
+                            Save Template
+                        </button>
+                        <button onclick="closeTemplateEditor()"
+                                class="px-4 py-2 rounded-xl border border-cream-300 text-sage-600 hover:bg-cream-50 transition-colors">
+                            Cancel
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1204,6 +1317,103 @@
 
         // Contact Detail Modal Functions
         let currentContact = null; // Store full contact data for email/actions
+        let emailTemplates = []; // Store loaded templates
+        let selectedTemplate = null; // Currently selected template
+
+        // Load email templates from API
+        async function loadEmailTemplates() {
+            try {
+                const response = await fetch('/api/templates');
+                const data = await response.json();
+                emailTemplates = data.templates || [];
+                return data.grouped || {};
+            } catch (error) {
+                console.error('Failed to load templates:', error);
+                return {};
+            }
+        }
+
+        // Populate template dropdown with optgroups by category
+        async function populateTemplateDropdown() {
+            const select = document.getElementById('templateSelect');
+            select.innerHTML = '<option value="">Select a template...</option>';
+
+            const grouped = await loadEmailTemplates();
+
+            for (const [category, templates] of Object.entries(grouped)) {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = category;
+                for (const t of templates) {
+                    const option = document.createElement('option');
+                    option.value = t.id;
+                    option.textContent = t.name;
+                    option.dataset.subject = t.subject;
+                    option.dataset.body = t.body;
+                    optgroup.appendChild(option);
+                }
+                select.appendChild(optgroup);
+            }
+
+            // Reset preview
+            document.getElementById('templateSubjectPreview').classList.add('hidden');
+            selectedTemplate = null;
+        }
+
+        // Render template with variable substitution
+        function renderTemplate(template, contact) {
+            let subject = template.subject || '';
+            let body = template.body || '';
+
+            const vars = {
+                'first_name': contact.first_name || '',
+                'last_name': contact.last_name || '',
+                'title': contact.title || '',
+                'email': contact.email || '',
+                'company_name': contact.company_name || '',
+                'company_website': contact.company_website || '',
+                'company_description': contact.company_description || '',
+                'core_product': '',
+                'industry': '',
+                'pain_points': ''
+            };
+
+            for (const [key, value] of Object.entries(vars)) {
+                const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+                subject = subject.replace(regex, value);
+                body = body.replace(regex, value);
+            }
+
+            return { subject, body };
+        }
+
+        // Update template preview when selection changes
+        function updateTemplatePreview() {
+            const select = document.getElementById('templateSelect');
+            const previewDiv = document.getElementById('templateSubjectPreview');
+            const previewText = document.getElementById('templateSubjectText');
+
+            if (!select.value) {
+                previewDiv.classList.add('hidden');
+                selectedTemplate = null;
+                return;
+            }
+
+            const option = select.options[select.selectedIndex];
+            selectedTemplate = {
+                id: option.value,
+                subject: option.dataset.subject,
+                body: option.dataset.body
+            };
+
+            if (currentContact) {
+                const rendered = renderTemplate(selectedTemplate, currentContact);
+                previewText.textContent = rendered.subject;
+            } else {
+                previewText.textContent = option.dataset.subject;
+            }
+
+            previewDiv.classList.remove('hidden');
+        }
 
         async function showContactDetail(contactId) {
             currentContactId = contactId;
@@ -1250,8 +1460,9 @@
             `;
             document.getElementById('contactModalInfo').innerHTML = infoHtml;
 
-            // Set stage
+            // Set stage and notes
             document.getElementById('contactStageSelect').value = contact.stage || 'new';
+            document.getElementById('contactNotes').value = contact.notes || '';
 
             // Setup action buttons
             const emailBtn = document.getElementById('emailContactBtn');
@@ -1274,7 +1485,8 @@
                 linkedinBtn.classList.add('hidden');
             }
 
-            // Load reminders and outreach history
+            // Load templates and reminders
+            await populateTemplateDropdown();
             await loadContactReminders();
             await loadOutreachHistory();
 
@@ -1293,22 +1505,45 @@
                 return;
             }
 
-            const firstName = currentContact.first_name || '';
-            const companyName = currentContact.company_name || '';
+            let subjectText, bodyText;
 
-            const subject = encodeURIComponent(`Quick question for ${firstName}`);
-            const body = encodeURIComponent(
-`Hi ${firstName},
+            if (selectedTemplate) {
+                // Use selected template with variable substitution
+                const rendered = renderTemplate(selectedTemplate, currentContact);
+                subjectText = rendered.subject;
+                bodyText = rendered.body;
+            } else {
+                // Fallback to default template
+                const firstName = currentContact.first_name || '';
+                const companyName = currentContact.company_name || '';
+                subjectText = `Quick question for ${firstName}`;
+                bodyText = `Hi ${firstName},
 
 I came across ${companyName} and wanted to reach out.
 
 [Your message here]
 
 Best,
-[Your name]`
-            );
+[Your name]`;
+            }
 
-            window.location.href = `mailto:${currentContact.email}?subject=${subject}&body=${body}`;
+            const email = currentContact.email;
+            const emailClient = localStorage.getItem('emailClient') || 'mailto';
+
+            let url;
+            if (emailClient === 'gmail') {
+                // Gmail compose URL
+                url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`;
+                window.open(url, '_blank');
+            } else if (emailClient === 'outlook') {
+                // Outlook web compose URL
+                url = `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(email)}&subject=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`;
+                window.open(url, '_blank');
+            } else {
+                // Default mailto
+                url = `mailto:${email}?subject=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`;
+                window.location.href = url;
+            }
         }
 
         async function logOutreach(type) {
@@ -1399,6 +1634,22 @@ Best,
                 }
             } catch (err) {
                 console.error('Failed to update stage:', err);
+            }
+        }
+
+        async function saveContactNotes() {
+            if (!currentContactId) return;
+
+            const notes = document.getElementById('contactNotes').value;
+
+            try {
+                await fetch(`/api/contacts/${currentContactId}/notes`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notes })
+                });
+            } catch (err) {
+                console.error('Failed to save notes:', err);
             }
         }
 
@@ -1537,17 +1788,201 @@ Best,
             }
         }
 
+        // ============== Template Management Functions ==============
+        let editingTemplateId = null;
+
+        async function loadHomeTemplates() {
+            try {
+                const response = await fetch('/api/templates');
+                const data = await response.json();
+
+                const container = document.getElementById('homeTemplates');
+                const grouped = data.grouped || {};
+
+                if (Object.keys(grouped).length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-4">
+                            <p class="text-sage-400 mb-2">No templates yet</p>
+                            <button onclick="openTemplateEditor()"
+                                    class="text-terracotta-500 hover:text-terracotta-600 text-sm">
+                                Create your first template
+                            </button>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '';
+                for (const [category, templates] of Object.entries(grouped)) {
+                    html += `
+                        <div class="border border-cream-200 rounded-lg overflow-hidden">
+                            <div class="bg-cream-50 px-3 py-2 font-medium text-sage-700 text-sm flex justify-between items-center">
+                                <span>${category}</span>
+                                <span class="text-sage-400 text-xs">${templates.length}</span>
+                            </div>
+                            <div class="divide-y divide-cream-100">
+                                ${templates.map(t => `
+                                    <div class="px-3 py-2 flex items-center justify-between hover:bg-cream-50">
+                                        <div class="flex-1">
+                                            <div class="text-sage-700 text-sm font-medium">${t.name}</div>
+                                            <div class="text-sage-400 text-xs truncate">${t.subject}</div>
+                                        </div>
+                                        <div class="flex gap-1">
+                                            <button onclick="editTemplate('${t.id}')"
+                                                    class="px-2 py-1 text-xs text-sage-500 hover:text-sage-700 hover:bg-cream-100 rounded">
+                                                Edit
+                                            </button>
+                                            <button onclick="deleteTemplate('${t.id}')"
+                                                    class="px-2 py-1 text-xs text-terracotta-400 hover:text-terracotta-600 hover:bg-terracotta-50 rounded">
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+                container.innerHTML = html;
+            } catch (error) {
+                console.error('Failed to load templates:', error);
+                document.getElementById('homeTemplates').innerHTML =
+                    '<p class="text-terracotta-500 text-sm">Failed to load templates</p>';
+            }
+        }
+
+        async function openTemplateEditor(templateId = null) {
+            editingTemplateId = templateId;
+
+            // Load categories for datalist
+            try {
+                const response = await fetch('/api/templates/categories');
+                const data = await response.json();
+                const datalist = document.getElementById('categoryList');
+                datalist.innerHTML = data.categories.map(c => `<option value="${c}">`).join('');
+            } catch (e) {
+                console.error('Failed to load categories:', e);
+            }
+
+            if (templateId) {
+                // Edit mode - load existing template
+                document.getElementById('templateEditorTitle').textContent = 'Edit Template';
+                const response = await fetch('/api/templates');
+                const data = await response.json();
+                const template = data.templates.find(t => t.id === templateId);
+                if (template) {
+                    document.getElementById('templateName').value = template.name;
+                    document.getElementById('templateCategory').value = template.category || '';
+                    document.getElementById('templateSubject').value = template.subject;
+                    document.getElementById('templateBody').value = template.body;
+                }
+            } else {
+                // New mode - clear form
+                document.getElementById('templateEditorTitle').textContent = 'New Template';
+                document.getElementById('templateName').value = '';
+                document.getElementById('templateCategory').value = '';
+                document.getElementById('templateSubject').value = '';
+                document.getElementById('templateBody').value = '';
+            }
+
+            const modal = document.getElementById('templateEditorModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeTemplateEditor() {
+            const modal = document.getElementById('templateEditorModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            editingTemplateId = null;
+        }
+
+        async function saveTemplate() {
+            const name = document.getElementById('templateName').value.trim();
+            const category = document.getElementById('templateCategory').value.trim();
+            const subject = document.getElementById('templateSubject').value.trim();
+            const body = document.getElementById('templateBody').value.trim();
+
+            if (!name || !subject || !body) {
+                alert('Please fill in name, subject, and body');
+                return;
+            }
+
+            try {
+                const url = editingTemplateId
+                    ? `/api/templates/${editingTemplateId}`
+                    : '/api/templates';
+                const method = editingTemplateId ? 'PUT' : 'POST';
+
+                const response = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, category: category || null, subject, body })
+                });
+
+                if (response.ok) {
+                    closeTemplateEditor();
+                    await loadHomeTemplates();
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Failed to save template');
+                }
+            } catch (err) {
+                console.error('Failed to save template:', err);
+                alert('Failed to save template');
+            }
+        }
+
+        async function editTemplate(templateId) {
+            await openTemplateEditor(templateId);
+        }
+
+        async function deleteTemplate(templateId) {
+            if (!confirm('Are you sure you want to delete this template?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/templates/${templateId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    await loadHomeTemplates();
+                } else {
+                    alert('Failed to delete template');
+                }
+            } catch (err) {
+                console.error('Failed to delete template:', err);
+                alert('Failed to delete template');
+            }
+        }
+
+        // ============== Settings Functions ==============
+        function saveEmailClientSetting() {
+            const value = document.getElementById('emailClientSetting').value;
+            localStorage.setItem('emailClient', value);
+        }
+
+        function loadEmailClientSetting() {
+            const saved = localStorage.getItem('emailClient') || 'mailto';
+            document.getElementById('emailClientSetting').value = saved;
+        }
+
         // Close modals on escape key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 closeModal();
                 closeScreenshotModal();
                 closeContactModal();
+                closeTemplateEditor();
             }
         });
 
         // Initial load
         loadHomeStats();
+        loadHomeTemplates();
+        loadEmailClientSetting();
         loadJobs();
     </script>
 </body>

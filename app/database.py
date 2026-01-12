@@ -104,6 +104,18 @@ CREATE INDEX IF NOT EXISTS idx_contacts_stage ON contacts(stage);
 CREATE INDEX IF NOT EXISTS idx_reminders_contact_id ON reminders(contact_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_due_date ON reminders(due_date);
 CREATE INDEX IF NOT EXISTS idx_outreach_log_contact_id ON outreach_log(contact_id);
+
+CREATE TABLE IF NOT EXISTS email_templates (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    category TEXT,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_templates_category ON email_templates(category);
 """
 
 # Migration queries for existing databases
@@ -123,7 +135,24 @@ MIGRATIONS = [
     "ALTER TABLE companies ADD COLUMN products_services TEXT",
     "ALTER TABLE companies ADD COLUMN target_customers TEXT",
     "ALTER TABLE contacts ADD COLUMN stage TEXT DEFAULT 'new'",
+    "ALTER TABLE contacts ADD COLUMN notes TEXT",
 ]
+
+
+DEFAULT_TEMPLATE = {
+    "id": "default-intro-template",
+    "name": "Quick Introduction",
+    "category": "Cold Outreach",
+    "subject": "Quick question for {{first_name}}",
+    "body": """Hi {{first_name}},
+
+I came across {{company_name}} and wanted to reach out.
+
+[Your message here]
+
+Best,
+[Your name]"""
+}
 
 
 async def init_db(db_path: str) -> None:
@@ -139,6 +168,17 @@ async def init_db(db_path: str) -> None:
                 await db.commit()
             except Exception:
                 pass  # Column likely already exists
+
+        # Seed default email template if none exist
+        cursor = await db.execute("SELECT COUNT(*) FROM email_templates")
+        count = (await cursor.fetchone())[0]
+        if count == 0:
+            await db.execute(
+                "INSERT INTO email_templates (id, name, category, subject, body) VALUES (?, ?, ?, ?, ?)",
+                (DEFAULT_TEMPLATE["id"], DEFAULT_TEMPLATE["name"], DEFAULT_TEMPLATE["category"],
+                 DEFAULT_TEMPLATE["subject"], DEFAULT_TEMPLATE["body"])
+            )
+            await db.commit()
 
 
 @asynccontextmanager

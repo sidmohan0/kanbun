@@ -42,9 +42,27 @@ class StageUpdate(BaseModel):
     stage: str
 
 
+class NotesUpdate(BaseModel):
+    notes: str
+
+
 class OutreachCreate(BaseModel):
     outreach_type: str  # email, linkedin, call, other
     note: Optional[str] = None
+
+
+class TemplateCreate(BaseModel):
+    name: str
+    category: Optional[str] = None
+    subject: str
+    body: str
+
+
+class TemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    subject: Optional[str] = None
+    body: Optional[str] = None
 
 
 VALID_STAGES = {"new", "reaching_out", "engaged", "meeting", "won", "lost"}
@@ -724,6 +742,26 @@ async def update_contact_stage(contact_id: str, stage_update: StageUpdate):
         return dict(row)
 
 
+@app.put("/api/contacts/{contact_id}/notes")
+async def update_contact_notes(contact_id: str, notes_update: NotesUpdate):
+    """Update a contact's notes."""
+    async with get_db(settings.effective_database_path) as db:
+        cursor = await db.execute(
+            "SELECT id FROM contacts WHERE id = ?",
+            (contact_id,)
+        )
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        await db.execute(
+            "UPDATE contacts SET notes = ? WHERE id = ?",
+            (notes_update.notes, contact_id)
+        )
+        await db.commit()
+
+        return {"status": "updated", "notes": notes_update.notes}
+
+
 @app.get("/api/contacts/{contact_id}/outreach")
 async def get_contact_outreach(contact_id: str):
     """Get outreach history for a contact."""
@@ -817,6 +855,128 @@ async def get_pipeline():
                 pipeline["new"].append(contact)
 
         return pipeline
+
+
+# ============== Email Templates API ==============
+
+@app.get("/api/templates")
+async def get_templates():
+    """Get all email templates grouped by category."""
+    async with get_db(settings.effective_database_path) as db:
+        cursor = await db.execute(
+            "SELECT * FROM email_templates ORDER BY category, name"
+        )
+        rows = await cursor.fetchall()
+        templates = [dict(row) for row in rows]
+
+        # Group by category
+        grouped = {}
+        for t in templates:
+            cat = t.get("category") or "Uncategorized"
+            if cat not in grouped:
+                grouped[cat] = []
+            grouped[cat].append(t)
+
+        return {"templates": templates, "grouped": grouped}
+
+
+@app.get("/api/templates/categories")
+async def get_template_categories():
+    """Get unique template categories."""
+    async with get_db(settings.effective_database_path) as db:
+        cursor = await db.execute(
+            "SELECT DISTINCT category FROM email_templates WHERE category IS NOT NULL ORDER BY category"
+        )
+        rows = await cursor.fetchall()
+        return {"categories": [row["category"] for row in rows]}
+
+
+@app.post("/api/templates")
+async def create_template(template: TemplateCreate):
+    """Create a new email template."""
+    template_id = str(uuid.uuid4())
+
+    async with get_db(settings.effective_database_path) as db:
+        await db.execute(
+            """
+            INSERT INTO email_templates (id, name, category, subject, body)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (template_id, template.name, template.category, template.subject, template.body)
+        )
+        await db.commit()
+
+        cursor = await db.execute(
+            "SELECT * FROM email_templates WHERE id = ?",
+            (template_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row)
+
+
+@app.put("/api/templates/{template_id}")
+async def update_template(template_id: str, template: TemplateUpdate):
+    """Update an email template."""
+    async with get_db(settings.effective_database_path) as db:
+        # Check template exists
+        cursor = await db.execute(
+            "SELECT id FROM email_templates WHERE id = ?",
+            (template_id,)
+        )
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Template not found")
+
+        # Build update query with only provided fields
+        updates = []
+        params = []
+        if template.name is not None:
+            updates.append("name = ?")
+            params.append(template.name)
+        if template.category is not None:
+            updates.append("category = ?")
+            params.append(template.category)
+        if template.subject is not None:
+            updates.append("subject = ?")
+            params.append(template.subject)
+        if template.body is not None:
+            updates.append("body = ?")
+            params.append(template.body)
+
+        if updates:
+            updates.append("updated_at = CURRENT_TIMESTAMP")
+            params.append(template_id)
+            await db.execute(
+                f"UPDATE email_templates SET {', '.join(updates)} WHERE id = ?",
+                params
+            )
+            await db.commit()
+
+        cursor = await db.execute(
+            "SELECT * FROM email_templates WHERE id = ?",
+            (template_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row)
+
+
+@app.delete("/api/templates/{template_id}")
+async def delete_template(template_id: str):
+    """Delete an email template."""
+    async with get_db(settings.effective_database_path) as db:
+        cursor = await db.execute(
+            "SELECT id FROM email_templates WHERE id = ?",
+            (template_id,)
+        )
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Template not found")
+
+        await db.execute(
+            "DELETE FROM email_templates WHERE id = ?",
+            (template_id,)
+        )
+        await db.commit()
+
+        return {"status": "deleted"}
 
 
 # Mount static files last to avoid conflicting with API routes
