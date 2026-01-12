@@ -1066,16 +1066,17 @@
                 document.getElementById(`count-${stage}`).textContent = contacts.length;
 
                 const column = document.getElementById(`column-${stage}`);
+                column.dataset.stage = stage; // Store stage on the drop zone itself
                 if (contacts.length === 0) {
                     column.innerHTML = '<div class="text-gray-400 text-sm text-center py-4">No contacts</div>';
                 } else {
                     column.innerHTML = contacts.map(c => createContactCard(c)).join('');
                 }
 
-                // Setup drop zone
-                column.addEventListener('dragover', handleDragOver);
-                column.addEventListener('drop', handleDrop);
-                column.addEventListener('dragleave', handleDragLeave);
+                // Setup drop zone (remove old listeners first to prevent stacking)
+                column.ondragover = handleDragOver;
+                column.ondrop = handleDrop;
+                column.ondragleave = handleDragLeave;
             });
 
             document.getElementById('pipelineCount').textContent = `${totalContacts} contacts`;
@@ -1120,7 +1121,12 @@
             event.currentTarget.classList.remove('bg-blue-200');
 
             const contactId = event.dataTransfer.getData('text/plain');
-            const newStage = event.currentTarget.parentElement.dataset.stage;
+            const newStage = event.currentTarget.dataset.stage;
+
+            if (!contactId || !newStage) {
+                console.error('Drop failed: missing contactId or stage', {contactId, newStage});
+                return;
+            }
 
             try {
                 const response = await fetch(`/api/contacts/${contactId}/stage`, {
