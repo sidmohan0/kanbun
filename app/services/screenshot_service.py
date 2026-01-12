@@ -1,9 +1,10 @@
 # app/services/screenshot_service.py
 """
-Playwright-based screenshot service for capturing company website screenshots.
+Playwright-based service for capturing screenshots and extracting page content.
 """
 import asyncio
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
@@ -13,22 +14,31 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 SCREENSHOTS_DIR = Path(os.environ.get("SCREENSHOTS_DIR", "data/screenshots"))
 
 
-async def capture_screenshot(
+@dataclass
+class EnrichmentResult:
+    """Result from enriching a company website."""
+    screenshot_path: Optional[str] = None
+    extracted_text: Optional[str] = None
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+    error: Optional[str] = None
+
+
+async def enrich_company_website(
     url: str,
     company_id: str,
     width: int = 1280,
     height: int = 800,
     timeout: int = 15000
-) -> Optional[str]:
+) -> EnrichmentResult:
     """
-    Capture a screenshot of a website.
+    Visit a company website to capture screenshot and extract text content.
 
-    Returns the path to the saved screenshot, or None if failed.
+    Single browser visit produces both outputs.
     """
-    # Ensure screenshots directory exists
     SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
-
     screenshot_path = SCREENSHOTS_DIR / f"{company_id}.png"
+    result = EnrichmentResult()
 
     try:
         async with async_playwright() as p:
@@ -42,26 +52,73 @@ async def capture_screenshot(
             page = await context.new_page()
 
             try:
-                # Navigate to the URL
                 await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
-
-                # Wait a bit for any animations/lazy loading
                 await page.wait_for_timeout(1000)
 
                 # Take screenshot
                 await page.screenshot(path=str(screenshot_path), type="png")
+                result.screenshot_path = str(screenshot_path)
+
+                # Extract meta tags
+                result.meta_title = await page.title()
+                result.meta_description = await page.evaluate("""
+                    () => {
+                        const meta = document.querySelector('meta[name="description"]') ||
+                                     document.querySelector('meta[property="og:description"]');
+                        return meta ? meta.getAttribute('content') : null;
+                    }
+                """)
+
+                # Extract visible text content
+                result.extracted_text = await page.evaluate("""
+                    () => {
+                        // Get headings
+                        const headings = Array.from(document.querySelectorAll('h1, h2'))
+                            .map(h => h.innerText.trim())
+                            .filter(t => t.length > 0)
+                            .slice(0, 5);
+
+                        // Get paragraphs (skip very short ones, likely navigation)
+                        const paragraphs = Array.from(document.querySelectorAll('p'))
+                            .map(p => p.innerText.trim())
+                            .filter(t => t.length > 30)
+                            .slice(0, 10);
+
+                        // Combine
+                        const content = [...headings, ...paragraphs].join('\\n\\n');
+
+                        // Limit to ~2000 chars
+                        return content.slice(0, 2000);
+                    }
+                """)
 
                 await browser.close()
-                return str(screenshot_path)
+                return result
 
             except PlaywrightTimeout:
-                print(f"[WARN] Screenshot timeout for {url}")
+                print(f"[WARN] Timeout for {url}")
+                result.error = "Page load timeout"
                 await browser.close()
-                return None
+                return result
 
     except Exception as e:
-        print(f"[ERROR] Screenshot failed for {url}: {e}")
-        return None
+        print(f"[ERROR] Enrichment failed for {url}: {e}")
+        result.error = str(e)
+        return result
+
+
+async def capture_screenshot(
+    url: str,
+    company_id: str,
+    width: int = 1280,
+    height: int = 800,
+    timeout: int = 15000
+) -> Optional[str]:
+    """
+    Capture a screenshot of a website (legacy function for compatibility).
+    """
+    result = await enrich_company_website(url, company_id, width, height, timeout)
+    return result.screenshot_path
 
 
 def get_screenshot_path(company_id: str) -> Optional[Path]:

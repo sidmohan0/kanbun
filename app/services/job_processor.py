@@ -5,15 +5,12 @@ import random
 import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from concurrent.futures import ThreadPoolExecutor
+
+import anthropic
 
 from app.database import get_db
-from app.services.firecrawl_scraper import FirecrawlClient
 from app.services.keyword_extractor import extract_keywords
-from app.services.screenshot_service import capture_screenshot, screenshot_exists
-
-# Thread pool for sync Firecrawl operations
-_executor = ThreadPoolExecutor(max_workers=2)
+from app.services.screenshot_service import enrich_company_website, screenshot_exists
 
 
 async def create_job(
@@ -194,18 +191,16 @@ async def get_job_results(db_path: str, job_id: str) -> List[dict]:
 async def process_job(
     db_path: str,
     job_id: str,
-    firecrawl_api_key: str,
+    firecrawl_api_key: str,  # Kept for API compatibility, no longer used
     anthropic_api_key: str
 ) -> None:
-    """Process a job using Firecrawl for website scraping."""
+    """Process a job using Playwright + Claude for enrichment."""
     async with get_db(db_path) as db:
         await db.execute(
             "UPDATE jobs SET status = 'processing' WHERE id = ?",
             (job_id,)
         )
         await db.commit()
-
-    firecrawl_client = FirecrawlClient(firecrawl_api_key)
 
     try:
         companies = await get_job_companies(db_path, job_id)
@@ -224,13 +219,11 @@ async def process_job(
                 db_path,
                 job_id,
                 company,
-                firecrawl_client,
                 anthropic_api_key
             )
 
-            # Rate limiting - Firecrawl has 21 req/min limit, each company uses 2 calls
-            # So we need ~6 seconds between companies to stay under limit
-            delay = random.uniform(6, 8)
+            # Small delay between companies to be polite
+            delay = random.uniform(1, 2)
             await asyncio.sleep(delay)
 
         # Mark job complete
@@ -253,14 +246,38 @@ async def process_job(
         raise
 
 
+async def summarize_with_claude(extracted_text: str, anthropic_api_key: str) -> str:
+    """Use Claude to generate a 2-3 sentence company summary."""
+    if not extracted_text or len(extracted_text) < 50:
+        return "Could not extract company information"
+
+    try:
+        client = anthropic.Anthropic(api_key=anthropic_api_key)
+        message = client.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=200,
+            messages=[{
+                "role": "user",
+                "content": f"""Based on this website content, write 2-3 sentences describing what this company does. Be specific about their product/service. If unclear, say so.
+
+Content:
+{extracted_text[:2000]}"""
+            }]
+        )
+        return message.content[0].text.strip()
+    except Exception as e:
+        print(f"[WARN] Claude summarization failed: {e}")
+        # Fall back to truncated extracted text
+        return extracted_text[:500] if extracted_text else "Could not extract company information"
+
+
 async def process_company(
     db_path: str,
     job_id: str,
     company: dict,
-    firecrawl_client: FirecrawlClient,
     anthropic_api_key: str
 ) -> None:
-    """Process a single company using Firecrawl."""
+    """Process a single company using Playwright + Claude."""
     company_id = company["id"]
     website_url = company["website_url"]
 
@@ -282,76 +299,53 @@ async def process_company(
             has_existing_data = existing and existing["company_description"]
 
         if has_existing_data:
-            # Skip scraping, just do keyword extraction
+            # Skip enrichment, just do keyword extraction
             about_text = existing["company_description"]
         else:
-            # Scrape website with Firecrawl
-            loop = asyncio.get_event_loop()
-            scraped_data = await loop.run_in_executor(
-                _executor,
-                firecrawl_client.scrape_company_sync,
-                website_url
-            )
+            # Enrich with Playwright (screenshot + text extraction)
+            enrichment = await enrich_company_website(website_url, company_id)
 
-            if scraped_data.get("error"):
-                await mark_company_failed(db_path, job_id, company_id, scraped_data["error"])
+            if enrichment.error and not enrichment.screenshot_path:
+                await mark_company_failed(db_path, job_id, company_id, enrichment.error)
                 return
 
-            # Store enriched data
-            about_text = scraped_data.get("company_description") or scraped_data.get("meta_description") or ""
-            raw_content = scraped_data.get("raw_content", "")
+            # Generate summary with Claude
+            company_description = await summarize_with_claude(
+                enrichment.extracted_text,
+                anthropic_api_key
+            )
 
+            about_text = company_description
+
+            # Store enriched data
             async with get_db(db_path) as db:
                 await db.execute(
                     """UPDATE companies SET
                         meta_title = ?,
                         meta_description = ?,
-                        og_image_url = ?,
-                        company_description = ?,
-                        mission_statement = ?,
-                        founded_year = ?,
-                        headquarters = ?,
-                        company_size = ?,
-                        industry = ?,
-                        pricing_model = ?,
-                        social_links = ?,
-                        technologies = ?,
-                        products_services = ?,
-                        target_customers = ?
+                        company_description = ?
                     WHERE id = ?""",
                     (
-                        scraped_data.get("meta_title"),
-                        scraped_data.get("meta_description"),
-                        scraped_data.get("og_image_url"),
-                        scraped_data.get("company_description"),
-                        scraped_data.get("mission_statement"),
-                        scraped_data.get("founded_year"),
-                        scraped_data.get("headquarters"),
-                        scraped_data.get("company_size"),
-                        scraped_data.get("industry"),
-                        scraped_data.get("pricing_model"),
-                        scraped_data.get("social_links"),
-                        scraped_data.get("technologies"),
-                        scraped_data.get("products_services"),
-                        scraped_data.get("target_customers"),
+                        enrichment.meta_title,
+                        enrichment.meta_description,
+                        company_description,
                         company_id
                     )
                 )
 
-                # Store raw content in about_descriptions for keyword extraction
-                if raw_content:
+                # Store raw extracted text for keyword extraction
+                if enrichment.extracted_text:
                     about_id = str(uuid.uuid4())
                     await db.execute(
                         "INSERT OR REPLACE INTO about_descriptions (id, company_id, raw_text) VALUES (?, ?, ?)",
-                        (about_id, company_id, raw_content[:10000])
+                        (about_id, company_id, enrichment.extracted_text[:10000])
                     )
 
                 await db.commit()
 
         # Extract keywords from description
-        text_for_keywords = about_text or scraped_data.get("raw_content", "")
-        if text_for_keywords and len(text_for_keywords) > 20:
-            keywords = await extract_keywords(company["name"], text_for_keywords, anthropic_api_key)
+        if about_text and len(about_text) > 20:
+            keywords = await extract_keywords(company["name"], about_text, anthropic_api_key)
 
             if keywords:
                 async with get_db(db_path) as db:
@@ -366,14 +360,6 @@ async def process_company(
                                 (kw_id, company_id, category, term)
                             )
                     await db.commit()
-
-        # Capture screenshot if we don't already have one
-        if not screenshot_exists(company_id):
-            try:
-                await capture_screenshot(website_url, company_id)
-            except Exception as e:
-                # Screenshot failure shouldn't fail the whole company
-                print(f"[WARN] Screenshot failed for {website_url}: {e}")
 
         await mark_company_done(db_path, job_id, company_id, "completed")
 
