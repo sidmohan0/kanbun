@@ -42,7 +42,13 @@ class StageUpdate(BaseModel):
     stage: str
 
 
+class OutreachCreate(BaseModel):
+    outreach_type: str  # email, linkedin, call, other
+    note: Optional[str] = None
+
+
 VALID_STAGES = {"new", "reaching_out", "engaged", "meeting", "won", "lost"}
+VALID_OUTREACH_TYPES = {"email", "linkedin", "call", "other"}
 
 
 @asynccontextmanager
@@ -712,6 +718,61 @@ async def update_contact_stage(contact_id: str, stage_update: StageUpdate):
             WHERE ct.id = ?
             """,
             (contact_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row)
+
+
+@app.get("/api/contacts/{contact_id}/outreach")
+async def get_contact_outreach(contact_id: str):
+    """Get outreach history for a contact."""
+    async with get_db(settings.database_path) as db:
+        cursor = await db.execute(
+            """
+            SELECT id, contact_id, outreach_type, note, sent_at
+            FROM outreach_log
+            WHERE contact_id = ?
+            ORDER BY sent_at DESC
+            """,
+            (contact_id,)
+        )
+        rows = await cursor.fetchall()
+        return {"outreach": [dict(row) for row in rows]}
+
+
+@app.post("/api/contacts/{contact_id}/outreach")
+async def log_outreach(contact_id: str, outreach: OutreachCreate):
+    """Log an outreach attempt for a contact."""
+    if outreach.outreach_type not in VALID_OUTREACH_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid outreach type. Must be one of: {', '.join(sorted(VALID_OUTREACH_TYPES))}"
+        )
+
+    outreach_id = str(uuid.uuid4())
+
+    async with get_db(settings.database_path) as db:
+        # Verify contact exists
+        cursor = await db.execute(
+            "SELECT id FROM contacts WHERE id = ?",
+            (contact_id,)
+        )
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        await db.execute(
+            """
+            INSERT INTO outreach_log (id, contact_id, outreach_type, note)
+            VALUES (?, ?, ?, ?)
+            """,
+            (outreach_id, contact_id, outreach.outreach_type, outreach.note)
+        )
+        await db.commit()
+
+        # Fetch the created outreach log
+        cursor = await db.execute(
+            "SELECT id, contact_id, outreach_type, note, sent_at FROM outreach_log WHERE id = ?",
+            (outreach_id,)
         )
         row = await cursor.fetchone()
         return dict(row)

@@ -365,15 +365,25 @@
                 <div id="contactModalInfo" class="space-y-3 mb-4"></div>
 
                 <!-- Quick Actions -->
-                <div class="flex gap-2 mb-6">
+                <div class="flex gap-2 mb-2">
                     <button id="emailContactBtn" onclick="emailContact()"
-                            class="flex-1 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm">
+                            class="flex-1 bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600 text-sm">
                         ✉️ Email
                     </button>
-                    <a id="linkedinContactBtn" href="#" target="_blank"
-                       class="flex-1 bg-indigo-500 text-white px-4 py-2 rounded hover:bg-indigo-600 text-sm text-center hidden">
+                    <a id="linkedinContactBtn" href="#" target="_blank" onclick="openLinkedIn()"
+                       class="flex-1 bg-indigo-500 text-white px-3 py-2 rounded hover:bg-indigo-600 text-sm text-center hidden">
                         LinkedIn
                     </a>
+                </div>
+                <div class="flex gap-2 mb-6">
+                    <button onclick="logOutreach('email')"
+                            class="flex-1 bg-gray-100 text-gray-700 px-3 py-1 rounded hover:bg-gray-200 text-xs border">
+                        ✓ Log Email Sent
+                    </button>
+                    <button onclick="logOutreach('linkedin')"
+                            class="flex-1 bg-gray-100 text-gray-700 px-3 py-1 rounded hover:bg-gray-200 text-xs border">
+                        ✓ Log LinkedIn Sent
+                    </button>
                 </div>
 
                 <!-- Stage Selector -->
@@ -403,6 +413,12 @@
 
                     <!-- Reminders List -->
                     <div id="contactReminders" class="space-y-2"></div>
+                </div>
+
+                <!-- Outreach History Section -->
+                <div class="border-t pt-4 mt-4">
+                    <h4 class="font-medium mb-3">Outreach History</h4>
+                    <div id="outreachHistory" class="space-y-2"></div>
                 </div>
             </div>
         </div>
@@ -1211,8 +1227,9 @@
                 linkedinBtn.classList.add('hidden');
             }
 
-            // Load reminders
+            // Load reminders and outreach history
             await loadContactReminders();
+            await loadOutreachHistory();
 
             // Show modal
             const modal = document.getElementById('contactModal');
@@ -1245,6 +1262,67 @@ Best,
             );
 
             window.location.href = `mailto:${currentContact.email}?subject=${subject}&body=${body}`;
+        }
+
+        async function logOutreach(type) {
+            if (!currentContactId) return;
+
+            const note = prompt(`Add a note for this ${type} outreach (optional):`);
+
+            try {
+                const response = await fetch(`/api/contacts/${currentContactId}/outreach`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ outreach_type: type, note: note || '' })
+                });
+
+                if (response.ok) {
+                    await loadOutreachHistory();
+                    // Auto-move to "reaching_out" if still in "new"
+                    const currentStage = document.getElementById('contactStageSelect').value;
+                    if (currentStage === 'new') {
+                        document.getElementById('contactStageSelect').value = 'reaching_out';
+                        await updateContactStage();
+                    }
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Failed to log outreach');
+                }
+            } catch (err) {
+                console.error('Failed to log outreach:', err);
+            }
+        }
+
+        async function loadOutreachHistory() {
+            if (!currentContactId) return;
+
+            const response = await fetch(`/api/contacts/${currentContactId}/outreach`);
+            const data = await response.json();
+
+            const container = document.getElementById('outreachHistory');
+
+            if (data.outreach.length === 0) {
+                container.innerHTML = '<div class="text-gray-400 text-sm">No outreach yet</div>';
+                return;
+            }
+
+            container.innerHTML = data.outreach.map(o => {
+                const date = new Date(o.sent_at).toLocaleDateString('en-US', {
+                    month: 'short', day: 'numeric', year: 'numeric'
+                });
+                const typeIcon = o.outreach_type === 'email' ? '✉️' :
+                                 o.outreach_type === 'linkedin' ? '💼' :
+                                 o.outreach_type === 'call' ? '📞' : '📝';
+
+                return `
+                    <div class="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
+                        <span>${typeIcon}</span>
+                        <span class="text-gray-600">${date}</span>
+                        <span class="capitalize">${o.outreach_type}</span>
+                        ${o.note ? `<span class="text-gray-500 text-xs">- ${o.note}</span>` : ''}
+                    </div>
+                `;
+            }).join('');
         }
 
         function closeContactModal() {

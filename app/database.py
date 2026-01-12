@@ -85,6 +85,15 @@ CREATE TABLE IF NOT EXISTS reminders (
     FOREIGN KEY (contact_id) REFERENCES contacts(id)
 );
 
+CREATE TABLE IF NOT EXISTS outreach_log (
+    id TEXT PRIMARY KEY,
+    contact_id TEXT NOT NULL,
+    outreach_type TEXT NOT NULL,
+    note TEXT,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (contact_id) REFERENCES contacts(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_companies_job_id ON companies(job_id);
 CREATE INDEX IF NOT EXISTS idx_keywords_company_id ON keywords(company_id);
 CREATE INDEX IF NOT EXISTS idx_about_company_id ON about_descriptions(company_id);
@@ -94,6 +103,7 @@ CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email);
 CREATE INDEX IF NOT EXISTS idx_contacts_stage ON contacts(stage);
 CREATE INDEX IF NOT EXISTS idx_reminders_contact_id ON reminders(contact_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_due_date ON reminders(due_date);
+CREATE INDEX IF NOT EXISTS idx_outreach_log_contact_id ON outreach_log(contact_id);
 """
 
 # Migration queries for existing databases
