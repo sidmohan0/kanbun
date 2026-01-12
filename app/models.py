@@ -22,6 +22,34 @@ class CompanyResponse(BaseModel):
     url_verified: Optional[bool] = None
     status: str
     error_message: Optional[str] = None
+    # Enriched data from Firecrawl
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+    og_image_url: Optional[str] = None
+    company_description: Optional[str] = None
+    mission_statement: Optional[str] = None
+    founded_year: Optional[str] = None
+    headquarters: Optional[str] = None
+    company_size: Optional[str] = None
+    industry: Optional[str] = None
+    pricing_model: Optional[str] = None
+    social_links: Optional[str] = None
+    technologies: Optional[str] = None
+    products_services: Optional[str] = None
+    target_customers: Optional[str] = None
+
+
+class ContactResponse(BaseModel):
+    id: str
+    company_id: Optional[str] = None
+    job_id: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    title: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    company_name: Optional[str] = None
 
 
 class KeywordsResponse(BaseModel):
@@ -41,6 +69,8 @@ class CompanyResultResponse(BaseModel):
 class UploadResponse(BaseModel):
     job_id: str
     total_companies: int
+    duplicates_skipped: int = 0
+    total_contacts: int = 0
 
 
 class JobStatusResponse(BaseModel):

@@ -82,48 +82,48 @@
             </div>
 
             <!-- Kanban Board -->
-            <div class="flex gap-4 overflow-x-auto pb-4" id="kanbanBoard">
-                <div class="kanban-column flex-shrink-0 w-64 bg-gray-100 rounded-lg p-3" data-stage="new">
-                    <h3 class="font-medium text-gray-700 mb-3 flex justify-between">
+            <div class="flex gap-2" id="kanbanBoard">
+                <div class="kanban-column flex-1 min-w-0 bg-gray-100 rounded-lg p-2" data-stage="new">
+                    <h3 class="font-medium text-gray-700 mb-2 text-sm flex justify-between">
                         <span>New</span>
-                        <span id="count-new" class="text-gray-500 text-sm">0</span>
+                        <span id="count-new" class="text-gray-500">0</span>
                     </h3>
-                    <div class="space-y-2 min-h-[200px]" id="column-new"></div>
+                    <div class="space-y-2 min-h-[150px]" id="column-new"></div>
                 </div>
-                <div class="kanban-column flex-shrink-0 w-64 bg-gray-100 rounded-lg p-3" data-stage="contacted">
-                    <h3 class="font-medium text-gray-700 mb-3 flex justify-between">
+                <div class="kanban-column flex-1 min-w-0 bg-gray-100 rounded-lg p-2" data-stage="contacted">
+                    <h3 class="font-medium text-gray-700 mb-2 text-sm flex justify-between">
                         <span>Contacted</span>
-                        <span id="count-contacted" class="text-gray-500 text-sm">0</span>
+                        <span id="count-contacted" class="text-gray-500">0</span>
                     </h3>
-                    <div class="space-y-2 min-h-[200px]" id="column-contacted"></div>
+                    <div class="space-y-2 min-h-[150px]" id="column-contacted"></div>
                 </div>
-                <div class="kanban-column flex-shrink-0 w-64 bg-gray-100 rounded-lg p-3" data-stage="meeting">
-                    <h3 class="font-medium text-gray-700 mb-3 flex justify-between">
+                <div class="kanban-column flex-1 min-w-0 bg-gray-100 rounded-lg p-2" data-stage="meeting">
+                    <h3 class="font-medium text-gray-700 mb-2 text-sm flex justify-between">
                         <span>Meeting</span>
-                        <span id="count-meeting" class="text-gray-500 text-sm">0</span>
+                        <span id="count-meeting" class="text-gray-500">0</span>
                     </h3>
-                    <div class="space-y-2 min-h-[200px]" id="column-meeting"></div>
+                    <div class="space-y-2 min-h-[150px]" id="column-meeting"></div>
                 </div>
-                <div class="kanban-column flex-shrink-0 w-64 bg-gray-100 rounded-lg p-3" data-stage="proposal">
-                    <h3 class="font-medium text-gray-700 mb-3 flex justify-between">
+                <div class="kanban-column flex-1 min-w-0 bg-gray-100 rounded-lg p-2" data-stage="proposal">
+                    <h3 class="font-medium text-gray-700 mb-2 text-sm flex justify-between">
                         <span>Proposal</span>
-                        <span id="count-proposal" class="text-gray-500 text-sm">0</span>
+                        <span id="count-proposal" class="text-gray-500">0</span>
                     </h3>
-                    <div class="space-y-2 min-h-[200px]" id="column-proposal"></div>
+                    <div class="space-y-2 min-h-[150px]" id="column-proposal"></div>
                 </div>
-                <div class="kanban-column flex-shrink-0 w-64 bg-green-100 rounded-lg p-3" data-stage="won">
-                    <h3 class="font-medium text-green-700 mb-3 flex justify-between">
+                <div class="kanban-column flex-1 min-w-0 bg-green-100 rounded-lg p-2" data-stage="won">
+                    <h3 class="font-medium text-green-700 mb-2 text-sm flex justify-between">
                         <span>Won</span>
-                        <span id="count-won" class="text-green-600 text-sm">0</span>
+                        <span id="count-won" class="text-green-600">0</span>
                     </h3>
-                    <div class="space-y-2 min-h-[200px]" id="column-won"></div>
+                    <div class="space-y-2 min-h-[150px]" id="column-won"></div>
                 </div>
-                <div class="kanban-column flex-shrink-0 w-64 bg-red-100 rounded-lg p-3" data-stage="lost">
-                    <h3 class="font-medium text-red-700 mb-3 flex justify-between">
+                <div class="kanban-column flex-1 min-w-0 bg-red-100 rounded-lg p-2" data-stage="lost">
+                    <h3 class="font-medium text-red-700 mb-2 text-sm flex justify-between">
                         <span>Lost</span>
-                        <span id="count-lost" class="text-red-600 text-sm">0</span>
+                        <span id="count-lost" class="text-red-600">0</span>
                     </h3>
-                    <div class="space-y-2 min-h-[200px]" id="column-lost"></div>
+                    <div class="space-y-2 min-h-[150px]" id="column-lost"></div>
                 </div>
             </div>
         </div>

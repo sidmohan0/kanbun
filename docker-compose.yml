@@ -1,21 +1,13 @@
 services:
-  linkedin-mcp:
-    image: ghcr.io/stickerdaniel/linkedin-mcp-server:latest
-    environment:
-      - LI_AT=${LINKEDIN_LI_AT}
-    ports:
-      - "3000:3000"
-
   app:
     build: .
     ports:
       - "8000:8000"
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - LINKEDIN_LI_AT=${LINKEDIN_LI_AT}
-      - MCP_SERVER_URL=http://linkedin-mcp:3000
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}
       - DATABASE_PATH=/data/sidcrm.db
+      - SCREENSHOTS_DIR=/data/screenshots
     volumes:
       - ./data:/data
-    depends_on:
-      - linkedin-mcp
+    restart: unless-stopped
