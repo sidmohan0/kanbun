@@ -90,26 +90,26 @@
                     </h3>
                     <div class="space-y-2 min-h-[150px]" id="column-new"></div>
                 </div>
-                <div class="kanban-column flex-1 min-w-0 bg-gray-100 rounded-lg p-2" data-stage="contacted">
-                    <h3 class="font-medium text-gray-700 mb-2 text-sm flex justify-between">
-                        <span>Contacted</span>
-                        <span id="count-contacted" class="text-gray-500">0</span>
+                <div class="kanban-column flex-1 min-w-0 bg-blue-100 rounded-lg p-2" data-stage="reaching_out">
+                    <h3 class="font-medium text-blue-700 mb-2 text-sm flex justify-between">
+                        <span>Reaching Out</span>
+                        <span id="count-reaching_out" class="text-blue-500">0</span>
                     </h3>
-                    <div class="space-y-2 min-h-[150px]" id="column-contacted"></div>
+                    <div class="space-y-2 min-h-[150px]" id="column-reaching_out"></div>
                 </div>
-                <div class="kanban-column flex-1 min-w-0 bg-gray-100 rounded-lg p-2" data-stage="meeting">
-                    <h3 class="font-medium text-gray-700 mb-2 text-sm flex justify-between">
+                <div class="kanban-column flex-1 min-w-0 bg-purple-100 rounded-lg p-2" data-stage="engaged">
+                    <h3 class="font-medium text-purple-700 mb-2 text-sm flex justify-between">
+                        <span>Engaged</span>
+                        <span id="count-engaged" class="text-purple-500">0</span>
+                    </h3>
+                    <div class="space-y-2 min-h-[150px]" id="column-engaged"></div>
+                </div>
+                <div class="kanban-column flex-1 min-w-0 bg-yellow-100 rounded-lg p-2" data-stage="meeting">
+                    <h3 class="font-medium text-yellow-700 mb-2 text-sm flex justify-between">
                         <span>Meeting</span>
-                        <span id="count-meeting" class="text-gray-500">0</span>
+                        <span id="count-meeting" class="text-yellow-600">0</span>
                     </h3>
                     <div class="space-y-2 min-h-[150px]" id="column-meeting"></div>
-                </div>
-                <div class="kanban-column flex-1 min-w-0 bg-gray-100 rounded-lg p-2" data-stage="proposal">
-                    <h3 class="font-medium text-gray-700 mb-2 text-sm flex justify-between">
-                        <span>Proposal</span>
-                        <span id="count-proposal" class="text-gray-500">0</span>
-                    </h3>
-                    <div class="space-y-2 min-h-[150px]" id="column-proposal"></div>
                 </div>
                 <div class="kanban-column flex-1 min-w-0 bg-green-100 rounded-lg p-2" data-stage="won">
                     <h3 class="font-medium text-green-700 mb-2 text-sm flex justify-between">
@@ -362,7 +362,19 @@
                 </div>
 
                 <!-- Contact Info -->
-                <div id="contactModalInfo" class="space-y-3 mb-6"></div>
+                <div id="contactModalInfo" class="space-y-3 mb-4"></div>
+
+                <!-- Quick Actions -->
+                <div class="flex gap-2 mb-6">
+                    <button id="emailContactBtn" onclick="emailContact()"
+                            class="flex-1 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm">
+                        ✉️ Email
+                    </button>
+                    <a id="linkedinContactBtn" href="#" target="_blank"
+                       class="flex-1 bg-indigo-500 text-white px-4 py-2 rounded hover:bg-indigo-600 text-sm text-center hidden">
+                        LinkedIn
+                    </a>
+                </div>
 
                 <!-- Stage Selector -->
                 <div class="mb-6">
@@ -370,9 +382,9 @@
                     <select id="contactStageSelect" onchange="updateContactStage()"
                             class="w-full border rounded px-3 py-2">
                         <option value="new">New</option>
-                        <option value="contacted">Contacted</option>
+                        <option value="reaching_out">Reaching Out</option>
+                        <option value="engaged">Engaged</option>
                         <option value="meeting">Meeting</option>
-                        <option value="proposal">Proposal</option>
                         <option value="won">Won</option>
                         <option value="lost">Lost</option>
                     </select>
@@ -1056,7 +1068,7 @@
             const response = await fetch('/api/pipeline');
             const pipeline = await response.json();
 
-            const stages = ['new', 'contacted', 'meeting', 'proposal', 'won', 'lost'];
+            const stages = ['new', 'reaching_out', 'engaged', 'meeting', 'won', 'lost'];
             let totalContacts = 0;
 
             stages.forEach(stage => {
@@ -1147,6 +1159,8 @@
         }
 
         // Contact Detail Modal Functions
+        let currentContact = null; // Store full contact data for email/actions
+
         async function showContactDetail(contactId) {
             currentContactId = contactId;
 
@@ -1159,6 +1173,8 @@
                 alert('Contact not found');
                 return;
             }
+
+            currentContact = contact; // Store for email function
 
             // Set name
             const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unknown';
@@ -1178,6 +1194,23 @@
             // Set stage
             document.getElementById('contactStageSelect').value = contact.stage || 'new';
 
+            // Setup action buttons
+            const emailBtn = document.getElementById('emailContactBtn');
+            const linkedinBtn = document.getElementById('linkedinContactBtn');
+
+            if (contact.email) {
+                emailBtn.classList.remove('hidden');
+            } else {
+                emailBtn.classList.add('hidden');
+            }
+
+            if (contact.linkedin_url) {
+                linkedinBtn.href = contact.linkedin_url;
+                linkedinBtn.classList.remove('hidden');
+            } else {
+                linkedinBtn.classList.add('hidden');
+            }
+
             // Load reminders
             await loadContactReminders();
 
@@ -1188,6 +1221,30 @@
 
             // Set default date to today
             document.getElementById('reminderDate').value = new Date().toISOString().split('T')[0];
+        }
+
+        function emailContact() {
+            if (!currentContact || !currentContact.email) {
+                alert('No email address for this contact');
+                return;
+            }
+
+            const firstName = currentContact.first_name || '';
+            const companyName = currentContact.company_name || '';
+
+            const subject = encodeURIComponent(`Quick question for ${firstName}`);
+            const body = encodeURIComponent(
+`Hi ${firstName},
+
+I came across ${companyName} and wanted to reach out.
+
+[Your message here]
+
+Best,
+[Your name]`
+            );
+
+            window.location.href = `mailto:${currentContact.email}?subject=${subject}&body=${body}`;
         }
 
         function closeContactModal() {

@@ -42,7 +42,7 @@ class StageUpdate(BaseModel):
     stage: str
 
 
-VALID_STAGES = {"new", "contacted", "meeting", "proposal", "won", "lost"}
+VALID_STAGES = {"new", "reaching_out", "engaged", "meeting", "won", "lost"}
 
 
 @asynccontextmanager
