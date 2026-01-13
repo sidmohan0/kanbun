@@ -1277,5 +1277,44 @@ async def delete_company_note(note_id: str):
         return {"status": "deleted"}
 
 
+@app.get("/api/search")
+async def global_search(q: str = ""):
+    """Search contacts and companies."""
+    if not q or len(q) < 2:
+        return {"contacts": [], "companies": []}
+
+    search_term = f"%{q}%"
+
+    async with get_db(settings.effective_database_path) as db:
+        # Search contacts
+        cursor = await db.execute(
+            """
+            SELECT ct.id, ct.first_name, ct.last_name, ct.email, ct.title, ct.stage,
+                   c.name as company_name, ct.company_id
+            FROM contacts ct
+            LEFT JOIN companies c ON ct.company_id = c.id
+            WHERE ct.first_name LIKE ? OR ct.last_name LIKE ? OR ct.email LIKE ?
+                  OR ct.title LIKE ? OR c.name LIKE ?
+            LIMIT 10
+            """,
+            (search_term, search_term, search_term, search_term, search_term)
+        )
+        contacts = [dict(row) for row in await cursor.fetchall()]
+
+        # Search companies
+        cursor = await db.execute(
+            """
+            SELECT id, name, website_url, industry
+            FROM companies
+            WHERE name LIKE ? OR website_url LIKE ? OR industry LIKE ?
+            LIMIT 10
+            """,
+            (search_term, search_term, search_term)
+        )
+        companies = [dict(row) for row in await cursor.fetchall()]
+
+        return {"contacts": contacts, "companies": companies}
+
+
 # Mount static files last to avoid conflicting with API routes
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

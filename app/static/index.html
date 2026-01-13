@@ -60,9 +60,23 @@
 </head>
 <body class="min-h-screen">
     <div class="container mx-auto px-2 py-6 max-w-screen-2xl">
-        <div class="flex items-center gap-3 mb-6">
-            <img src="/images/icon.png" alt="kanbun" class="w-12 h-12 rounded-2xl shadow-md">
-            <h1 class="text-3xl font-bold text-sage-700">kanbun</h1>
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+                <img src="/images/icon.png" alt="kanbun" class="w-12 h-12 rounded-2xl shadow-md">
+                <h1 class="text-3xl font-bold text-sage-700">kanbun</h1>
+            </div>
+
+            <!-- Global Search -->
+            <div class="relative">
+                <input type="text" id="globalSearchInput" placeholder="Search contacts & companies..."
+                       class="w-72 border border-cream-300 rounded-lg px-4 py-2 text-sm text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300"
+                       oninput="handleGlobalSearch(this.value)"
+                       onfocus="showSearchResults()"
+                       autocomplete="off">
+                <div id="searchResultsDropdown" class="hidden absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-cream-200 max-h-96 overflow-y-auto z-50">
+                    <!-- Search results populated by JS -->
+                </div>
+            </div>
         </div>
 
         <!-- Tabs -->
@@ -930,6 +944,99 @@
         // Batch email selection state
         const selectedContacts = new Set();
         let pipelineContactsCache = {}; // Cache pipeline data for batch email modal
+
+        // Global search
+        let searchTimeout = null;
+        let searchResultsVisible = false;
+
+        function handleGlobalSearch(query) {
+            clearTimeout(searchTimeout);
+            if (query.length < 2) {
+                hideSearchResults();
+                return;
+            }
+            searchTimeout = setTimeout(() => performSearch(query), 200);
+        }
+
+        async function performSearch(query) {
+            try {
+                const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                renderSearchResults(data);
+                showSearchResults();
+            } catch (err) {
+                console.error('Search failed:', err);
+            }
+        }
+
+        function renderSearchResults(data) {
+            const dropdown = document.getElementById('searchResultsDropdown');
+            const { contacts, companies } = data;
+
+            if (contacts.length === 0 && companies.length === 0) {
+                dropdown.innerHTML = '<div class="p-4 text-center text-sage-400 text-sm">No results found</div>';
+                return;
+            }
+
+            let html = '';
+
+            if (contacts.length > 0) {
+                html += '<div class="px-3 py-2 text-xs font-semibold text-sage-500 bg-cream-50 border-b border-cream-200">Contacts</div>';
+                html += contacts.map(c => {
+                    const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || 'Unknown';
+                    return `
+                        <div class="px-3 py-2 hover:bg-cream-50 cursor-pointer border-b border-cream-100" onclick="selectSearchResult('contact', '${c.id}')">
+                            <div class="font-medium text-sm text-sage-800">${name}</div>
+                            <div class="text-xs text-sage-500">${c.title || ''} ${c.company_name ? '· ' + c.company_name : ''}</div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            if (companies.length > 0) {
+                html += '<div class="px-3 py-2 text-xs font-semibold text-sage-500 bg-cream-50 border-b border-cream-200">Companies</div>';
+                html += companies.map(c => `
+                    <div class="px-3 py-2 hover:bg-cream-50 cursor-pointer border-b border-cream-100" onclick="selectSearchResult('company', '${c.id}')">
+                        <div class="font-medium text-sm text-sage-800">${c.name}</div>
+                        <div class="text-xs text-sage-500">${c.industry || ''}</div>
+                    </div>
+                `).join('');
+            }
+
+            dropdown.innerHTML = html;
+        }
+
+        function showSearchResults() {
+            const dropdown = document.getElementById('searchResultsDropdown');
+            const input = document.getElementById('globalSearchInput');
+            if (input.value.length >= 2) {
+                dropdown.classList.remove('hidden');
+                searchResultsVisible = true;
+            }
+        }
+
+        function hideSearchResults() {
+            document.getElementById('searchResultsDropdown').classList.add('hidden');
+            searchResultsVisible = false;
+        }
+
+        function selectSearchResult(type, id) {
+            document.getElementById('globalSearchInput').value = '';
+            hideSearchResults();
+            if (type === 'contact') {
+                navigateToContact(id);
+            } else if (type === 'company') {
+                navigateToCompany(id);
+            }
+        }
+
+        // Close search results when clicking outside
+        document.addEventListener('click', (e) => {
+            const searchContainer = document.getElementById('globalSearchInput')?.parentElement;
+            if (searchContainer && !searchContainer.contains(e.target)) {
+                hideSearchResults();
+            }
+        });
 
         function toggleContactSelection(contactId, isSelected) {
             if (isSelected) {
