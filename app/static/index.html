@@ -1378,9 +1378,11 @@
             };
 
             for (const [key, value] of Object.entries(vars)) {
-                const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
-                subject = subject.replace(regex, value);
-                body = body.replace(regex, value);
+                // Match both {{variable}} and {variable} formats
+                const doubleRegex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+                const singleRegex = new RegExp(`\\{${key}\\}`, 'g');
+                subject = subject.replace(doubleRegex, value).replace(singleRegex, value);
+                body = body.replace(doubleRegex, value).replace(singleRegex, value);
             }
 
             return { subject, body };
