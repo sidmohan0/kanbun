@@ -1206,13 +1206,22 @@
         function substituteTemplateVariables(text, contact) {
             if (!text) return '';
             return text
+                // Double braces {{var}}
                 .replace(/\{\{first_name\}\}/gi, contact.first_name || '')
                 .replace(/\{\{last_name\}\}/gi, contact.last_name || '')
                 .replace(/\{\{full_name\}\}/gi, [contact.first_name, contact.last_name].filter(Boolean).join(' ') || '')
                 .replace(/\{\{email\}\}/gi, contact.email || '')
                 .replace(/\{\{company\}\}/gi, contact.company_name || '')
                 .replace(/\{\{company_name\}\}/gi, contact.company_name || '')
-                .replace(/\{\{title\}\}/gi, contact.title || '');
+                .replace(/\{\{title\}\}/gi, contact.title || '')
+                // Single braces {var}
+                .replace(/\{first_name\}/gi, contact.first_name || '')
+                .replace(/\{last_name\}/gi, contact.last_name || '')
+                .replace(/\{full_name\}/gi, [contact.first_name, contact.last_name].filter(Boolean).join(' ') || '')
+                .replace(/\{email\}/gi, contact.email || '')
+                .replace(/\{company\}/gi, contact.company_name || '')
+                .replace(/\{company_name\}/gi, contact.company_name || '')
+                .replace(/\{title\}/gi, contact.title || '');
         }
 
         async function sendBatchEmails() {
@@ -1227,18 +1236,24 @@
                 .map(id => pipelineContactsCache[id])
                 .filter(c => c && c.email && c.email.trim());
 
-            // Open mailto links with delays
+            // Open mailto links with delays using anchor clicks (more reliable than window.open)
             for (let i = 0; i < contactsToEmail.length; i++) {
                 const contact = contactsToEmail[i];
                 const subject = encodeURIComponent(substituteTemplateVariables(batchSelectedTemplate.subject, contact));
                 const body = encodeURIComponent(substituteTemplateVariables(batchSelectedTemplate.body, contact));
                 const mailtoUrl = `mailto:${contact.email}?subject=${subject}&body=${body}`;
 
-                window.open(mailtoUrl, '_blank');
+                // Create and click a temporary anchor element
+                const a = document.createElement('a');
+                a.href = mailtoUrl;
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
 
-                // Delay between each to prevent browser blocking
+                // Longer delay between each to ensure mail client can handle it
                 if (i < contactsToEmail.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 300));
+                    await new Promise(resolve => setTimeout(resolve, 800));
                 }
             }
 
