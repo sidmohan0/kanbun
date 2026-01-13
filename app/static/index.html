@@ -1595,8 +1595,8 @@
             }
 
             tbody.innerHTML = data.contacts.map(c => `
-                <tr class="border-t hover:bg-gray-50">
-                    <td class="px-3 py-2">
+                <tr class="border-t hover:bg-cream-50 cursor-pointer transition-colors" onclick="navigateToContact('${c.id}')">
+                    <td class="px-3 py-2" onclick="event.stopPropagation()">
                         ${c.company_id ? `
                             <img src="/api/screenshots/${c.company_id}"
                                  class="w-12 h-8 object-cover rounded border cursor-pointer hover:opacity-80"
@@ -1606,17 +1606,17 @@
                         ` : '<div class="w-12 h-8 bg-gray-100 rounded border flex items-center justify-center text-gray-400 text-xs">-</div>'}
                     </td>
                     <td class="px-4 py-2">
-                        <div class="font-medium">${[c.first_name, c.last_name].filter(Boolean).join(' ') || '-'}</div>
+                        <div class="font-medium text-sage-800">${[c.first_name, c.last_name].filter(Boolean).join(' ') || '-'}</div>
                     </td>
                     <td class="px-4 py-2 text-xs text-gray-600">${c.title || '-'}</td>
                     <td class="px-4 py-2 text-xs">
                         <div class="font-medium">${c.company_name || '-'}</div>
                     </td>
-                    <td class="px-4 py-2 text-xs">
+                    <td class="px-4 py-2 text-xs" onclick="event.stopPropagation()">
                         ${c.email ? `<a href="mailto:${c.email}" class="text-blue-600 hover:underline">${c.email}</a>` : '-'}
                     </td>
                     <td class="px-4 py-2 text-xs">${c.phone || '-'}</td>
-                    <td class="px-4 py-2 text-xs">
+                    <td class="px-4 py-2 text-xs" onclick="event.stopPropagation()">
                         ${c.linkedin_url ? `<a href="${c.linkedin_url}" target="_blank" class="text-blue-600 hover:underline">Profile</a>` : '-'}
                     </td>
                 </tr>
