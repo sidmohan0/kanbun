@@ -1100,10 +1100,17 @@
             // Populate contacts list
             populateBatchContactsList();
 
-            // Reset template preview
-            document.getElementById('batchTemplatePreview').classList.add('hidden');
-            batchSelectedTemplate = null;
-            updateBatchSendButton();
+            // Check for last used template and auto-select it
+            const lastTemplateId = localStorage.getItem('lastBatchTemplateId');
+            if (lastTemplateId && window.batchTemplatesCache[lastTemplateId]) {
+                select.value = lastTemplateId;
+                updateBatchTemplatePreview();
+            } else {
+                // Reset template preview
+                document.getElementById('batchTemplatePreview').classList.add('hidden');
+                batchSelectedTemplate = null;
+                updateBatchSendButton();
+            }
 
             // Show modal
             const modal = document.getElementById('batchEmailModal');
@@ -1186,6 +1193,9 @@
 
             const template = window.batchTemplatesCache[templateId];
             batchSelectedTemplate = template;
+
+            // Remember this template for next time
+            localStorage.setItem('lastBatchTemplateId', templateId);
 
             document.getElementById('batchPreviewSubject').textContent = template.subject || '';
             document.getElementById('batchPreviewBody').textContent = template.body || '';
