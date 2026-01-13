@@ -1246,9 +1246,9 @@
                 // Open with unique window name
                 window.open(mailtoUrl, `mailto_${Date.now()}_${i}`);
 
-                // Wait for mail client to process before next one
+                // Wait for Outlook to fully process before next one (needs longer delay)
                 if (i < contactsToEmail.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    await new Promise(resolve => setTimeout(resolve, 3000));
                 }
             }
 
