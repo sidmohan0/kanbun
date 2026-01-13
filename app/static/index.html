@@ -146,14 +146,21 @@
 
             <!-- Kanban Board -->
             <div class="flex gap-2" id="kanbanBoard">
-                <div class="kanban-column flex-1 min-w-0 bg-cream-100 rounded-xl p-2" data-stage="new">
+                <div class="kanban-column flex-1 min-w-0 bg-cream-100 rounded-xl p-2" data-stage="backlog">
                     <h3 class="font-medium text-sage-600 mb-2 text-sm flex justify-between">
-                        <span>New</span>
-                        <span id="count-new" class="text-sage-400">0</span>
+                        <span>Backlog</span>
+                        <span id="count-backlog" class="text-sage-400">0</span>
                     </h3>
-                    <div class="space-y-2 min-h-[150px]" id="column-new"></div>
+                    <div class="space-y-2 min-h-[150px]" id="column-backlog"></div>
                 </div>
-                <div class="kanban-column flex-1 min-w-0 bg-sage-100 rounded-xl p-2" data-stage="reaching_out">
+                <div class="kanban-column flex-1 min-w-0 bg-sage-100 rounded-xl p-2" data-stage="contacted">
+                    <h3 class="font-medium text-sage-700 mb-2 text-sm flex justify-between">
+                        <span>Contacted</span>
+                        <span id="count-contacted" class="text-sage-500">0</span>
+                    </h3>
+                    <div class="space-y-2 min-h-[150px]" id="column-contacted"></div>
+                </div>
+                <div class="kanban-column flex-1 min-w-0 bg-sage-200 rounded-xl p-2" data-stage="reaching_out">
                     <h3 class="font-medium text-sage-700 mb-2 text-sm flex justify-between">
                         <span>Reaching Out</span>
                         <span id="count-reaching_out" class="text-sage-500">0</span>
@@ -481,7 +488,8 @@
                     <label class="block text-sm font-medium text-sage-700 mb-1">Pipeline Stage</label>
                     <select id="contactStageSelect" onchange="updateContactStage()"
                             class="w-full border border-cream-300 rounded-xl px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300">
-                        <option value="new">New</option>
+                        <option value="backlog">Backlog</option>
+                        <option value="contacted">Contacted</option>
                         <option value="reaching_out">Reaching Out</option>
                         <option value="engaged">Engaged</option>
                         <option value="meeting">Meeting</option>
@@ -1241,7 +1249,7 @@
             const response = await fetch('/api/pipeline');
             const pipeline = await response.json();
 
-            const stages = ['new', 'reaching_out', 'engaged', 'meeting', 'won', 'lost', 'naf'];
+            const stages = ['backlog', 'contacted', 'reaching_out', 'engaged', 'meeting', 'won', 'lost', 'naf'];
             let totalContacts = 0;
 
             stages.forEach(stage => {

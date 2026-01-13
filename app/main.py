@@ -69,7 +69,7 @@ class TemplateUpdate(BaseModel):
     body: Optional[str] = None
 
 
-VALID_STAGES = {"new", "reaching_out", "engaged", "meeting", "won", "lost", "naf"}
+VALID_STAGES = {"backlog", "contacted", "reaching_out", "engaged", "meeting", "won", "lost", "naf"}
 VALID_OUTREACH_TYPES = {"email", "linkedin", "call", "other"}
 
 
@@ -871,12 +871,12 @@ async def get_pipeline():
         pipeline = {stage: [] for stage in VALID_STAGES}
         for row in rows:
             contact = dict(row)
-            stage = contact.get("stage") or "new"
+            stage = contact.get("stage") or "backlog"
             if stage in pipeline:
                 pipeline[stage].append(contact)
             else:
-                # Default to 'new' if stage is invalid
-                pipeline["new"].append(contact)
+                # Default to 'backlog' if stage is invalid
+                pipeline["backlog"].append(contact)
 
         return pipeline
 
