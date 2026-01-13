@@ -140,8 +140,16 @@
         <!-- Pipeline Tab Content -->
         <div id="pipelineContent" class="hidden">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold">Pipeline</h2>
-                <span id="pipelineCount" class="text-gray-500 text-sm"></span>
+                <div class="flex items-center gap-4">
+                    <h2 class="text-xl font-semibold">Pipeline</h2>
+                    <span id="pipelineCount" class="text-gray-500 text-sm"></span>
+                </div>
+                <div id="batchEmailControls" class="hidden flex items-center gap-2">
+                    <button onclick="openBatchEmailModal()" class="bg-terracotta-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-terracotta-600 transition-colors">
+                        Batch Email (<span id="selectedCount">0</span>)
+                    </button>
+                    <button onclick="clearSelection()" class="text-sage-500 hover:text-sage-700 text-sm">Clear</button>
+                </div>
             </div>
 
             <!-- Kanban Board -->
@@ -595,6 +603,62 @@
         </div>
     </div>
 
+    <!-- Batch Email Modal -->
+    <div id="batchEmailModal" class="fixed inset-0 bg-sage-900 bg-opacity-50 hidden items-center justify-center z-50" onclick="if(event.target === this) closeBatchEmailModal()">
+        <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto border border-cream-200">
+            <div class="p-6">
+                <div class="flex justify-between items-start mb-4">
+                    <h3 class="text-xl font-semibold text-sage-800">Batch Email (<span id="batchEmailCount">0</span> contacts)</h3>
+                    <button onclick="closeBatchEmailModal()" class="text-sage-400 hover:text-sage-600 text-2xl">&times;</button>
+                </div>
+
+                <!-- Template Selector -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-sage-700 mb-1">Email Template</label>
+                    <select id="batchTemplateSelect" onchange="updateBatchTemplatePreview()"
+                            class="w-full border border-cream-300 rounded-xl px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300">
+                        <option value="">Select a template...</option>
+                    </select>
+                </div>
+
+                <!-- Template Preview -->
+                <div id="batchTemplatePreview" class="hidden mb-4 bg-cream-50 rounded-xl p-4 border border-cream-200">
+                    <div class="text-sm">
+                        <div class="font-medium text-sage-700 mb-1">Subject:</div>
+                        <div id="batchPreviewSubject" class="text-sage-600 mb-3"></div>
+                        <div class="font-medium text-sage-700 mb-1">Body:</div>
+                        <div id="batchPreviewBody" class="text-sage-600 whitespace-pre-wrap text-xs max-h-32 overflow-y-auto"></div>
+                    </div>
+                </div>
+
+                <!-- Selected Contacts List -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-sage-700 mb-2">Selected Contacts</label>
+                    <div id="batchContactsList" class="space-y-2 max-h-64 overflow-y-auto">
+                        <!-- Contacts populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Warning for contacts without email -->
+                <div id="batchNoEmailWarning" class="hidden mb-4 bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
+                    <span id="noEmailCount">0</span> contact(s) without email will be skipped.
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex gap-2 pt-2 border-t border-cream-200">
+                    <button id="batchSendBtn" onclick="sendBatchEmails()" disabled
+                            class="flex-1 bg-terracotta-500 text-white px-4 py-2 rounded-xl hover:bg-terracotta-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">
+                        Open <span id="batchDraftCount">0</span> Drafts
+                    </button>
+                    <button onclick="closeBatchEmailModal()"
+                            class="px-4 py-2 rounded-xl border border-cream-300 text-sage-600 hover:bg-cream-50 transition-colors">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let currentJobId = null;
         let pollInterval = null;
@@ -605,6 +669,234 @@
         let totalContacts = 0;
         let currentScreenshotCompanyId = null;
         let currentContactId = null;
+
+        // Batch email selection state
+        const selectedContacts = new Set();
+        let pipelineContactsCache = {}; // Cache pipeline data for batch email modal
+
+        function toggleContactSelection(contactId, isSelected) {
+            if (isSelected) {
+                selectedContacts.add(contactId);
+            } else {
+                selectedContacts.delete(contactId);
+            }
+            updateBatchEmailControls();
+        }
+
+        function updateBatchEmailControls() {
+            const controls = document.getElementById('batchEmailControls');
+            const countSpan = document.getElementById('selectedCount');
+            if (selectedContacts.size > 0) {
+                controls.classList.remove('hidden');
+                controls.classList.add('flex');
+                countSpan.textContent = selectedContacts.size;
+            } else {
+                controls.classList.add('hidden');
+                controls.classList.remove('flex');
+            }
+        }
+
+        function clearSelection() {
+            selectedContacts.clear();
+            updateBatchEmailControls();
+            // Uncheck all checkboxes and remove highlight
+            document.querySelectorAll('[data-contact-checkbox]').forEach(cb => {
+                cb.checked = false;
+                const card = cb.closest('[data-contact-id]');
+                if (card) {
+                    card.classList.remove('border-terracotta-400', 'ring-2', 'ring-terracotta-200');
+                    card.classList.add('border-cream-200');
+                }
+            });
+        }
+
+        // Batch Email Modal Functions
+        let batchSelectedTemplate = null;
+        let batchContactsInModal = new Set(); // Track contacts in the modal (can be removed)
+
+        async function openBatchEmailModal() {
+            if (selectedContacts.size === 0) return;
+
+            // Copy selected contacts to modal set
+            batchContactsInModal = new Set(selectedContacts);
+
+            // Load templates for dropdown
+            const templatesRes = await fetch('/api/templates');
+            const templatesData = await templatesRes.json();
+            const templates = templatesData.templates || [];
+
+            const select = document.getElementById('batchTemplateSelect');
+            select.innerHTML = '<option value="">Select a template...</option>' +
+                templates.map(t => `<option value="${t.id}">${t.name}${t.category ? ` (${t.category})` : ''}</option>`).join('');
+
+            // Store templates for preview
+            window.batchTemplatesCache = {};
+            templates.forEach(t => window.batchTemplatesCache[t.id] = t);
+
+            // Populate contacts list
+            populateBatchContactsList();
+
+            // Reset template preview
+            document.getElementById('batchTemplatePreview').classList.add('hidden');
+            batchSelectedTemplate = null;
+            updateBatchSendButton();
+
+            // Show modal
+            const modal = document.getElementById('batchEmailModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeBatchEmailModal() {
+            const modal = document.getElementById('batchEmailModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            batchContactsInModal.clear();
+        }
+
+        function populateBatchContactsList() {
+            const container = document.getElementById('batchContactsList');
+            const contacts = Array.from(batchContactsInModal).map(id => pipelineContactsCache[id]).filter(Boolean);
+
+            let withEmail = 0;
+            let withoutEmail = 0;
+
+            container.innerHTML = contacts.map(c => {
+                const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || 'Unknown';
+                const hasEmail = c.email && c.email.trim();
+                if (hasEmail) withEmail++;
+                else withoutEmail++;
+
+                return `
+                    <div class="flex items-center justify-between p-2 bg-cream-50 rounded-lg ${!hasEmail ? 'border border-red-200' : ''}">
+                        <div class="flex-1 min-w-0">
+                            <div class="font-medium text-sm text-sage-800">${name}</div>
+                            <div class="text-xs text-sage-500">${c.company_name || 'No company'}</div>
+                            ${hasEmail
+                                ? `<div class="text-xs text-sage-600">${c.email}</div>`
+                                : `<div class="text-xs text-red-500 font-medium">No email address</div>`
+                            }
+                        </div>
+                        <button onclick="removeFromBatch('${c.id}')" class="text-sage-400 hover:text-red-500 px-2">&times;</button>
+                    </div>
+                `;
+            }).join('');
+
+            // Update counts
+            document.getElementById('batchEmailCount').textContent = contacts.length;
+
+            // Show/hide no-email warning
+            const warningDiv = document.getElementById('batchNoEmailWarning');
+            if (withoutEmail > 0) {
+                warningDiv.classList.remove('hidden');
+                document.getElementById('noEmailCount').textContent = withoutEmail;
+            } else {
+                warningDiv.classList.add('hidden');
+            }
+
+            // Store count for send button
+            window.batchEmailableCount = withEmail;
+            updateBatchSendButton();
+        }
+
+        function removeFromBatch(contactId) {
+            batchContactsInModal.delete(contactId);
+            if (batchContactsInModal.size === 0) {
+                closeBatchEmailModal();
+                return;
+            }
+            populateBatchContactsList();
+        }
+
+        function updateBatchTemplatePreview() {
+            const select = document.getElementById('batchTemplateSelect');
+            const templateId = select.value;
+            const previewDiv = document.getElementById('batchTemplatePreview');
+
+            if (!templateId || !window.batchTemplatesCache[templateId]) {
+                previewDiv.classList.add('hidden');
+                batchSelectedTemplate = null;
+                updateBatchSendButton();
+                return;
+            }
+
+            const template = window.batchTemplatesCache[templateId];
+            batchSelectedTemplate = template;
+
+            document.getElementById('batchPreviewSubject').textContent = template.subject || '';
+            document.getElementById('batchPreviewBody').textContent = template.body || '';
+            previewDiv.classList.remove('hidden');
+            updateBatchSendButton();
+        }
+
+        function updateBatchSendButton() {
+            const btn = document.getElementById('batchSendBtn');
+            const countSpan = document.getElementById('batchDraftCount');
+            const emailableCount = window.batchEmailableCount || 0;
+            const hasTemplate = !!batchSelectedTemplate;
+
+            countSpan.textContent = emailableCount;
+            btn.disabled = !hasTemplate || emailableCount === 0;
+        }
+
+        function substituteTemplateVariables(text, contact) {
+            if (!text) return '';
+            return text
+                .replace(/\{\{first_name\}\}/gi, contact.first_name || '')
+                .replace(/\{\{last_name\}\}/gi, contact.last_name || '')
+                .replace(/\{\{full_name\}\}/gi, [contact.first_name, contact.last_name].filter(Boolean).join(' ') || '')
+                .replace(/\{\{email\}\}/gi, contact.email || '')
+                .replace(/\{\{company\}\}/gi, contact.company_name || '')
+                .replace(/\{\{company_name\}\}/gi, contact.company_name || '')
+                .replace(/\{\{title\}\}/gi, contact.title || '');
+        }
+
+        async function sendBatchEmails() {
+            if (!batchSelectedTemplate || window.batchEmailableCount === 0) return;
+
+            const btn = document.getElementById('batchSendBtn');
+            btn.disabled = true;
+            btn.textContent = 'Opening drafts...';
+
+            // Get contacts with emails
+            const contactsToEmail = Array.from(batchContactsInModal)
+                .map(id => pipelineContactsCache[id])
+                .filter(c => c && c.email && c.email.trim());
+
+            // Open mailto links with delays
+            for (let i = 0; i < contactsToEmail.length; i++) {
+                const contact = contactsToEmail[i];
+                const subject = encodeURIComponent(substituteTemplateVariables(batchSelectedTemplate.subject, contact));
+                const body = encodeURIComponent(substituteTemplateVariables(batchSelectedTemplate.body, contact));
+                const mailtoUrl = `mailto:${contact.email}?subject=${subject}&body=${body}`;
+
+                window.open(mailtoUrl, '_blank');
+
+                // Delay between each to prevent browser blocking
+                if (i < contactsToEmail.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                }
+            }
+
+            // Move all contacts (including those without email) to "contacted" stage
+            const allContactIds = Array.from(batchContactsInModal);
+            for (const contactId of allContactIds) {
+                try {
+                    await fetch(`/api/contacts/${contactId}/stage`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ stage: 'contacted' })
+                    });
+                } catch (err) {
+                    console.error('Failed to update stage for', contactId, err);
+                }
+            }
+
+            // Close modal, clear selection, refresh pipeline
+            closeBatchEmailModal();
+            clearSelection();
+            await loadPipeline();
+        }
 
         // Tab switching
         function showTab(tab) {
@@ -1249,12 +1541,16 @@
             const response = await fetch('/api/pipeline');
             const pipeline = await response.json();
 
+            // Cache all contacts for batch email modal
+            pipelineContactsCache = {};
             const stages = ['backlog', 'contacted', 'reaching_out', 'engaged', 'meeting', 'won', 'lost', 'naf'];
             let totalContacts = 0;
 
             stages.forEach(stage => {
                 const contacts = pipeline[stage] || [];
                 totalContacts += contacts.length;
+                // Cache each contact by ID
+                contacts.forEach(c => pipelineContactsCache[c.id] = c);
 
                 document.getElementById(`count-${stage}`).textContent = contacts.length;
 
@@ -1280,17 +1576,27 @@
             const reminderBadge = contact.next_reminder
                 ? `<div class="text-xs text-terracotta-500 mt-1">⏰ ${contact.next_reminder}</div>`
                 : '';
+            const isSelected = selectedContacts.has(contact.id);
 
             return `
-                <div class="bg-white rounded-xl shadow-sm p-3 cursor-move hover:shadow-md transition-all hover:-translate-y-0.5 border border-cream-200"
+                <div class="bg-white rounded-xl shadow-sm p-3 cursor-move hover:shadow-md transition-all hover:-translate-y-0.5 border ${isSelected ? 'border-terracotta-400 ring-2 ring-terracotta-200' : 'border-cream-200'}"
                      draggable="true"
                      data-contact-id="${contact.id}"
                      ondragstart="handleDragStart(event)"
                      onclick="showContactDetail('${contact.id}')">
-                    <div class="font-medium text-sm text-sage-800">${name}</div>
-                    <div class="text-xs text-sage-500">${contact.company_name || 'No company'}</div>
-                    ${contact.title ? `<div class="text-xs text-sage-400">${contact.title}</div>` : ''}
-                    ${reminderBadge}
+                    <div class="flex items-start gap-2">
+                        <input type="checkbox"
+                               class="mt-0.5 rounded border-gray-300 text-terracotta-500 focus:ring-terracotta-400 cursor-pointer"
+                               ${isSelected ? 'checked' : ''}
+                               onclick="event.stopPropagation(); toggleContactSelection('${contact.id}', this.checked)"
+                               data-contact-checkbox="${contact.id}">
+                        <div class="flex-1 min-w-0">
+                            <div class="font-medium text-sm text-sage-800">${name}</div>
+                            <div class="text-xs text-sage-500 truncate">${contact.company_name || 'No company'}</div>
+                            ${contact.title ? `<div class="text-xs text-sage-400 truncate">${contact.title}</div>` : ''}
+                            ${reminderBadge}
+                        </div>
+                    </div>
                 </div>
             `;
         }
@@ -1488,7 +1794,7 @@
 
             // Set relationship, stage and notes
             document.getElementById('contactRelationship').value = contact.relationship || '';
-            document.getElementById('contactStageSelect').value = contact.stage || 'new';
+            document.getElementById('contactStageSelect').value = contact.stage || 'backlog';
             document.getElementById('contactNotes').value = contact.notes || '';
 
             // Setup action buttons
@@ -1587,10 +1893,10 @@ Best,
 
                 if (response.ok) {
                     await loadOutreachHistory();
-                    // Auto-move to "reaching_out" if still in "new"
+                    // Auto-move to "contacted" if still in "backlog"
                     const currentStage = document.getElementById('contactStageSelect').value;
-                    if (currentStage === 'new') {
-                        document.getElementById('contactStageSelect').value = 'reaching_out';
+                    if (currentStage === 'backlog') {
+                        document.getElementById('contactStageSelect').value = 'contacted';
                         await updateContactStage();
                     }
                 } else {

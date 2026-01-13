@@ -851,6 +851,7 @@ async def get_pipeline():
                 ct.id,
                 ct.first_name,
                 ct.last_name,
+                ct.email,
                 ct.title,
                 c.name as company_name,
                 ct.company_id,
