@@ -1236,31 +1236,21 @@
                 .map(id => pipelineContactsCache[id])
                 .filter(c => c && c.email && c.email.trim());
 
-            // Collect all iframes to clean up later
-            const iframes = [];
-
-            // Open mailto links using hidden iframes (most reliable for multiple emails)
+            // Open mailto links with unique window names
             for (let i = 0; i < contactsToEmail.length; i++) {
                 const contact = contactsToEmail[i];
                 const subject = encodeURIComponent(substituteTemplateVariables(batchSelectedTemplate.subject, contact));
                 const body = encodeURIComponent(substituteTemplateVariables(batchSelectedTemplate.body, contact));
                 const mailtoUrl = `mailto:${contact.email}?subject=${subject}&body=${body}`;
 
-                // Use iframe to trigger mailto (avoids popup blockers)
-                const iframe = document.createElement('iframe');
-                iframe.style.display = 'none';
-                document.body.appendChild(iframe);
-                iframes.push(iframe);
-
-                // Set src after appending to DOM
-                iframe.src = mailtoUrl;
+                // Open with unique window name
+                window.open(mailtoUrl, `mailto_${Date.now()}_${i}`);
 
                 // Wait for mail client to process before next one
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                if (i < contactsToEmail.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                }
             }
-
-            // Clean up iframes after all emails are triggered
-            setTimeout(() => iframes.forEach(f => f.remove()), 3000);
 
             // Move all contacts (including those without email) to "contacted" stage
             const allContactIds = Array.from(batchContactsInModal);
