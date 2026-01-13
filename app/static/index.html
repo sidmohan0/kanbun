@@ -1236,23 +1236,60 @@
                 .map(id => pipelineContactsCache[id])
                 .filter(c => c && c.email && c.email.trim());
 
-            // Open mailto links with unique window names
-            for (let i = 0; i < contactsToEmail.length; i++) {
-                const contact = contactsToEmail[i];
-                const subject = encodeURIComponent(substituteTemplateVariables(batchSelectedTemplate.subject, contact));
-                const body = encodeURIComponent(substituteTemplateVariables(batchSelectedTemplate.body, contact));
-                const mailtoUrl = `mailto:${contact.email}?subject=${subject}&body=${body}`;
+            // Store emails to open and show step-by-step UI
+            window.batchEmailQueue = contactsToEmail.map(contact => ({
+                contact,
+                subject: substituteTemplateVariables(batchSelectedTemplate.subject, contact),
+                body: substituteTemplateVariables(batchSelectedTemplate.body, contact)
+            }));
+            window.batchEmailIndex = 0;
 
-                // Open with unique window name
-                window.open(mailtoUrl, `mailto_${Date.now()}_${i}`);
+            // Show step-by-step UI
+            showBatchEmailStep();
+            return; // Don't close modal yet - user will click through each
+        }
 
-                // Wait for Outlook to fully process before next one (needs longer delay)
-                if (i < contactsToEmail.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 3000));
-                }
+        function showBatchEmailStep() {
+            const queue = window.batchEmailQueue;
+            const idx = window.batchEmailIndex;
+
+            if (idx >= queue.length) {
+                // All done - finish up
+                finishBatchEmails();
+                return;
             }
 
-            // Move all contacts (including those without email) to "contacted" stage
+            const item = queue[idx];
+            const btn = document.getElementById('batchSendBtn');
+            btn.disabled = false;
+            btn.innerHTML = `Open Draft ${idx + 1} of ${queue.length}: <strong>${item.contact.first_name || item.contact.email}</strong>`;
+            btn.onclick = openNextBatchDraft;
+        }
+
+        function openNextBatchDraft() {
+            const queue = window.batchEmailQueue;
+            const idx = window.batchEmailIndex;
+            const item = queue[idx];
+
+            const subject = encodeURIComponent(item.subject);
+            const body = encodeURIComponent(item.body);
+            const mailtoUrl = `mailto:${item.contact.email}?subject=${subject}&body=${body}`;
+
+            window.location.href = mailtoUrl;
+
+            window.batchEmailIndex++;
+
+            // Small delay then show next step
+            setTimeout(showBatchEmailStep, 500);
+        }
+
+        async function finishBatchEmails() {
+            // Reset button
+            const btn = document.getElementById('batchSendBtn');
+            btn.onclick = sendBatchEmails;
+            btn.innerHTML = 'Open <span id="batchDraftCount">0</span> Drafts';
+
+            // Move all contacts to "contacted" stage
             const allContactIds = Array.from(batchContactsInModal);
             for (const contactId of allContactIds) {
                 try {
