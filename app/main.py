@@ -439,8 +439,10 @@ async def get_all_companies(limit: int = 100, offset: int = 0, status: str = Non
 async def get_all_contacts(limit: int = 100, offset: int = 0, search: str = None):
     async with get_db(settings.effective_database_path) as db:
         base_query = """
-            SELECT ct.*, c.name as company_name, c.website_url as company_website,
-                   c.id as company_id, c.company_description, c.meta_title, c.meta_description
+            SELECT ct.id, ct.first_name, ct.last_name, ct.email, ct.phone, ct.title,
+                   ct.linkedin_url, ct.stage, ct.notes, ct.relationship, ct.company_id,
+                   c.name as company_name, c.website_url as company_website,
+                   c.company_description, c.meta_title, c.meta_description
             FROM contacts ct
             LEFT JOIN companies c ON ct.company_id = c.id
         """
