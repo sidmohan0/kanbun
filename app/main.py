@@ -1226,5 +1226,56 @@ async def get_company_contacts(company_id: str):
         return {"contacts": contacts}
 
 
+@app.get("/api/companies/{company_id}/notes")
+async def get_company_notes(company_id: str):
+    """Get all notes for a company."""
+    async with get_db(settings.effective_database_path) as db:
+        cursor = await db.execute(
+            "SELECT id, content, created_at FROM company_notes WHERE company_id = ? ORDER BY created_at DESC",
+            (company_id,)
+        )
+        rows = await cursor.fetchall()
+        return {"notes": [dict(row) for row in rows]}
+
+
+@app.post("/api/companies/{company_id}/notes")
+async def create_company_note(company_id: str, note: NoteCreate):
+    """Add a note to a company."""
+    note_id = str(uuid.uuid4())
+
+    async with get_db(settings.effective_database_path) as db:
+        # Verify company exists
+        cursor = await db.execute("SELECT id FROM companies WHERE id = ?", (company_id,))
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        await db.execute(
+            "INSERT INTO company_notes (id, company_id, content) VALUES (?, ?, ?)",
+            (note_id, company_id, note.content)
+        )
+        await db.commit()
+
+        cursor = await db.execute(
+            "SELECT id, content, created_at FROM company_notes WHERE id = ?",
+            (note_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row)
+
+
+@app.delete("/api/company-notes/{note_id}")
+async def delete_company_note(note_id: str):
+    """Delete a company note."""
+    async with get_db(settings.effective_database_path) as db:
+        cursor = await db.execute("SELECT id FROM company_notes WHERE id = ?", (note_id,))
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Note not found")
+
+        await db.execute("DELETE FROM company_notes WHERE id = ?", (note_id,))
+        await db.commit()
+
+        return {"status": "deleted"}
+
+
 # Mount static files last to avoid conflicting with API routes
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

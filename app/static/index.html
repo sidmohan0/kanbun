@@ -622,8 +622,34 @@
                     </div>
                 </div>
 
-                <!-- Right Column: Contacts at Company (~60%) -->
-                <div class="lg:col-span-3">
+                <!-- Right Column: Notes and Contacts (~60%) -->
+                <div class="lg:col-span-3 space-y-4">
+                    <!-- Notes Section -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
+                        <h2 class="text-lg font-semibold text-sage-800 mb-4">Notes</h2>
+
+                        <!-- Add Note Input -->
+                        <div class="flex gap-2 mb-4">
+                            <input type="text" id="companyPageNoteInput" placeholder="Add a note..."
+                                   class="flex-1 border border-cream-300 rounded-lg px-3 py-2 text-sm text-sage-700 focus:ring-2 focus:ring-terracotta-300"
+                                   onkeydown="if(event.key==='Enter') companyPageAddNote()">
+                            <button onclick="companyPageAddNote()"
+                                    class="bg-sage-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-sage-700 transition-colors">
+                                Add Note
+                            </button>
+                        </div>
+
+                        <!-- Notes List -->
+                        <div id="companyPageNotes" class="space-y-2">
+                            <!-- Notes populated by JS -->
+                        </div>
+
+                        <div id="companyPageNotesEmpty" class="hidden text-center py-4 text-sage-400 text-sm">
+                            No notes yet
+                        </div>
+                    </div>
+
+                    <!-- Contacts Section -->
                     <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
                         <h2 id="companyPageContactsHeader" class="text-lg font-semibold text-sage-800 mb-4">Contacts</h2>
 
@@ -1625,9 +1651,10 @@
 
         async function loadCompanyPageData(companyId) {
             try {
-                const [companyRes, contactsRes] = await Promise.all([
+                const [companyRes, contactsRes, notesRes] = await Promise.all([
                     fetch(`/api/companies/${companyId}/full`),
-                    fetch(`/api/companies/${companyId}/contacts`)
+                    fetch(`/api/companies/${companyId}/contacts`),
+                    fetch(`/api/companies/${companyId}/notes`)
                 ]);
 
                 if (!companyRes.ok) {
@@ -1638,9 +1665,10 @@
 
                 const company = await companyRes.json();
                 const contactsData = await contactsRes.json();
+                const notesData = await notesRes.json();
 
                 currentCompanyPageData = company;
-                renderCompanyPage(company, contactsData.contacts);
+                renderCompanyPage(company, contactsData.contacts, notesData.notes);
             } catch (err) {
                 console.error('Failed to load company page:', err);
                 alert('Failed to load company data');
@@ -1648,7 +1676,7 @@
             }
         }
 
-        function renderCompanyPage(company, contacts) {
+        function renderCompanyPage(company, contacts, notes = []) {
             // Header
             document.getElementById('companyPageName').textContent = company.name || 'Unknown Company';
 
@@ -1732,6 +1760,9 @@
             } else {
                 pricingDiv.classList.add('hidden');
             }
+
+            // Notes
+            renderCompanyPageNotes(notes);
 
             // Contacts
             document.getElementById('companyPageContactsHeader').textContent = `Contacts (${contacts.length})`;
@@ -1818,6 +1849,77 @@
                 document.getElementById('companyPageNoScreenshot').classList.add('hidden');
             } catch (err) {
                 console.error('Failed to regenerate screenshot:', err);
+            }
+        }
+
+        function renderCompanyPageNotes(notes) {
+            const container = document.getElementById('companyPageNotes');
+            const emptyMsg = document.getElementById('companyPageNotesEmpty');
+
+            if (notes.length === 0) {
+                container.innerHTML = '';
+                emptyMsg.classList.remove('hidden');
+            } else {
+                emptyMsg.classList.add('hidden');
+                container.innerHTML = notes.map(note => {
+                    const date = new Date(note.created_at).toLocaleDateString('en-US', {
+                        month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
+                    });
+                    return `
+                        <div class="flex items-start justify-between p-3 rounded-lg bg-cream-50 border border-cream-200">
+                            <div class="flex-1">
+                                <p class="text-sm text-sage-700">${note.content}</p>
+                                <p class="text-xs text-sage-400 mt-1">${date}</p>
+                            </div>
+                            <button onclick="companyPageDeleteNote('${note.id}')" class="text-sage-400 hover:text-red-500 px-2">&times;</button>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        async function companyPageAddNote() {
+            const input = document.getElementById('companyPageNoteInput');
+            const content = input.value.trim();
+            if (!content || !currentCompanyPageId) return;
+
+            try {
+                const res = await fetch(`/api/companies/${currentCompanyPageId}/notes`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                });
+
+                if (res.ok) {
+                    input.value = '';
+                    await refreshCompanyPageNotes();
+                }
+            } catch (err) {
+                console.error('Failed to add note:', err);
+                alert('Failed to add note');
+            }
+        }
+
+        async function companyPageDeleteNote(noteId) {
+            if (!confirm('Delete this note?')) return;
+
+            try {
+                await fetch(`/api/company-notes/${noteId}`, { method: 'DELETE' });
+                await refreshCompanyPageNotes();
+            } catch (err) {
+                console.error('Failed to delete note:', err);
+                alert('Failed to delete note');
+            }
+        }
+
+        async function refreshCompanyPageNotes() {
+            if (!currentCompanyPageId) return;
+            try {
+                const res = await fetch(`/api/companies/${currentCompanyPageId}/notes`);
+                const data = await res.json();
+                renderCompanyPageNotes(data.notes);
+            } catch (err) {
+                console.error('Failed to refresh notes:', err);
             }
         }
 

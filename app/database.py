@@ -132,9 +132,18 @@ CREATE TABLE IF NOT EXISTS stage_changes (
     FOREIGN KEY (contact_id) REFERENCES contacts(id)
 );
 
+CREATE TABLE IF NOT EXISTS company_notes (
+    id TEXT PRIMARY KEY,
+    company_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_email_templates_category ON email_templates(category);
 CREATE INDEX IF NOT EXISTS idx_contact_notes_contact_id ON contact_notes(contact_id);
 CREATE INDEX IF NOT EXISTS idx_stage_changes_contact_id ON stage_changes(contact_id);
+CREATE INDEX IF NOT EXISTS idx_company_notes_company_id ON company_notes(company_id);
 """
 
 # Migration queries for existing databases
