@@ -115,7 +115,26 @@ CREATE TABLE IF NOT EXISTS email_templates (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS contact_notes (
+    id TEXT PRIMARY KEY,
+    contact_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (contact_id) REFERENCES contacts(id)
+);
+
+CREATE TABLE IF NOT EXISTS stage_changes (
+    id TEXT PRIMARY KEY,
+    contact_id TEXT NOT NULL,
+    from_stage TEXT,
+    to_stage TEXT NOT NULL,
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (contact_id) REFERENCES contacts(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_email_templates_category ON email_templates(category);
+CREATE INDEX IF NOT EXISTS idx_contact_notes_contact_id ON contact_notes(contact_id);
+CREATE INDEX IF NOT EXISTS idx_stage_changes_contact_id ON stage_changes(contact_id);
 """
 
 # Migration queries for existing databases

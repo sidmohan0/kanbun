@@ -408,6 +408,143 @@
                 </button>
             </div>
         </div>
+
+        <!-- Contact Page (shown when viewing individual contact) -->
+        <div id="contactPageContent" class="hidden">
+            <button onclick="navigateBack()" class="flex items-center gap-2 text-sage-600 hover:text-sage-800 mb-4">
+                <span>&larr;</span> Back
+            </button>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Left Column: Contact Details -->
+                <div class="lg:col-span-1 space-y-4">
+                    <!-- Contact Header Card -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
+                        <h1 id="contactPageName" class="text-2xl font-bold text-sage-800 mb-1"></h1>
+                        <p id="contactPageTitle" class="text-sage-600 mb-1"></p>
+                        <p id="contactPageCompany" class="text-sage-500 text-sm mb-4"></p>
+
+                        <div id="contactPageDetails" class="space-y-2 text-sm">
+                            <!-- Email, phone, LinkedIn populated by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions Card -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-4">
+                        <h3 class="font-medium text-sage-700 mb-3">Actions</h3>
+
+                        <!-- Email Template Selector -->
+                        <div class="mb-3">
+                            <select id="contactPageTemplateSelect" onchange="updateContactPageTemplatePreview()"
+                                    class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 text-sm focus:ring-2 focus:ring-terracotta-300">
+                                <option value="">Select template...</option>
+                            </select>
+                        </div>
+
+                        <div class="flex gap-2 mb-3">
+                            <button id="contactPageEmailBtn" onclick="contactPageSendEmail()"
+                                    class="flex-1 bg-terracotta-500 text-white px-3 py-2 rounded-lg hover:bg-terracotta-600 text-sm transition-colors">
+                                Send Email
+                            </button>
+                            <a id="contactPageLinkedInBtn" href="#" target="_blank"
+                               class="flex-1 bg-sage-600 text-white px-3 py-2 rounded-lg hover:bg-sage-700 text-sm text-center hidden transition-colors">
+                                LinkedIn
+                            </a>
+                        </div>
+
+                        <!-- Log Outreach -->
+                        <div class="border-t border-cream-200 pt-3">
+                            <p class="text-xs text-sage-500 mb-2">Log outreach:</p>
+                            <div class="flex gap-1">
+                                <button onclick="contactPageLogOutreach('email')" class="flex-1 bg-cream-100 text-sage-700 px-2 py-1 rounded text-xs hover:bg-cream-200 border border-cream-300">Email</button>
+                                <button onclick="contactPageLogOutreach('linkedin')" class="flex-1 bg-cream-100 text-sage-700 px-2 py-1 rounded text-xs hover:bg-cream-200 border border-cream-300">LinkedIn</button>
+                                <button onclick="contactPageLogOutreach('call')" class="flex-1 bg-cream-100 text-sage-700 px-2 py-1 rounded text-xs hover:bg-cream-200 border border-cream-300">Call</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Stage & Relationship Card -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-4">
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-sage-700 mb-1">Stage</label>
+                            <select id="contactPageStage" onchange="contactPageUpdateStage()"
+                                    class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 text-sm focus:ring-2 focus:ring-terracotta-300">
+                                <option value="backlog">Backlog</option>
+                                <option value="contacted">Contacted</option>
+                                <option value="reaching_out">Reaching Out</option>
+                                <option value="engaged">Engaged</option>
+                                <option value="meeting">Meeting</option>
+                                <option value="won">Won</option>
+                                <option value="lost">Lost</option>
+                                <option value="naf">NAF</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-sage-700 mb-1">Relationship</label>
+                            <input type="text" id="contactPageRelationship" onblur="contactPageSaveRelationship()"
+                                   class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 text-sm focus:ring-2 focus:ring-terracotta-300"
+                                   placeholder="How do you know them?">
+                        </div>
+                    </div>
+
+                    <!-- Company Card (collapsible) -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-cream-200 overflow-hidden">
+                        <button onclick="toggleCompanyCard()" class="w-full flex items-center justify-between p-4 hover:bg-cream-50">
+                            <h3 class="font-medium text-sage-700">Company</h3>
+                            <span id="companyCardToggle" class="text-sage-400">▼</span>
+                        </button>
+                        <div id="companyCardContent" class="px-4 pb-4">
+                            <div id="contactPageCompanyInfo" class="text-sm space-y-2">
+                                <!-- Company info populated by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Activity Timeline -->
+                <div class="lg:col-span-2">
+                    <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
+                        <h2 class="text-lg font-semibold text-sage-800 mb-4">Activity</h2>
+
+                        <!-- Add Entry Bar -->
+                        <div class="space-y-3 mb-6 pb-6 border-b border-cream-200">
+                            <!-- Add Note -->
+                            <div class="flex gap-2">
+                                <input type="text" id="contactPageNoteInput" placeholder="Add a note..."
+                                       class="flex-1 border border-cream-300 rounded-lg px-3 py-2 text-sm text-sage-700 focus:ring-2 focus:ring-terracotta-300"
+                                       onkeydown="if(event.key==='Enter') contactPageAddNote()">
+                                <button onclick="contactPageAddNote()"
+                                        class="bg-sage-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-sage-700 transition-colors">
+                                    Add Note
+                                </button>
+                            </div>
+
+                            <!-- Add Reminder -->
+                            <div class="flex gap-2">
+                                <input type="date" id="contactPageReminderDate"
+                                       class="border border-cream-300 rounded-lg px-3 py-2 text-sm text-sage-700 focus:ring-2 focus:ring-terracotta-300">
+                                <input type="text" id="contactPageReminderNote" placeholder="Reminder note..."
+                                       class="flex-1 border border-cream-300 rounded-lg px-3 py-2 text-sm text-sage-700 focus:ring-2 focus:ring-terracotta-300">
+                                <button onclick="contactPageAddReminder()"
+                                        class="bg-terracotta-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-terracotta-600 transition-colors">
+                                    Add Reminder
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Timeline Feed -->
+                        <div id="contactPageTimeline" class="space-y-3">
+                            <!-- Timeline entries populated by JS -->
+                        </div>
+
+                        <div id="contactPageTimelineEmpty" class="hidden text-center py-8 text-sage-400">
+                            No activity yet. Add a note or log your first outreach.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Screenshot Modal -->
@@ -898,6 +1035,441 @@
             await loadPipeline();
         }
 
+        // =============================================================================
+        // Contact Page Functions
+        // =============================================================================
+        let currentContactPageId = null;
+        let currentContactPageData = null;
+        let contactPageTemplatesCache = {};
+        let previousLocation = 'pipeline'; // Track where user came from
+
+        // Hash routing
+        function initHashRouting() {
+            window.addEventListener('hashchange', handleHashChange);
+            handleHashChange(); // Handle initial hash on page load
+        }
+
+        function handleHashChange() {
+            const hash = window.location.hash;
+            if (hash.startsWith('#/contact/')) {
+                const contactId = hash.replace('#/contact/', '');
+                showContactPage(contactId);
+            } else if (hash === '' || hash === '#') {
+                // No hash, show default view
+                hideContactPage();
+            }
+        }
+
+        function navigateToContact(contactId) {
+            // Store current location before navigating
+            const currentTab = document.querySelector('[id^="tab"].bg-white');
+            if (currentTab) {
+                previousLocation = currentTab.id.replace('tab', '').toLowerCase();
+                if (previousLocation === 'database') previousLocation = 'contacts';
+            }
+            window.location.hash = `/contact/${contactId}`;
+        }
+
+        function navigateBack() {
+            window.location.hash = '';
+            showTab(previousLocation || 'pipeline');
+        }
+
+        async function showContactPage(contactId) {
+            currentContactPageId = contactId;
+
+            // Hide all tab content and show contact page
+            const allContent = ['homeContent', 'pipelineContent', 'jobsContent', 'databaseContent', 'contactsContent'];
+            allContent.forEach(id => document.getElementById(id)?.classList.add('hidden'));
+            document.getElementById('contactPageContent').classList.remove('hidden');
+
+            // Deactivate all tabs
+            ['tabHome', 'tabPipeline', 'tabJobs', 'tabDatabase', 'tabContacts'].forEach(id => {
+                const tab = document.getElementById(id);
+                tab.classList.remove('bg-white', 'text-sage-700', 'shadow-sm');
+                tab.classList.add('text-sage-600');
+            });
+
+            // Load contact data
+            await loadContactPageData(contactId);
+        }
+
+        function hideContactPage() {
+            document.getElementById('contactPageContent').classList.add('hidden');
+            currentContactPageId = null;
+            currentContactPageData = null;
+        }
+
+        async function loadContactPageData(contactId) {
+            try {
+                // Fetch contact details and timeline in parallel
+                const [contactRes, timelineRes, templatesRes] = await Promise.all([
+                    fetch(`/api/contacts/${contactId}/full`),
+                    fetch(`/api/contacts/${contactId}/timeline`),
+                    fetch('/api/templates')
+                ]);
+
+                if (!contactRes.ok) {
+                    alert('Contact not found');
+                    navigateBack();
+                    return;
+                }
+
+                const contact = await contactRes.json();
+                const timelineData = await timelineRes.json();
+                const templatesData = await templatesRes.json();
+
+                currentContactPageData = contact;
+                contactPageTemplatesCache = {};
+                (templatesData.templates || []).forEach(t => contactPageTemplatesCache[t.id] = t);
+
+                renderContactPageDetails(contact);
+                renderContactPageTimeline(timelineData.timeline);
+                populateContactPageTemplates(templatesData.templates || []);
+            } catch (err) {
+                console.error('Failed to load contact page:', err);
+                alert('Failed to load contact');
+                navigateBack();
+            }
+        }
+
+        function renderContactPageDetails(contact) {
+            const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unknown';
+            document.getElementById('contactPageName').textContent = name;
+            document.getElementById('contactPageTitle').textContent = contact.title || '';
+            document.getElementById('contactPageCompany').textContent = contact.company_name || '';
+
+            // Contact details (email, phone, linkedin)
+            let detailsHtml = '';
+            if (contact.email) {
+                detailsHtml += `<div><a href="mailto:${contact.email}" class="text-terracotta-600 hover:underline">${contact.email}</a></div>`;
+            }
+            if (contact.phone) {
+                detailsHtml += `<div class="text-sage-600">${contact.phone}</div>`;
+            }
+            if (contact.linkedin_url) {
+                detailsHtml += `<div><a href="${contact.linkedin_url}" target="_blank" class="text-sage-600 hover:underline">LinkedIn Profile</a></div>`;
+            }
+            document.getElementById('contactPageDetails').innerHTML = detailsHtml || '<div class="text-sage-400">No contact details</div>';
+
+            // Email button state
+            const emailBtn = document.getElementById('contactPageEmailBtn');
+            if (contact.email) {
+                emailBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                emailBtn.disabled = false;
+            } else {
+                emailBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                emailBtn.disabled = true;
+            }
+
+            // LinkedIn button
+            const linkedInBtn = document.getElementById('contactPageLinkedInBtn');
+            if (contact.linkedin_url) {
+                linkedInBtn.href = contact.linkedin_url;
+                linkedInBtn.classList.remove('hidden');
+            } else {
+                linkedInBtn.classList.add('hidden');
+            }
+
+            // Stage and relationship
+            document.getElementById('contactPageStage').value = contact.stage || 'backlog';
+            document.getElementById('contactPageRelationship').value = contact.relationship || '';
+
+            // Company info
+            renderContactPageCompanyInfo(contact);
+        }
+
+        function renderContactPageCompanyInfo(contact) {
+            const container = document.getElementById('contactPageCompanyInfo');
+
+            if (!contact.company_id) {
+                container.innerHTML = '<p class="text-sage-400">No company linked</p>';
+                return;
+            }
+
+            let html = '';
+            if (contact.company_website) {
+                html += `<div><a href="${contact.company_website}" target="_blank" class="text-terracotta-600 hover:underline">${contact.company_website}</a></div>`;
+            }
+            if (contact.industry) {
+                html += `<div><span class="text-sage-500">Industry:</span> ${contact.industry}</div>`;
+            }
+            if (contact.company_size) {
+                html += `<div><span class="text-sage-500">Size:</span> ${contact.company_size}</div>`;
+            }
+            if (contact.headquarters) {
+                html += `<div><span class="text-sage-500">HQ:</span> ${contact.headquarters}</div>`;
+            }
+            if (contact.company_description) {
+                const desc = contact.company_description.length > 200
+                    ? contact.company_description.substring(0, 200) + '...'
+                    : contact.company_description;
+                html += `<div class="mt-2 text-sage-600">${desc}</div>`;
+            }
+
+            container.innerHTML = html || '<p class="text-sage-400">No company details</p>';
+        }
+
+        function toggleCompanyCard() {
+            const content = document.getElementById('companyCardContent');
+            const toggle = document.getElementById('companyCardToggle');
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                toggle.textContent = '▼';
+            } else {
+                content.classList.add('hidden');
+                toggle.textContent = '▶';
+            }
+        }
+
+        function populateContactPageTemplates(templates) {
+            const select = document.getElementById('contactPageTemplateSelect');
+            select.innerHTML = '<option value="">Select template...</option>' +
+                templates.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+        }
+
+        function updateContactPageTemplatePreview() {
+            // Just store the selected template for use when sending
+        }
+
+        function renderContactPageTimeline(timeline) {
+            const container = document.getElementById('contactPageTimeline');
+            const emptyState = document.getElementById('contactPageTimelineEmpty');
+
+            if (!timeline || timeline.length === 0) {
+                container.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+
+            const stageLabels = {
+                backlog: 'Backlog', contacted: 'Contacted', reaching_out: 'Reaching Out',
+                engaged: 'Engaged', meeting: 'Meeting', won: 'Won', lost: 'Lost', naf: 'NAF'
+            };
+
+            container.innerHTML = timeline.map(item => {
+                const date = new Date(item.timestamp).toLocaleDateString('en-US', {
+                    month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                });
+
+                if (item.type === 'note') {
+                    return `
+                        <div class="flex gap-3 p-3 bg-cream-50 rounded-lg">
+                            <div class="text-lg">📝</div>
+                            <div class="flex-1">
+                                <div class="text-sm text-sage-700">${escapeHtml(item.content)}</div>
+                                <div class="text-xs text-sage-400 mt-1">${date}</div>
+                            </div>
+                            <button onclick="deleteTimelineNote('${item.id}')" class="text-sage-400 hover:text-red-500 text-sm">&times;</button>
+                        </div>
+                    `;
+                } else if (item.type === 'outreach') {
+                    const typeLabel = item.outreach_type.charAt(0).toUpperCase() + item.outreach_type.slice(1);
+                    return `
+                        <div class="flex gap-3 p-3 bg-terracotta-50 rounded-lg">
+                            <div class="text-lg">✉️</div>
+                            <div class="flex-1">
+                                <div class="text-sm font-medium text-terracotta-700">${typeLabel} sent</div>
+                                ${item.note ? `<div class="text-sm text-sage-600 mt-1">${escapeHtml(item.note)}</div>` : ''}
+                                <div class="text-xs text-sage-400 mt-1">${date}</div>
+                            </div>
+                        </div>
+                    `;
+                } else if (item.type === 'reminder') {
+                    const isOverdue = !item.completed && new Date(item.due_date) < new Date();
+                    const statusClass = item.completed ? 'bg-sage-50 opacity-60' : (isOverdue ? 'bg-red-50' : 'bg-amber-50');
+                    return `
+                        <div class="flex gap-3 p-3 ${statusClass} rounded-lg">
+                            <div class="text-lg">${item.completed ? '✅' : '⏰'}</div>
+                            <div class="flex-1">
+                                <div class="text-sm ${item.completed ? 'line-through text-sage-400' : 'text-sage-700'}">
+                                    ${escapeHtml(item.note || 'Reminder')}
+                                </div>
+                                <div class="text-xs ${isOverdue ? 'text-red-500 font-medium' : 'text-sage-400'} mt-1">
+                                    Due: ${item.due_date} ${isOverdue && !item.completed ? '(Overdue)' : ''}
+                                </div>
+                            </div>
+                            ${!item.completed ? `
+                                <button onclick="completeTimelineReminder('${item.id}')" class="text-sage-400 hover:text-green-500 text-sm">✓</button>
+                            ` : ''}
+                        </div>
+                    `;
+                } else if (item.type === 'stage_change') {
+                    const fromLabel = stageLabels[item.from_stage] || item.from_stage || 'None';
+                    const toLabel = stageLabels[item.to_stage] || item.to_stage;
+                    return `
+                        <div class="flex gap-3 p-3 bg-sage-50 rounded-lg">
+                            <div class="text-lg">📍</div>
+                            <div class="flex-1">
+                                <div class="text-sm text-sage-600">
+                                    Moved from <span class="font-medium">${fromLabel}</span> to <span class="font-medium">${toLabel}</span>
+                                </div>
+                                <div class="text-xs text-sage-400 mt-1">${date}</div>
+                            </div>
+                        </div>
+                    `;
+                }
+                return '';
+            }).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Contact Page Actions
+        async function contactPageAddNote() {
+            const input = document.getElementById('contactPageNoteInput');
+            const content = input.value.trim();
+            if (!content) return;
+
+            try {
+                await fetch(`/api/contacts/${currentContactPageId}/notes`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                });
+                input.value = '';
+                await refreshContactPageTimeline();
+            } catch (err) {
+                console.error('Failed to add note:', err);
+                alert('Failed to add note');
+            }
+        }
+
+        async function contactPageAddReminder() {
+            const dateInput = document.getElementById('contactPageReminderDate');
+            const noteInput = document.getElementById('contactPageReminderNote');
+            const dueDate = dateInput.value;
+            const note = noteInput.value.trim();
+
+            if (!dueDate) {
+                alert('Please select a date');
+                return;
+            }
+
+            try {
+                await fetch(`/api/contacts/${currentContactPageId}/reminders`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ due_date: dueDate, note: note || 'Reminder' })
+                });
+                dateInput.value = '';
+                noteInput.value = '';
+                await refreshContactPageTimeline();
+            } catch (err) {
+                console.error('Failed to add reminder:', err);
+                alert('Failed to add reminder');
+            }
+        }
+
+        async function contactPageLogOutreach(type) {
+            try {
+                await fetch(`/api/contacts/${currentContactPageId}/outreach`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ outreach_type: type, note: '' })
+                });
+                await refreshContactPageTimeline();
+
+                // Auto-move to contacted if in backlog
+                if (currentContactPageData?.stage === 'backlog') {
+                    document.getElementById('contactPageStage').value = 'contacted';
+                    await contactPageUpdateStage();
+                }
+            } catch (err) {
+                console.error('Failed to log outreach:', err);
+                alert('Failed to log outreach');
+            }
+        }
+
+        async function contactPageUpdateStage() {
+            const stage = document.getElementById('contactPageStage').value;
+            try {
+                await fetch(`/api/contacts/${currentContactPageId}/stage`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stage })
+                });
+                if (currentContactPageData) currentContactPageData.stage = stage;
+                await refreshContactPageTimeline();
+            } catch (err) {
+                console.error('Failed to update stage:', err);
+                alert('Failed to update stage');
+            }
+        }
+
+        async function contactPageSaveRelationship() {
+            const relationship = document.getElementById('contactPageRelationship').value;
+            try {
+                await fetch(`/api/contacts/${currentContactPageId}/relationship`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ relationship })
+                });
+            } catch (err) {
+                console.error('Failed to save relationship:', err);
+            }
+        }
+
+        function contactPageSendEmail() {
+            if (!currentContactPageData?.email) return;
+
+            const templateSelect = document.getElementById('contactPageTemplateSelect');
+            const templateId = templateSelect.value;
+            const template = templateId ? contactPageTemplatesCache[templateId] : null;
+
+            let subject = '';
+            let body = '';
+
+            if (template) {
+                subject = substituteTemplateVariables(template.subject, currentContactPageData);
+                body = substituteTemplateVariables(template.body, currentContactPageData);
+            }
+
+            const mailtoUrl = `mailto:${currentContactPageData.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            window.open(mailtoUrl, '_blank');
+        }
+
+        async function deleteTimelineNote(noteId) {
+            if (!confirm('Delete this note?')) return;
+            try {
+                await fetch(`/api/notes/${noteId}`, { method: 'DELETE' });
+                await refreshContactPageTimeline();
+            } catch (err) {
+                console.error('Failed to delete note:', err);
+                alert('Failed to delete note');
+            }
+        }
+
+        async function completeTimelineReminder(reminderId) {
+            try {
+                await fetch(`/api/reminders/${reminderId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ completed: true })
+                });
+                await refreshContactPageTimeline();
+            } catch (err) {
+                console.error('Failed to complete reminder:', err);
+                alert('Failed to complete reminder');
+            }
+        }
+
+        async function refreshContactPageTimeline() {
+            try {
+                const res = await fetch(`/api/contacts/${currentContactPageId}/timeline`);
+                const data = await res.json();
+                renderContactPageTimeline(data.timeline);
+            } catch (err) {
+                console.error('Failed to refresh timeline:', err);
+            }
+        }
+
         // Tab switching
         function showTab(tab) {
             const homeContent = document.getElementById('homeContent');
@@ -905,11 +1477,18 @@
             const jobsContent = document.getElementById('jobsContent');
             const databaseContent = document.getElementById('databaseContent');
             const contactsContent = document.getElementById('contactsContent');
+            const contactPageContent = document.getElementById('contactPageContent');
             const tabHome = document.getElementById('tabHome');
             const tabPipeline = document.getElementById('tabPipeline');
             const tabJobs = document.getElementById('tabJobs');
             const tabDatabase = document.getElementById('tabDatabase');
             const tabContacts = document.getElementById('tabContacts');
+
+            // Hide contact page if showing
+            contactPageContent.classList.add('hidden');
+            if (window.location.hash.startsWith('#/contact/')) {
+                history.pushState(null, '', window.location.pathname);
+            }
 
             // Reset all tabs
             [tabHome, tabPipeline, tabJobs, tabDatabase, tabContacts].forEach(t => {
@@ -1748,88 +2327,8 @@
         }
 
         async function showContactDetail(contactId) {
-            currentContactId = contactId;
-
-            // Fetch contact data from database/contacts (find by id)
-            const response = await fetch(`/api/database/contacts?limit=1000`);
-            const data = await response.json();
-            const contact = data.contacts.find(c => c.id === contactId);
-
-            if (!contact) {
-                alert('Contact not found');
-                return;
-            }
-
-            currentContact = contact; // Store for email function
-
-            // Set name
-            const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unknown';
-            document.getElementById('contactModalName').textContent = name;
-
-            // Build info section
-            const infoHtml = `
-                ${contact.title ? `<div><span class="text-gray-500 text-sm">Title:</span> ${contact.title}</div>` : ''}
-                ${contact.email ? `<div><span class="text-gray-500 text-sm">Email:</span> <a href="mailto:${contact.email}" class="text-blue-600">${contact.email}</a></div>` : ''}
-                ${contact.phone ? `<div><span class="text-gray-500 text-sm">Phone:</span> ${contact.phone}</div>` : ''}
-                ${contact.linkedin_url ? `<div><span class="text-gray-500 text-sm">LinkedIn:</span> <a href="${contact.linkedin_url}" target="_blank" class="text-blue-600">Profile</a></div>` : ''}
-                ${contact.company_name ? `<div class="pt-2 border-t"><span class="text-gray-500 text-sm">Company:</span> ${contact.company_name}</div>` : ''}
-                ${contact.company_website ? `<div><span class="text-gray-500 text-sm">Website:</span> <a href="${contact.company_website}" target="_blank" class="text-blue-600">${contact.company_website}</a></div>` : ''}
-                ${contact.company_description ? `
-                    <div class="pt-2 mt-2 border-t border-cream-200">
-                        <div class="text-gray-500 text-sm mb-1">About Company:</div>
-                        <div class="text-sage-700 text-sm bg-cream-50 p-2 rounded-lg">${contact.company_description}</div>
-                    </div>
-                ` : ''}
-                ${contact.company_id ? `
-                    <div class="mt-2">
-                        <img src="/api/screenshots/${contact.company_id}"
-                             class="w-full rounded-lg border border-cream-200 cursor-pointer hover:opacity-90"
-                             onclick="window.open('/api/screenshots/${contact.company_id}', '_blank')"
-                             onerror="this.style.display='none'"
-                             alt="Company screenshot">
-                    </div>
-                ` : ''}
-            `;
-            document.getElementById('contactModalInfo').innerHTML = infoHtml;
-
-            // Set relationship, stage and notes
-            document.getElementById('contactRelationship').value = contact.relationship || '';
-            document.getElementById('contactStageSelect').value = contact.stage || 'backlog';
-            document.getElementById('contactNotes').value = contact.notes || '';
-
-            // Setup action buttons
-            const emailBtn = document.getElementById('emailContactBtn');
-            const linkedinBtn = document.getElementById('linkedinContactBtn');
-
-            if (contact.email) {
-                emailBtn.disabled = false;
-                emailBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                emailBtn.title = '';
-            } else {
-                emailBtn.disabled = true;
-                emailBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                emailBtn.title = 'No email address';
-            }
-
-            if (contact.linkedin_url) {
-                linkedinBtn.href = contact.linkedin_url;
-                linkedinBtn.classList.remove('hidden');
-            } else {
-                linkedinBtn.classList.add('hidden');
-            }
-
-            // Load templates and reminders
-            await populateTemplateDropdown();
-            await loadContactReminders();
-            await loadOutreachHistory();
-
-            // Show modal
-            const modal = document.getElementById('contactModal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-
-            // Set default date to today
-            document.getElementById('reminderDate').value = new Date().toISOString().split('T')[0];
+            // Navigate to the contact page instead of opening modal
+            navigateToContact(contactId);
         }
 
         function emailContact() {
@@ -2329,6 +2828,7 @@ Best,
         });
 
         // Initial load
+        initHashRouting();
         loadHomeStats();
         loadHomeTemplates();
         loadEmailClientSetting();

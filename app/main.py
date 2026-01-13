@@ -69,6 +69,10 @@ class TemplateUpdate(BaseModel):
     body: Optional[str] = None
 
 
+class NoteCreate(BaseModel):
+    content: str
+
+
 VALID_STAGES = {"backlog", "contacted", "reaching_out", "engaged", "meeting", "won", "lost", "naf"}
 VALID_OUTREACH_TYPES = {"email", "linkedin", "call", "other"}
 
@@ -719,18 +723,32 @@ async def update_contact_stage(contact_id: str, stage_update: StageUpdate):
         )
 
     async with get_db(settings.effective_database_path) as db:
+        # Get current stage
         cursor = await db.execute(
-            "SELECT id FROM contacts WHERE id = ?",
+            "SELECT id, stage FROM contacts WHERE id = ?",
             (contact_id,)
         )
-        if not await cursor.fetchone():
+        row = await cursor.fetchone()
+        if not row:
             raise HTTPException(status_code=404, detail="Contact not found")
 
-        await db.execute(
-            "UPDATE contacts SET stage = ? WHERE id = ?",
-            (stage_update.stage, contact_id)
-        )
-        await db.commit()
+        old_stage = row["stage"]
+        new_stage = stage_update.stage
+
+        # Only log and update if stage actually changed
+        if old_stage != new_stage:
+            await db.execute(
+                "UPDATE contacts SET stage = ? WHERE id = ?",
+                (new_stage, contact_id)
+            )
+
+            # Log stage change
+            change_id = str(uuid.uuid4())
+            await db.execute(
+                "INSERT INTO stage_changes (id, contact_id, from_stage, to_stage) VALUES (?, ?, ?, ?)",
+                (change_id, contact_id, old_stage, new_stage)
+            )
+            await db.commit()
 
         # Fetch the updated contact
         cursor = await db.execute(
@@ -784,6 +802,150 @@ async def update_contact_relationship(contact_id: str, rel_update: RelationshipU
         await db.commit()
 
         return {"status": "updated", "relationship": rel_update.relationship}
+
+
+@app.get("/api/contacts/{contact_id}/full")
+async def get_contact_full(contact_id: str):
+    """Get full contact details including company info."""
+    async with get_db(settings.effective_database_path) as db:
+        cursor = await db.execute(
+            """
+            SELECT
+                ct.*,
+                c.name as company_name,
+                c.website_url as company_website,
+                c.company_description,
+                c.industry,
+                c.headquarters,
+                c.company_size,
+                c.founded_year,
+                c.meta_description,
+                c.technologies,
+                c.products_services
+            FROM contacts ct
+            LEFT JOIN companies c ON ct.company_id = c.id
+            WHERE ct.id = ?
+            """,
+            (contact_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        return dict(row)
+
+
+@app.get("/api/contacts/{contact_id}/timeline")
+async def get_contact_timeline(contact_id: str):
+    """Get unified activity timeline for a contact."""
+    async with get_db(settings.effective_database_path) as db:
+        # Verify contact exists
+        cursor = await db.execute("SELECT id FROM contacts WHERE id = ?", (contact_id,))
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        # Fetch all activity types
+        activities = []
+
+        # Notes
+        cursor = await db.execute(
+            "SELECT id, content, created_at FROM contact_notes WHERE contact_id = ? ORDER BY created_at DESC",
+            (contact_id,)
+        )
+        for row in await cursor.fetchall():
+            activities.append({
+                "type": "note",
+                "id": row["id"],
+                "content": row["content"],
+                "timestamp": row["created_at"]
+            })
+
+        # Outreach
+        cursor = await db.execute(
+            "SELECT id, outreach_type, note, sent_at FROM outreach_log WHERE contact_id = ? ORDER BY sent_at DESC",
+            (contact_id,)
+        )
+        for row in await cursor.fetchall():
+            activities.append({
+                "type": "outreach",
+                "id": row["id"],
+                "outreach_type": row["outreach_type"],
+                "note": row["note"],
+                "timestamp": row["sent_at"]
+            })
+
+        # Reminders
+        cursor = await db.execute(
+            "SELECT id, due_date, note, completed, created_at FROM reminders WHERE contact_id = ? ORDER BY created_at DESC",
+            (contact_id,)
+        )
+        for row in await cursor.fetchall():
+            activities.append({
+                "type": "reminder",
+                "id": row["id"],
+                "due_date": row["due_date"],
+                "note": row["note"],
+                "completed": bool(row["completed"]),
+                "timestamp": row["created_at"]
+            })
+
+        # Stage changes
+        cursor = await db.execute(
+            "SELECT id, from_stage, to_stage, changed_at FROM stage_changes WHERE contact_id = ? ORDER BY changed_at DESC",
+            (contact_id,)
+        )
+        for row in await cursor.fetchall():
+            activities.append({
+                "type": "stage_change",
+                "id": row["id"],
+                "from_stage": row["from_stage"],
+                "to_stage": row["to_stage"],
+                "timestamp": row["changed_at"]
+            })
+
+        # Sort all activities by timestamp descending
+        activities.sort(key=lambda x: x["timestamp"] or "", reverse=True)
+
+        return {"timeline": activities}
+
+
+@app.post("/api/contacts/{contact_id}/notes")
+async def create_contact_note(contact_id: str, note: NoteCreate):
+    """Add a note to a contact."""
+    note_id = str(uuid.uuid4())
+
+    async with get_db(settings.effective_database_path) as db:
+        # Verify contact exists
+        cursor = await db.execute("SELECT id FROM contacts WHERE id = ?", (contact_id,))
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        await db.execute(
+            "INSERT INTO contact_notes (id, contact_id, content) VALUES (?, ?, ?)",
+            (note_id, contact_id, note.content)
+        )
+        await db.commit()
+
+        cursor = await db.execute(
+            "SELECT id, contact_id, content, created_at FROM contact_notes WHERE id = ?",
+            (note_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row)
+
+
+@app.delete("/api/notes/{note_id}")
+async def delete_note(note_id: str):
+    """Delete a note."""
+    async with get_db(settings.effective_database_path) as db:
+        cursor = await db.execute("SELECT id FROM contact_notes WHERE id = ?", (note_id,))
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Note not found")
+
+        await db.execute("DELETE FROM contact_notes WHERE id = ?", (note_id,))
+        await db.commit()
+
+        return {"status": "deleted"}
 
 
 @app.get("/api/contacts/{contact_id}/outreach")
