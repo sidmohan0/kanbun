@@ -545,6 +545,100 @@
                 </div>
             </div>
         </div>
+
+        <!-- Company Page (shown when viewing individual company) -->
+        <div id="companyPageContent" class="hidden">
+            <button onclick="navigateBack()" class="flex items-center gap-2 text-sage-600 hover:text-sage-800 mb-4">
+                <span>&larr;</span> Back
+            </button>
+
+            <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                <!-- Left Column: Company Details (~40%) -->
+                <div class="lg:col-span-2 space-y-4">
+                    <!-- Company Header Card -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
+                        <h1 id="companyPageName" class="text-2xl font-bold text-sage-800 mb-2"></h1>
+                        <div id="companyPageLinks" class="flex gap-2 mb-4">
+                            <!-- Website and LinkedIn buttons populated by JS -->
+                        </div>
+
+                        <!-- Screenshot -->
+                        <div class="mb-4">
+                            <img id="companyPageScreenshot" src="" alt="Company screenshot"
+                                 class="w-full rounded-lg border border-cream-200 cursor-pointer hover:opacity-90"
+                                 onclick="showCompanyPageScreenshot()"
+                                 onerror="this.style.display='none'; document.getElementById('companyPageNoScreenshot').classList.remove('hidden')">
+                            <div id="companyPageNoScreenshot" class="hidden w-full h-48 bg-cream-100 rounded-lg border border-cream-200 flex items-center justify-center text-sage-400">
+                                No screenshot available
+                            </div>
+                            <button onclick="regenerateCompanyPageScreenshot()"
+                                    class="mt-2 text-sm text-sage-500 hover:text-sage-700">
+                                Regenerate screenshot
+                            </button>
+                        </div>
+
+                        <!-- Details -->
+                        <div id="companyPageDetails" class="grid grid-cols-2 gap-3 text-sm">
+                            <!-- Industry, size, headquarters, founded populated by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Description Card -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
+                        <h3 class="font-medium text-sage-700 mb-3">About</h3>
+                        <p id="companyPageDescription" class="text-sm text-sage-600 whitespace-pre-wrap"></p>
+                        <div id="companyPageMission" class="mt-4 hidden">
+                            <h4 class="font-medium text-sage-700 mb-2">Mission</h4>
+                            <p id="companyPageMissionText" class="text-sm text-sage-600 italic"></p>
+                        </div>
+                    </div>
+
+                    <!-- Additional Info (collapsible) -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-cream-200 overflow-hidden">
+                        <button onclick="toggleCompanyPageAdditional()" class="w-full flex items-center justify-between p-4 hover:bg-cream-50">
+                            <h3 class="font-medium text-sage-700">Additional Info</h3>
+                            <span id="companyPageAdditionalToggle" class="text-sage-400">▼</span>
+                        </button>
+                        <div id="companyPageAdditionalContent" class="px-4 pb-4 hidden">
+                            <div class="space-y-4 text-sm">
+                                <div id="companyPageProducts" class="hidden">
+                                    <h4 class="font-medium text-sage-700 mb-1">Products & Services</h4>
+                                    <p id="companyPageProductsText" class="text-sage-600"></p>
+                                </div>
+                                <div id="companyPageCustomers" class="hidden">
+                                    <h4 class="font-medium text-sage-700 mb-1">Target Customers</h4>
+                                    <p id="companyPageCustomersText" class="text-sage-600"></p>
+                                </div>
+                                <div id="companyPageTech" class="hidden">
+                                    <h4 class="font-medium text-sage-700 mb-1">Technologies</h4>
+                                    <div id="companyPageTechTags" class="flex flex-wrap gap-1"></div>
+                                </div>
+                                <div id="companyPagePricing" class="hidden">
+                                    <h4 class="font-medium text-sage-700 mb-1">Pricing Model</h4>
+                                    <p id="companyPagePricingText" class="text-sage-600"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Contacts at Company (~60%) -->
+                <div class="lg:col-span-3">
+                    <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
+                        <h2 id="companyPageContactsHeader" class="text-lg font-semibold text-sage-800 mb-4">Contacts</h2>
+
+                        <!-- Contacts List -->
+                        <div id="companyPageContacts" class="space-y-2">
+                            <!-- Contact rows populated by JS -->
+                        </div>
+
+                        <div id="companyPageContactsEmpty" class="hidden text-center py-8 text-sage-400">
+                            No contacts at this company
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Screenshot Modal -->
@@ -1054,9 +1148,13 @@
             if (hash.startsWith('#/contact/')) {
                 const contactId = hash.replace('#/contact/', '');
                 showContactPage(contactId);
+            } else if (hash.startsWith('#/company/')) {
+                const companyId = hash.replace('#/company/', '');
+                showCompanyPage(companyId);
             } else if (hash === '' || hash === '#') {
                 // No hash, show default view
                 hideContactPage();
+                hideCompanyPage();
             }
         }
 
@@ -1137,7 +1235,14 @@
             const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unknown';
             document.getElementById('contactPageName').textContent = name;
             document.getElementById('contactPageTitle').textContent = contact.title || '';
-            document.getElementById('contactPageCompany').textContent = contact.company_name || '';
+
+            // Company name - make clickable if company_id exists
+            const companyEl = document.getElementById('contactPageCompany');
+            if (contact.company_name && contact.company_id) {
+                companyEl.innerHTML = `<a href="#" onclick="event.preventDefault(); navigateToCompany('${contact.company_id}')" class="text-sage-500 hover:text-terracotta-600 hover:underline">${contact.company_name}</a>`;
+            } else {
+                companyEl.textContent = contact.company_name || '';
+            }
 
             // Contact details (email, phone, linkedin)
             let detailsHtml = '';
@@ -1188,6 +1293,12 @@
             }
 
             let html = '';
+
+            // Company name with link to company page
+            if (contact.company_name) {
+                html += `<div class="mb-2"><a href="#" onclick="event.preventDefault(); navigateToCompany('${contact.company_id}')" class="font-medium text-sage-700 hover:text-terracotta-600 hover:underline">${contact.company_name}</a></div>`;
+            }
+
             if (contact.company_website) {
                 html += `<div><a href="${contact.company_website}" target="_blank" class="text-terracotta-600 hover:underline">${contact.company_website}</a></div>`;
             }
@@ -1206,6 +1317,9 @@
                     : contact.company_description;
                 html += `<div class="mt-2 text-sage-600">${desc}</div>`;
             }
+
+            // View full company page link
+            html += `<div class="mt-3 pt-3 border-t border-cream-200"><a href="#" onclick="event.preventDefault(); navigateToCompany('${contact.company_id}')" class="text-sm text-terracotta-500 hover:text-terracotta-600">View full company page &rarr;</a></div>`;
 
             container.innerHTML = html || '<p class="text-sage-400">No company details</p>';
         }
@@ -1470,6 +1584,243 @@
             }
         }
 
+        // Company Page Functions
+        let currentCompanyPageId = null;
+        let currentCompanyPageData = null;
+
+        function navigateToCompany(companyId) {
+            // Store current location before navigating
+            const currentTab = document.querySelector('[id^="tab"].bg-white');
+            if (currentTab) {
+                previousLocation = currentTab.id.replace('tab', '').toLowerCase();
+                if (previousLocation === 'database') previousLocation = 'contacts';
+            }
+            window.location.hash = `/company/${companyId}`;
+        }
+
+        async function showCompanyPage(companyId) {
+            currentCompanyPageId = companyId;
+
+            // Hide all tab content and show company page
+            const allContent = ['homeContent', 'pipelineContent', 'jobsContent', 'databaseContent', 'contactsContent', 'contactPageContent'];
+            allContent.forEach(id => document.getElementById(id)?.classList.add('hidden'));
+            document.getElementById('companyPageContent').classList.remove('hidden');
+
+            // Deactivate all tabs
+            ['tabHome', 'tabPipeline', 'tabJobs', 'tabDatabase', 'tabContacts'].forEach(id => {
+                const tab = document.getElementById(id);
+                tab.classList.remove('bg-white', 'text-sage-700', 'shadow-sm');
+                tab.classList.add('text-sage-600');
+            });
+
+            // Load company data
+            await loadCompanyPageData(companyId);
+        }
+
+        function hideCompanyPage() {
+            document.getElementById('companyPageContent').classList.add('hidden');
+            currentCompanyPageId = null;
+            currentCompanyPageData = null;
+        }
+
+        async function loadCompanyPageData(companyId) {
+            try {
+                const [companyRes, contactsRes] = await Promise.all([
+                    fetch(`/api/companies/${companyId}/full`),
+                    fetch(`/api/companies/${companyId}/contacts`)
+                ]);
+
+                if (!companyRes.ok) {
+                    alert('Company not found');
+                    navigateBack();
+                    return;
+                }
+
+                const company = await companyRes.json();
+                const contactsData = await contactsRes.json();
+
+                currentCompanyPageData = company;
+                renderCompanyPage(company, contactsData.contacts);
+            } catch (err) {
+                console.error('Failed to load company page:', err);
+                alert('Failed to load company data');
+                navigateBack();
+            }
+        }
+
+        function renderCompanyPage(company, contacts) {
+            // Header
+            document.getElementById('companyPageName').textContent = company.name || 'Unknown Company';
+
+            // Links
+            const linksHtml = [];
+            if (company.website_url) {
+                linksHtml.push(`<a href="${company.website_url}" target="_blank" class="bg-terracotta-500 text-white px-3 py-1 rounded-lg text-sm hover:bg-terracotta-600 transition-colors">Website</a>`);
+            }
+            if (company.linkedin_url) {
+                linksHtml.push(`<a href="${company.linkedin_url}" target="_blank" class="bg-sage-600 text-white px-3 py-1 rounded-lg text-sm hover:bg-sage-700 transition-colors">LinkedIn</a>`);
+            }
+            document.getElementById('companyPageLinks').innerHTML = linksHtml.join('');
+
+            // Screenshot
+            const screenshotImg = document.getElementById('companyPageScreenshot');
+            const noScreenshot = document.getElementById('companyPageNoScreenshot');
+            screenshotImg.src = `/api/screenshots/${company.id}`;
+            screenshotImg.style.display = '';
+            noScreenshot.classList.add('hidden');
+
+            // Details grid
+            const details = [];
+            if (company.industry) details.push(`<div><span class="text-sage-500">Industry:</span> <span class="text-sage-700">${company.industry}</span></div>`);
+            if (company.company_size) details.push(`<div><span class="text-sage-500">Size:</span> <span class="text-sage-700">${company.company_size}</span></div>`);
+            if (company.headquarters) details.push(`<div><span class="text-sage-500">HQ:</span> <span class="text-sage-700">${company.headquarters}</span></div>`);
+            if (company.founded_year) details.push(`<div><span class="text-sage-500">Founded:</span> <span class="text-sage-700">${company.founded_year}</span></div>`);
+            document.getElementById('companyPageDetails').innerHTML = details.join('');
+
+            // Description
+            document.getElementById('companyPageDescription').textContent = company.company_description || company.meta_description || 'No description available.';
+
+            // Mission
+            const missionDiv = document.getElementById('companyPageMission');
+            if (company.mission_statement) {
+                document.getElementById('companyPageMissionText').textContent = company.mission_statement;
+                missionDiv.classList.remove('hidden');
+            } else {
+                missionDiv.classList.add('hidden');
+            }
+
+            // Additional info
+            const productsDiv = document.getElementById('companyPageProducts');
+            if (company.products_services) {
+                document.getElementById('companyPageProductsText').textContent = company.products_services;
+                productsDiv.classList.remove('hidden');
+            } else {
+                productsDiv.classList.add('hidden');
+            }
+
+            const customersDiv = document.getElementById('companyPageCustomers');
+            if (company.target_customers) {
+                document.getElementById('companyPageCustomersText').textContent = company.target_customers;
+                customersDiv.classList.remove('hidden');
+            } else {
+                customersDiv.classList.add('hidden');
+            }
+
+            const techDiv = document.getElementById('companyPageTech');
+            if (company.technologies) {
+                try {
+                    const techs = JSON.parse(company.technologies);
+                    if (Array.isArray(techs) && techs.length > 0) {
+                        document.getElementById('companyPageTechTags').innerHTML = techs.map(t =>
+                            `<span class="bg-cream-100 text-sage-700 px-2 py-1 rounded text-xs border border-cream-300">${t}</span>`
+                        ).join('');
+                        techDiv.classList.remove('hidden');
+                    } else {
+                        techDiv.classList.add('hidden');
+                    }
+                } catch {
+                    techDiv.classList.add('hidden');
+                }
+            } else {
+                techDiv.classList.add('hidden');
+            }
+
+            const pricingDiv = document.getElementById('companyPagePricing');
+            if (company.pricing_model) {
+                document.getElementById('companyPagePricingText').textContent = company.pricing_model;
+                pricingDiv.classList.remove('hidden');
+            } else {
+                pricingDiv.classList.add('hidden');
+            }
+
+            // Contacts
+            document.getElementById('companyPageContactsHeader').textContent = `Contacts (${contacts.length})`;
+            const contactsContainer = document.getElementById('companyPageContacts');
+            const emptyMessage = document.getElementById('companyPageContactsEmpty');
+
+            if (contacts.length === 0) {
+                contactsContainer.innerHTML = '';
+                emptyMessage.classList.remove('hidden');
+            } else {
+                emptyMessage.classList.add('hidden');
+                contactsContainer.innerHTML = contacts.map(c => {
+                    const stageBadge = getStageBadge(c.stage);
+                    return `
+                        <div class="flex items-center justify-between p-3 rounded-lg border border-cream-200 hover:bg-cream-50 cursor-pointer transition-colors"
+                             onclick="navigateToContact('${c.id}')">
+                            <div class="flex-1">
+                                <div class="font-medium text-sage-800">${c.first_name || ''} ${c.last_name || ''}</div>
+                                <div class="text-sm text-sage-500">${c.title || ''}</div>
+                                ${c.email ? `<div class="text-sm text-sage-400">${c.email}</div>` : ''}
+                            </div>
+                            <div class="flex items-center gap-3">
+                                ${c.relationship ? `<span class="text-xs text-sage-400 max-w-32 truncate">${c.relationship}</span>` : ''}
+                                ${stageBadge}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        function getStageBadge(stage) {
+            const stageColors = {
+                'backlog': 'bg-gray-100 text-gray-600',
+                'contacted': 'bg-blue-100 text-blue-600',
+                'reaching_out': 'bg-yellow-100 text-yellow-700',
+                'engaged': 'bg-purple-100 text-purple-600',
+                'meeting': 'bg-terracotta-100 text-terracotta-600',
+                'won': 'bg-green-100 text-green-600',
+                'lost': 'bg-red-100 text-red-600',
+                'naf': 'bg-gray-200 text-gray-500'
+            };
+            const stageLabels = {
+                'backlog': 'Backlog',
+                'contacted': 'Contacted',
+                'reaching_out': 'Reaching Out',
+                'engaged': 'Engaged',
+                'meeting': 'Meeting',
+                'won': 'Won',
+                'lost': 'Lost',
+                'naf': 'NAF'
+            };
+            const colorClass = stageColors[stage] || 'bg-gray-100 text-gray-600';
+            const label = stageLabels[stage] || stage;
+            return `<span class="px-2 py-1 rounded text-xs ${colorClass}">${label}</span>`;
+        }
+
+        function toggleCompanyPageAdditional() {
+            const content = document.getElementById('companyPageAdditionalContent');
+            const toggle = document.getElementById('companyPageAdditionalToggle');
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                toggle.textContent = '▲';
+            } else {
+                content.classList.add('hidden');
+                toggle.textContent = '▼';
+            }
+        }
+
+        function showCompanyPageScreenshot() {
+            if (currentCompanyPageData) {
+                showScreenshot(currentCompanyPageData.id, currentCompanyPageData.name);
+            }
+        }
+
+        async function regenerateCompanyPageScreenshot() {
+            if (!currentCompanyPageId) return;
+            try {
+                await fetch(`/api/screenshots/${currentCompanyPageId}/regenerate`, { method: 'POST' });
+                // Force reload screenshot
+                const img = document.getElementById('companyPageScreenshot');
+                img.src = `/api/screenshots/${currentCompanyPageId}?t=${Date.now()}`;
+                img.style.display = '';
+                document.getElementById('companyPageNoScreenshot').classList.add('hidden');
+            } catch (err) {
+                console.error('Failed to regenerate screenshot:', err);
+            }
+        }
+
         // Tab switching
         function showTab(tab) {
             const homeContent = document.getElementById('homeContent');
@@ -1478,15 +1829,17 @@
             const databaseContent = document.getElementById('databaseContent');
             const contactsContent = document.getElementById('contactsContent');
             const contactPageContent = document.getElementById('contactPageContent');
+            const companyPageContent = document.getElementById('companyPageContent');
             const tabHome = document.getElementById('tabHome');
             const tabPipeline = document.getElementById('tabPipeline');
             const tabJobs = document.getElementById('tabJobs');
             const tabDatabase = document.getElementById('tabDatabase');
             const tabContacts = document.getElementById('tabContacts');
 
-            // Hide contact page if showing
+            // Hide contact/company pages if showing
             contactPageContent.classList.add('hidden');
-            if (window.location.hash.startsWith('#/contact/')) {
+            companyPageContent.classList.add('hidden');
+            if (window.location.hash.startsWith('#/contact/') || window.location.hash.startsWith('#/company/')) {
                 history.pushState(null, '', window.location.pathname);
             }
 
@@ -1609,8 +1962,8 @@
                         <div class="font-medium text-sage-800">${[c.first_name, c.last_name].filter(Boolean).join(' ') || '-'}</div>
                     </td>
                     <td class="px-4 py-2 text-xs text-gray-600">${c.title || '-'}</td>
-                    <td class="px-4 py-2 text-xs">
-                        <div class="font-medium">${c.company_name || '-'}</div>
+                    <td class="px-4 py-2 text-xs" onclick="event.stopPropagation()">
+                        ${c.company_id ? `<a href="#" onclick="event.preventDefault(); navigateToCompany('${c.company_id}')" class="font-medium text-sage-700 hover:text-terracotta-600 hover:underline">${c.company_name || '-'}</a>` : `<div class="font-medium">${c.company_name || '-'}</div>`}
                     </td>
                     <td class="px-4 py-2 text-xs" onclick="event.stopPropagation()">
                         ${c.email ? `<a href="mailto:${c.email}" class="text-blue-600 hover:underline">${c.email}</a>` : '-'}
@@ -2171,7 +2524,10 @@
                                data-contact-checkbox="${contact.id}">
                         <div class="flex-1 min-w-0">
                             <div class="font-medium text-sm text-sage-800">${name}</div>
-                            <div class="text-xs text-sage-500 truncate">${contact.company_name || 'No company'}</div>
+                            ${contact.company_id
+                                ? `<a href="#" onclick="event.preventDefault(); event.stopPropagation(); navigateToCompany('${contact.company_id}')" class="text-xs text-sage-500 truncate block hover:text-terracotta-600 hover:underline">${contact.company_name || 'No company'}</a>`
+                                : `<div class="text-xs text-sage-500 truncate">${contact.company_name || 'No company'}</div>`
+                            }
                             ${contact.title ? `<div class="text-xs text-sage-400 truncate">${contact.title}</div>` : ''}
                             ${reminderBadge}
                         </div>

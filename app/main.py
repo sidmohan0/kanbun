@@ -1168,5 +1168,63 @@ async def delete_template(template_id: str):
         return {"status": "deleted"}
 
 
+@app.get("/api/companies/{company_id}/full")
+async def get_company_full(company_id: str):
+    """Get full company details with all enriched fields."""
+    async with get_db(settings.effective_database_path) as db:
+        cursor = await db.execute(
+            """
+            SELECT *
+            FROM companies
+            WHERE id = ?
+            """,
+            (company_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        return dict(row)
+
+
+@app.get("/api/companies/{company_id}/contacts")
+async def get_company_contacts(company_id: str):
+    """Get all contacts at a company."""
+    async with get_db(settings.effective_database_path) as db:
+        # Verify company exists
+        cursor = await db.execute("SELECT id FROM companies WHERE id = ?", (company_id,))
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        # Define stage order for sorting
+        stage_order = {
+            'meeting': 1,
+            'engaged': 2,
+            'reaching_out': 3,
+            'contacted': 4,
+            'backlog': 5,
+            'won': 6,
+            'lost': 7,
+            'naf': 8
+        }
+
+        cursor = await db.execute(
+            """
+            SELECT id, first_name, last_name, email, title, stage, relationship
+            FROM contacts
+            WHERE company_id = ?
+            ORDER BY first_name, last_name
+            """,
+            (company_id,)
+        )
+        rows = await cursor.fetchall()
+        contacts = [dict(row) for row in rows]
+
+        # Sort by stage order, then by name
+        contacts.sort(key=lambda c: (stage_order.get(c.get('stage', 'backlog'), 99), c.get('first_name', '').lower()))
+
+        return {"contacts": contacts}
+
+
 # Mount static files last to avoid conflicting with API routes
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
