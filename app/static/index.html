@@ -1236,24 +1236,25 @@
                 .map(id => pipelineContactsCache[id])
                 .filter(c => c && c.email && c.email.trim());
 
-            // Open mailto links with delays using anchor clicks (more reliable than window.open)
+            // Open mailto links using hidden iframes (most reliable for multiple emails)
             for (let i = 0; i < contactsToEmail.length; i++) {
                 const contact = contactsToEmail[i];
                 const subject = encodeURIComponent(substituteTemplateVariables(batchSelectedTemplate.subject, contact));
                 const body = encodeURIComponent(substituteTemplateVariables(batchSelectedTemplate.body, contact));
                 const mailtoUrl = `mailto:${contact.email}?subject=${subject}&body=${body}`;
 
-                // Create and click a temporary anchor element
-                const a = document.createElement('a');
-                a.href = mailtoUrl;
-                a.style.display = 'none';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+                // Use iframe to trigger mailto (avoids popup blockers)
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = mailtoUrl;
+                document.body.appendChild(iframe);
 
-                // Longer delay between each to ensure mail client can handle it
+                // Remove iframe after a short delay
+                setTimeout(() => iframe.remove(), 1000);
+
+                // Delay between each to ensure mail client can handle it
                 if (i < contactsToEmail.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 800));
+                    await new Promise(resolve => setTimeout(resolve, 1500));
                 }
             }
 
