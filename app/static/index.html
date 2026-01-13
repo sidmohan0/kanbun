@@ -188,6 +188,13 @@
                     </h3>
                     <div class="space-y-2 min-h-[150px]" id="column-lost"></div>
                 </div>
+                <div class="kanban-column flex-1 min-w-0 bg-gray-200 rounded-xl p-2" data-stage="naf">
+                    <h3 class="font-medium text-gray-600 mb-2 text-sm flex justify-between">
+                        <span>NAF</span>
+                        <span id="count-naf" class="text-gray-500">0</span>
+                    </h3>
+                    <div class="space-y-2 min-h-[150px]" id="column-naf"></div>
+                </div>
             </div>
         </div>
 
@@ -461,6 +468,14 @@
                     </button>
                 </div>
 
+                <!-- Relationship -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-sage-700 mb-1">Relationship</label>
+                    <input type="text" id="contactRelationship" onblur="saveContactRelationship()"
+                           class="w-full border border-cream-300 rounded-xl px-3 py-2 text-sage-700 text-sm focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300"
+                           placeholder="e.g., Met at conference, Referral from John, Former colleague">
+                </div>
+
                 <!-- Stage Selector -->
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-sage-700 mb-1">Pipeline Stage</label>
@@ -472,6 +487,7 @@
                         <option value="meeting">Meeting</option>
                         <option value="won">Won</option>
                         <option value="lost">Lost</option>
+                        <option value="naf">NAF (Not a Fit)</option>
                     </select>
                 </div>
 
@@ -1225,7 +1241,7 @@
             const response = await fetch('/api/pipeline');
             const pipeline = await response.json();
 
-            const stages = ['new', 'reaching_out', 'engaged', 'meeting', 'won', 'lost'];
+            const stages = ['new', 'reaching_out', 'engaged', 'meeting', 'won', 'lost', 'naf'];
             let totalContacts = 0;
 
             stages.forEach(stage => {
@@ -1462,7 +1478,8 @@
             `;
             document.getElementById('contactModalInfo').innerHTML = infoHtml;
 
-            // Set stage and notes
+            // Set relationship, stage and notes
+            document.getElementById('contactRelationship').value = contact.relationship || '';
             document.getElementById('contactStageSelect').value = contact.stage || 'new';
             document.getElementById('contactNotes').value = contact.notes || '';
 
@@ -1652,6 +1669,22 @@ Best,
                 });
             } catch (err) {
                 console.error('Failed to save notes:', err);
+            }
+        }
+
+        async function saveContactRelationship() {
+            if (!currentContactId) return;
+
+            const relationship = document.getElementById('contactRelationship').value;
+
+            try {
+                await fetch(`/api/contacts/${currentContactId}/relationship`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ relationship })
+                });
+            } catch (err) {
+                console.error('Failed to save relationship:', err);
             }
         }
 

@@ -46,6 +46,10 @@ class NotesUpdate(BaseModel):
     notes: str
 
 
+class RelationshipUpdate(BaseModel):
+    relationship: str
+
+
 class OutreachCreate(BaseModel):
     outreach_type: str  # email, linkedin, call, other
     note: Optional[str] = None
@@ -65,7 +69,7 @@ class TemplateUpdate(BaseModel):
     body: Optional[str] = None
 
 
-VALID_STAGES = {"new", "reaching_out", "engaged", "meeting", "won", "lost"}
+VALID_STAGES = {"new", "reaching_out", "engaged", "meeting", "won", "lost", "naf"}
 VALID_OUTREACH_TYPES = {"email", "linkedin", "call", "other"}
 
 
@@ -760,6 +764,26 @@ async def update_contact_notes(contact_id: str, notes_update: NotesUpdate):
         await db.commit()
 
         return {"status": "updated", "notes": notes_update.notes}
+
+
+@app.put("/api/contacts/{contact_id}/relationship")
+async def update_contact_relationship(contact_id: str, rel_update: RelationshipUpdate):
+    """Update a contact's relationship field."""
+    async with get_db(settings.effective_database_path) as db:
+        cursor = await db.execute(
+            "SELECT id FROM contacts WHERE id = ?",
+            (contact_id,)
+        )
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        await db.execute(
+            "UPDATE contacts SET relationship = ? WHERE id = ?",
+            (rel_update.relationship, contact_id)
+        )
+        await db.commit()
+
+        return {"status": "updated", "relationship": rel_update.relationship}
 
 
 @app.get("/api/contacts/{contact_id}/outreach")

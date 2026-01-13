@@ -136,6 +136,7 @@ MIGRATIONS = [
     "ALTER TABLE companies ADD COLUMN target_customers TEXT",
     "ALTER TABLE contacts ADD COLUMN stage TEXT DEFAULT 'new'",
     "ALTER TABLE contacts ADD COLUMN notes TEXT",
+    "ALTER TABLE contacts ADD COLUMN relationship TEXT",
 ]
 
 
