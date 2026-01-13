@@ -946,16 +946,16 @@
         let pipelineContactsCache = {}; // Cache pipeline data for batch email modal
 
         // Global search
-        let searchTimeout = null;
+        let globalSearchTimeout = null;
         let searchResultsVisible = false;
 
         function handleGlobalSearch(query) {
-            clearTimeout(searchTimeout);
+            clearTimeout(globalSearchTimeout);
             if (query.length < 2) {
                 hideSearchResults();
                 return;
             }
-            searchTimeout = setTimeout(() => performSearch(query), 200);
+            globalSearchTimeout = setTimeout(() => performSearch(query), 200);
         }
 
         async function performSearch(query) {
