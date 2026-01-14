@@ -144,6 +144,16 @@ CREATE INDEX IF NOT EXISTS idx_email_templates_category ON email_templates(categ
 CREATE INDEX IF NOT EXISTS idx_contact_notes_contact_id ON contact_notes(contact_id);
 CREATE INDEX IF NOT EXISTS idx_stage_changes_contact_id ON stage_changes(contact_id);
 CREATE INDEX IF NOT EXISTS idx_company_notes_company_id ON company_notes(company_id);
+
+CREATE TABLE IF NOT EXISTS email_accounts (
+    id INTEGER PRIMARY KEY,
+    provider TEXT NOT NULL,
+    email TEXT NOT NULL,
+    refresh_token_encrypted TEXT,
+    access_token_encrypted TEXT,
+    token_expires_at INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 # Migration queries for existing databases
@@ -166,6 +176,16 @@ MIGRATIONS = [
     "ALTER TABLE contacts ADD COLUMN notes TEXT",
     "ALTER TABLE contacts ADD COLUMN relationship TEXT",
     "ALTER TABLE contacts ADD COLUMN contact_type TEXT DEFAULT 'crm'",
+    # OAuth email accounts table
+    """CREATE TABLE IF NOT EXISTS email_accounts (
+        id INTEGER PRIMARY KEY,
+        provider TEXT NOT NULL,
+        email TEXT NOT NULL,
+        refresh_token_encrypted TEXT,
+        access_token_encrypted TEXT,
+        token_expires_at INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )""",
 ]
 
 
