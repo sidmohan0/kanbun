@@ -9,6 +9,15 @@ class Settings(BaseSettings):
     database_path: str = "data/kanbun.db"
     demo_mode: bool = False
 
+    # Email OAuth Settings
+    email_encryption_key: str = ""
+    gmail_client_id: str = ""
+    gmail_client_secret: str = ""
+    gmail_redirect_uri: str = "http://localhost:8000/api/email/callback/gmail"
+    outlook_client_id: str = ""
+    outlook_client_secret: str = ""
+    outlook_redirect_uri: str = "http://localhost:8000/api/email/callback/outlook"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
