@@ -9,7 +9,6 @@ from typing import Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
 
 from app.config import settings
 from app.database import init_db, get_db
@@ -25,6 +24,8 @@ from app.services.job_processor import (
     process_job
 )
 from app.services.screenshot_service import get_screenshot_path, screenshot_exists, capture_screenshot
+from app.services.email import get_email_provider, TokenStore
+from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse
 
 
 # Pydantic models for CRM endpoints
@@ -90,6 +91,18 @@ class ContactCreate(BaseModel):
     title: Optional[str] = None
     linkedin_url: Optional[str] = None
     notes: Optional[str] = None
+
+
+class EmailSend(BaseModel):
+    provider: str  # 'gmail' or 'outlook'
+    to: str
+    subject: str
+    body: str
+    cc: Optional[str] = None
+    bcc: Optional[str] = None
+
+
+VALID_EMAIL_PROVIDERS = {"gmail", "outlook"}
 
 
 @asynccontextmanager
@@ -1389,6 +1402,102 @@ async def create_contact(contact: ContactCreate):
         )
         row = await cursor.fetchone()
         return dict(row)
+
+
+# =============================================================================
+# Email OAuth Endpoints
+# =============================================================================
+
+@app.get("/api/email/auth/{provider}")
+async def email_auth(provider: str):
+    """Initiate OAuth flow for email provider."""
+    if provider not in VALID_EMAIL_PROVIDERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid provider. Must be one of: {', '.join(sorted(VALID_EMAIL_PROVIDERS))}"
+        )
+
+    email_provider = get_email_provider(provider)
+    auth_url = email_provider.get_auth_url()
+    return RedirectResponse(url=auth_url)
+
+
+@app.get("/api/email/callback/{provider}")
+async def email_callback(provider: str, code: str = None, error: str = None):
+    """Handle OAuth callback from email provider."""
+    # Handle error from provider
+    if error:
+        return RedirectResponse(url=f"/?email_error={error}")
+
+    # Validate code exists
+    if not code:
+        return RedirectResponse(url="/?email_error=no_code")
+
+    # Validate provider
+    if provider not in VALID_EMAIL_PROVIDERS:
+        return RedirectResponse(url=f"/?email_error=invalid_provider")
+
+    try:
+        email_provider = get_email_provider(provider)
+        async with get_db(settings.effective_database_path) as db:
+            result = await email_provider.handle_callback(db, code)
+            email = result.get("email", "")
+        return RedirectResponse(url=f"/?email_connected={provider}&email={email}")
+    except Exception as e:
+        error_msg = str(e).replace(" ", "_")[:100]  # URL-safe error message
+        return RedirectResponse(url=f"/?email_error={error_msg}")
+
+
+@app.get("/api/email/status")
+async def email_status():
+    """Get connected email accounts."""
+    token_store = TokenStore()
+    async with get_db(settings.effective_database_path) as db:
+        accounts = await token_store.get_all_accounts(db)
+    return {"accounts": accounts}
+
+
+@app.post("/api/email/disconnect")
+async def email_disconnect(provider: str):
+    """Disconnect an email account."""
+    if provider not in VALID_EMAIL_PROVIDERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid provider. Must be one of: {', '.join(sorted(VALID_EMAIL_PROVIDERS))}"
+        )
+
+    token_store = TokenStore()
+    async with get_db(settings.effective_database_path) as db:
+        await token_store.delete_tokens(db, provider)
+
+    return {"status": "disconnected", "provider": provider}
+
+
+@app.post("/api/email/send")
+async def email_send(email_data: EmailSend):
+    """Send an email via connected OAuth account."""
+    if email_data.provider not in VALID_EMAIL_PROVIDERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid provider. Must be one of: {', '.join(sorted(VALID_EMAIL_PROVIDERS))}"
+        )
+
+    try:
+        email_provider = get_email_provider(email_data.provider)
+        async with get_db(settings.effective_database_path) as db:
+            result = await email_provider.send_email(
+                db,
+                to=email_data.to,
+                subject=email_data.subject,
+                body=email_data.body,
+                cc=email_data.cc,
+                bcc=email_data.bcc
+            )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
 
 # Mount static files last to avoid conflicting with API routes
