@@ -66,15 +66,26 @@
                 <h1 class="text-3xl font-bold text-sage-700">kanbun</h1>
             </div>
 
-            <!-- Global Search -->
-            <div class="relative">
-                <input type="text" id="globalSearchInput" placeholder="Search contacts & companies..."
-                       class="w-72 border border-cream-300 rounded-lg px-4 py-2 text-sm text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300"
-                       oninput="handleGlobalSearch(this.value)"
-                       onfocus="showSearchResults()"
-                       autocomplete="off">
-                <div id="searchResultsDropdown" class="hidden absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-cream-200 max-h-96 overflow-y-auto z-50">
-                    <!-- Search results populated by JS -->
+            <div class="flex items-center gap-4">
+                <!-- Email Connection Status -->
+                <div id="email-status" class="flex items-center gap-2">
+                    <span class="text-sm text-gray-500">Email:</span>
+                    <span id="email-status-text" class="text-sm">Not connected</span>
+                    <button id="connect-email-btn" onclick="showEmailConnectModal()" class="text-blue-600 hover:text-blue-800 text-sm">
+                        Connect
+                    </button>
+                </div>
+
+                <!-- Global Search -->
+                <div class="relative">
+                    <input type="text" id="globalSearchInput" placeholder="Search contacts & companies..."
+                           class="w-72 border border-cream-300 rounded-lg px-4 py-2 text-sm text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300"
+                           oninput="handleGlobalSearch(this.value)"
+                           onfocus="showSearchResults()"
+                           autocomplete="off">
+                    <div id="searchResultsDropdown" class="hidden absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-cream-200 max-h-96 overflow-y-auto z-50">
+                        <!-- Search results populated by JS -->
+                    </div>
                 </div>
             </div>
         </div>
@@ -1048,6 +1059,42 @@
                     </div>
                 </form>
             </div>
+        </div>
+    </div>
+
+    <!-- Email Connect Modal -->
+    <div id="email-connect-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 class="text-lg font-semibold mb-4">Connect Email Account</h3>
+            <p class="text-gray-600 mb-4">Connect your email to send messages directly from Kanbun.</p>
+
+            <div class="space-y-3">
+                <button onclick="connectEmail('gmail')" class="w-full flex items-center justify-center gap-2 px-4 py-3 border rounded-lg hover:bg-gray-50 transition-colors">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24">
+                        <path fill="#EA4335" d="M5.266 9.765A7.077 7.077 0 0 1 12 4.909c1.69 0 3.218.6 4.418 1.582L19.91 3C17.782 1.145 15.055 0 12 0 7.27 0 3.198 2.698 1.24 6.65l4.026 3.115Z"/>
+                        <path fill="#34A853" d="M16.04 18.013c-1.09.703-2.474 1.078-4.04 1.078a7.077 7.077 0 0 1-6.723-4.823l-4.04 3.067A11.965 11.965 0 0 0 12 24c2.933 0 5.735-1.043 7.834-3l-3.793-2.987Z"/>
+                        <path fill="#4A90E2" d="M19.834 21c2.195-2.048 3.62-5.096 3.62-9 0-.71-.109-1.473-.272-2.182H12v4.637h6.436c-.317 1.559-1.17 2.766-2.395 3.558L19.834 21Z"/>
+                        <path fill="#FBBC05" d="M5.277 14.268A7.12 7.12 0 0 1 4.909 12c0-.782.125-1.533.357-2.235L1.24 6.65A11.934 11.934 0 0 0 0 12c0 1.92.445 3.73 1.237 5.335l4.04-3.067Z"/>
+                    </svg>
+                    <span>Connect Gmail</span>
+                </button>
+
+                <button onclick="connectEmail('outlook')" class="w-full flex items-center justify-center gap-2 px-4 py-3 border rounded-lg hover:bg-gray-50 transition-colors">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24">
+                        <path fill="#0078D4" d="M0 0h11.377v11.372H0zm12.623 0H24v11.372H12.623zM0 12.623h11.377V24H0zm12.623 0H24V24H12.623z"/>
+                    </svg>
+                    <span>Connect Outlook</span>
+                </button>
+            </div>
+
+            <div id="connected-accounts" class="mt-4 pt-4 border-t hidden">
+                <h4 class="text-sm font-medium text-gray-700 mb-2">Connected Accounts</h4>
+                <div id="connected-accounts-list" class="space-y-2"></div>
+            </div>
+
+            <button onclick="closeEmailConnectModal()" class="mt-4 w-full px-4 py-2 text-gray-600 hover:bg-gray-100 rounded transition-colors">
+                Close
+            </button>
         </div>
     </div>
 
