@@ -13,6 +13,7 @@ A lightweight lead enrichment and CRM tool with Kanban pipeline management. Uplo
 - **Outreach Tracking**: Log emails and LinkedIn messages, view outreach history
 - **Reminders**: Set follow-up reminders with due dates
 - **Email Integration**: One-click email templates that open in your email client
+- **Direct Email Sending**: Send emails via Gmail or Outlook OAuth without leaving the app
 
 ## Quick Start
 
@@ -75,6 +76,63 @@ docker compose up --build
 3. **Manage Pipeline**: Go to the Pipeline tab to see contacts in a Kanban board. Drag cards between columns.
 4. **Track Outreach**: Click a contact card to open details. Log emails/LinkedIn messages, add reminders.
 5. **Send Emails**: Click "Email" to open a pre-filled email in your default client.
+
+## Email Integration (Optional)
+
+Kanbun can send emails directly via Gmail or Outlook using OAuth. This requires setting up OAuth credentials with Google and/or Microsoft.
+
+### Quick Setup
+
+1. Generate an encryption key:
+   ```bash
+   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+
+2. Add to your `.env`:
+   ```bash
+   EMAIL_ENCRYPTION_KEY=your-generated-key
+   ```
+
+3. Follow the provider-specific setup below.
+
+### Gmail Setup
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project (or select existing)
+3. Enable the Gmail API:
+   - APIs & Services → Library → Search "Gmail API" → Enable
+4. Create OAuth credentials:
+   - APIs & Services → Credentials → Create Credentials → OAuth client ID
+   - Application type: Web application
+   - Authorized redirect URIs: `http://localhost:8000/api/email/callback/gmail`
+5. Add to `.env`:
+   ```bash
+   GMAIL_CLIENT_ID=your-client-id
+   GMAIL_CLIENT_SECRET=your-client-secret
+   ```
+
+### Outlook Setup
+
+1. Go to [Azure Portal](https://portal.azure.com/) → App registrations
+2. New registration:
+   - Name: "Kanbun" (or any name)
+   - Supported account types: Personal Microsoft accounts only (or your preference)
+   - Redirect URI: Web → `http://localhost:8000/api/email/callback/outlook`
+3. Add client secret:
+   - Certificates & secrets → New client secret
+4. Add API permissions:
+   - API permissions → Add permission → Microsoft Graph → Delegated permissions → Mail.Send
+5. Add to `.env`:
+   ```bash
+   OUTLOOK_CLIENT_ID=your-application-client-id
+   OUTLOOK_CLIENT_SECRET=your-client-secret-value
+   ```
+
+### Using Email
+
+1. Click "Connect" next to "Email:" in the header
+2. Choose Gmail or Outlook and authorize Kanbun
+3. Open any contact and click "Email" to compose and send
 
 ## CSV Format
 
