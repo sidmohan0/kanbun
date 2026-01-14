@@ -294,3 +294,100 @@ class GmailProvider(EmailProvider):
         )
 
         return credentials.token
+
+    async def get_email_history(
+        self,
+        db: aiosqlite.Connection,
+        contact_email: str,
+        limit: int = 10
+    ) -> list[dict]:
+        """
+        Fetch email history with a specific contact.
+
+        Searches for emails to/from the contact's email address
+        and returns subject, snippet, date, and direction.
+
+        Args:
+            db: Database connection
+            contact_email: The contact's email address to search for
+            limit: Maximum number of emails to return (default 10)
+
+        Returns:
+            List of email dicts with: id, subject, snippet, date, direction (sent/received)
+        """
+        # Get valid credentials
+        tokens = await self.token_store.get_tokens(db, self.provider_name)
+        if not tokens:
+            raise ValueError("No Gmail account connected")
+
+        # Check if token needs refresh
+        if self.token_store.is_token_expired(tokens["expires_at"]):
+            await self.refresh_access_token(db)
+            tokens = await self.token_store.get_tokens(db, self.provider_name)
+
+        credentials = Credentials(
+            token=tokens["access_token"],
+            refresh_token=tokens["refresh_token"],
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=settings.gmail_client_id,
+            client_secret=settings.gmail_client_secret,
+            scopes=GMAIL_SCOPES
+        )
+
+        service = build("gmail", "v1", credentials=credentials)
+        my_email = tokens["email"]
+
+        # Search for emails to or from this contact
+        query = f"from:{contact_email} OR to:{contact_email}"
+
+        try:
+            # List messages matching the query
+            results = service.users().messages().list(
+                userId="me",
+                q=query,
+                maxResults=limit
+            ).execute()
+
+            messages = results.get("messages", [])
+            emails = []
+
+            for msg in messages:
+                # Get message details
+                msg_data = service.users().messages().get(
+                    userId="me",
+                    id=msg["id"],
+                    format="metadata",
+                    metadataHeaders=["Subject", "From", "To", "Date"]
+                ).execute()
+
+                # Extract headers
+                headers = {h["name"]: h["value"] for h in msg_data.get("payload", {}).get("headers", [])}
+
+                # Determine direction (sent or received)
+                from_header = headers.get("From", "")
+                direction = "sent" if my_email.lower() in from_header.lower() else "received"
+
+                # Parse date
+                date_str = headers.get("Date", "")
+                # Gmail dates are RFC 2822 format, we'll pass as-is and parse on frontend
+
+                emails.append({
+                    "id": msg["id"],
+                    "thread_id": msg_data.get("threadId"),
+                    "subject": headers.get("Subject", "(No subject)"),
+                    "snippet": msg_data.get("snippet", ""),
+                    "date": date_str,
+                    "timestamp": int(msg_data.get("internalDate", 0)) // 1000,  # Convert to seconds
+                    "direction": direction,
+                    "from": headers.get("From", ""),
+                    "to": headers.get("To", "")
+                })
+
+            return emails
+
+        except HttpError as e:
+            if e.resp.status == 401:
+                # Token expired, try refresh and retry
+                await self.refresh_access_token(db)
+                return await self.get_email_history(db, contact_email, limit)
+            raise

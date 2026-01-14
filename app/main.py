@@ -1548,5 +1548,29 @@ async def email_send(email_data: EmailSend):
         raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
 
+@app.get("/api/email/history/{contact_email}")
+async def get_email_history(contact_email: str, limit: int = 10):
+    """
+    Fetch email history with a specific contact.
+
+    Returns emails to/from the contact's email address from connected Gmail account.
+    """
+    # Currently only Gmail supports email history
+    try:
+        email_provider = get_email_provider("gmail")
+        async with get_db(settings.effective_database_path) as db:
+            # Check if Gmail is connected
+            tokens = await email_provider.token_store.get_tokens(db, "gmail")
+            if not tokens:
+                return {"emails": [], "connected": False}
+
+            emails = await email_provider.get_email_history(db, contact_email, limit)
+            return {"emails": emails, "connected": True}
+    except ValueError as e:
+        return {"emails": [], "connected": False, "error": str(e)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch email history: {str(e)}")
+
+
 # Mount static files last to avoid conflicting with API routes
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

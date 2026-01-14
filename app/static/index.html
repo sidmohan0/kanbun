@@ -1979,7 +1979,7 @@
             // Just store the selected template for use when sending
         }
 
-        function renderContactPageTimeline(timeline) {
+        function renderContactPageTimeline(timeline, gmailConnected = false) {
             const container = document.getElementById('contactPageTimeline');
             const emptyState = document.getElementById('contactPageTimelineEmpty');
 
@@ -2059,6 +2059,23 @@
                                 <div class="text-sm text-sage-600">
                                     Moved from <span class="font-medium">${fromLabel}</span> to <span class="font-medium">${toLabel}</span>
                                 </div>
+                                <div class="text-xs text-sage-400 mt-1">${date}</div>
+                            </div>
+                        </div>
+                    `;
+                } else if (item.type === 'gmail') {
+                    const directionIcon = item.direction === 'sent' ? '↗️' : '↙️';
+                    const directionLabel = item.direction === 'sent' ? 'Sent' : 'Received';
+                    const bgColor = item.direction === 'sent' ? 'bg-blue-50' : 'bg-indigo-50';
+                    return `
+                        <div class="flex gap-3 p-3 ${bgColor} rounded-lg group">
+                            <div class="text-lg">📧</div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs px-1.5 py-0.5 rounded ${item.direction === 'sent' ? 'bg-blue-100 text-blue-700' : 'bg-indigo-100 text-indigo-700'}">${directionLabel}</span>
+                                    <span class="text-sm font-medium text-sage-800 truncate">${escapeHtml(item.subject)}</span>
+                                </div>
+                                <div class="text-sm text-sage-600 mt-1 line-clamp-2">${escapeHtml(item.snippet)}</div>
                                 <div class="text-xs text-sage-400 mt-1">${date}</div>
                             </div>
                         </div>
@@ -2337,9 +2354,35 @@
 
         async function refreshContactPageTimeline() {
             try {
-                const res = await fetch(`/api/contacts/${currentContactPageId}/timeline`);
-                const data = await res.json();
-                renderContactPageTimeline(data.timeline);
+                // Fetch timeline and email history in parallel
+                const [timelineRes, emailRes] = await Promise.all([
+                    fetch(`/api/contacts/${currentContactPageId}/timeline`),
+                    currentContactPageData?.email
+                        ? fetch(`/api/email/history/${encodeURIComponent(currentContactPageData.email)}?limit=10`)
+                        : Promise.resolve({ json: () => ({ emails: [], connected: false }) })
+                ]);
+
+                const timelineData = await timelineRes.json();
+                const emailData = await emailRes.json ? await emailRes.json() : emailRes;
+
+                // Convert emails to timeline format
+                const emailItems = (emailData.emails || []).map(email => ({
+                    type: 'gmail',
+                    id: email.id,
+                    subject: email.subject,
+                    snippet: email.snippet,
+                    direction: email.direction,
+                    from: email.from,
+                    to: email.to,
+                    timestamp: email.timestamp * 1000, // Convert to milliseconds
+                    thread_id: email.thread_id
+                }));
+
+                // Merge and sort by timestamp (newest first)
+                const combined = [...timelineData.timeline, ...emailItems]
+                    .sort((a, b) => b.timestamp - a.timestamp);
+
+                renderContactPageTimeline(combined, emailData.connected);
             } catch (err) {
                 console.error('Failed to refresh timeline:', err);
             }
