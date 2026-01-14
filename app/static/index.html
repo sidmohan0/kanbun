@@ -1098,6 +1098,69 @@
         </div>
     </div>
 
+    <!-- Compose Email Modal -->
+    <div id="compose-email-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 class="text-lg font-semibold mb-4">Compose Email</h3>
+
+            <!-- To field - readonly -->
+            <div class="mb-3">
+                <label class="block text-sm text-gray-600 mb-1">To</label>
+                <input id="compose-to" readonly class="w-full border rounded px-3 py-2 bg-gray-50" />
+            </div>
+
+            <!-- CC field -->
+            <div class="mb-3">
+                <label class="block text-sm text-gray-600 mb-1">CC <span class="text-gray-400">(optional)</span></label>
+                <input id="compose-cc" class="w-full border rounded px-3 py-2" placeholder="email@example.com, another@example.com" />
+            </div>
+
+            <!-- BCC field -->
+            <div class="mb-3">
+                <label class="block text-sm text-gray-600 mb-1">BCC <span class="text-gray-400">(optional)</span></label>
+                <input id="compose-bcc" class="w-full border rounded px-3 py-2" placeholder="email@example.com" />
+            </div>
+
+            <!-- Subject -->
+            <div class="mb-3">
+                <label class="block text-sm text-gray-600 mb-1">Subject</label>
+                <input id="compose-subject" class="w-full border rounded px-3 py-2" />
+            </div>
+
+            <!-- Template selector -->
+            <div class="mb-3">
+                <label class="block text-sm text-gray-600 mb-1">Template <span class="text-gray-400">(optional)</span></label>
+                <select id="compose-template" onchange="applyComposeTemplate()" class="w-full border rounded px-3 py-2">
+                    <option value="">-- No template --</option>
+                </select>
+            </div>
+
+            <!-- Body -->
+            <div class="mb-4">
+                <label class="block text-sm text-gray-600 mb-1">Message</label>
+                <textarea id="compose-body" rows="10" class="w-full border rounded px-3 py-2 font-mono text-sm"></textarea>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                    <label class="text-sm text-gray-600">Send via:</label>
+                    <select id="compose-provider" class="border rounded px-3 py-2">
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="closeComposeModal()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded transition-colors">
+                        Cancel
+                    </button>
+                    <button id="compose-send-btn" onclick="sendComposedEmail()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">
+                        Send
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let currentJobId = null;
         let pollInterval = null;
