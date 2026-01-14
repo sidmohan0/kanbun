@@ -1647,8 +1647,28 @@
 
         function renderContactPageDetails(contact) {
             const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unknown';
+
+            // Apply accent color for personal contacts
+            const headerCard = document.getElementById('contactPageName').closest('.bg-white');
+            if (contact.contact_type === 'personal') {
+                headerCard.style.borderTop = '4px solid';
+                headerCard.style.borderTopColor = contact.relationship === 'family' ? '#f43f5e'
+                    : contact.relationship === 'friend' ? '#3b82f6' : '#84cc16';
+            } else {
+                headerCard.style.borderTop = 'none';
+            }
+
             document.getElementById('contactPageName').textContent = name;
-            document.getElementById('contactPageTitle').textContent = contact.title || '';
+
+            // Show relationship badge for personal contacts, title for CRM
+            if (contact.contact_type === 'personal' && contact.relationship) {
+                const colors = getRelationshipColor(contact.relationship);
+                const relationshipLabel = contact.relationship.charAt(0).toUpperCase() + contact.relationship.slice(1);
+                document.getElementById('contactPageTitle').innerHTML =
+                    `<span class="inline-block px-2 py-0.5 rounded-full text-sm ${colors.badge}">${relationshipLabel}</span>`;
+            } else {
+                document.getElementById('contactPageTitle').textContent = contact.title || '';
+            }
 
             // Company name - make clickable if company_id exists
             const companyEl = document.getElementById('contactPageCompany');
@@ -1664,7 +1684,14 @@
                 detailsHtml += `<div><a href="mailto:${contact.email}" class="text-terracotta-600 hover:underline">${contact.email}</a></div>`;
             }
             if (contact.phone) {
-                detailsHtml += `<div class="text-sage-600">${contact.phone}</div>`;
+                if (contact.contact_type === 'personal') {
+                    detailsHtml += `<div class="flex items-center gap-2">
+                        <span class="text-sage-600">${contact.phone}</span>
+                        <a href="sms:${contact.phone}" class="text-green-500 hover:text-green-600 text-sm font-medium">iMessage</a>
+                    </div>`;
+                } else {
+                    detailsHtml += `<div class="text-sage-600">${contact.phone}</div>`;
+                }
             }
             if (contact.linkedin_url) {
                 detailsHtml += `<div><a href="${contact.linkedin_url}" target="_blank" class="text-sage-600 hover:underline">LinkedIn Profile</a></div>`;
@@ -1696,6 +1723,18 @@
 
             // Company info
             renderContactPageCompanyInfo(contact);
+
+            // Hide CRM-specific UI for personal contacts
+            const stageContainer = document.getElementById('contactPageStage')?.closest('div.mb-4');
+            const outreachSection = document.querySelector('[onclick*="contactPageLogOutreach"]')?.closest('.border-t');
+
+            if (contact.contact_type === 'personal') {
+                if (stageContainer) stageContainer.classList.add('hidden');
+                if (outreachSection) outreachSection.classList.add('hidden');
+            } else {
+                if (stageContainer) stageContainer.classList.remove('hidden');
+                if (outreachSection) outreachSection.classList.remove('hidden');
+            }
         }
 
         function renderContactPageCompanyInfo(contact) {
@@ -1764,7 +1803,13 @@
             const container = document.getElementById('contactPageTimeline');
             const emptyState = document.getElementById('contactPageTimelineEmpty');
 
-            if (!timeline || timeline.length === 0) {
+            // Filter timeline for personal contacts (no outreach or stage changes)
+            let filteredTimeline = timeline;
+            if (currentContactPageData?.contact_type === 'personal') {
+                filteredTimeline = timeline.filter(item => item.type !== 'outreach' && item.type !== 'stage_change');
+            }
+
+            if (!filteredTimeline || filteredTimeline.length === 0) {
                 container.innerHTML = '';
                 emptyState.classList.remove('hidden');
                 return;
@@ -1777,7 +1822,7 @@
                 engaged: 'Engaged', meeting: 'Meeting', won: 'Won', lost: 'Lost', naf: 'NAF'
             };
 
-            container.innerHTML = timeline.map(item => {
+            container.innerHTML = filteredTimeline.map(item => {
                 const date = new Date(item.timestamp).toLocaleDateString('en-US', {
                     month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
                 });
