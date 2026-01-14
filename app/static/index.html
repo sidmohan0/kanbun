@@ -3807,6 +3807,148 @@ Best,
             document.getElementById('emailClientSetting').value = saved;
         }
 
+        // ==========================================
+        // Toast Notification Functions
+        // ==========================================
+
+        function showToast(message, type = 'info') {
+            // Create toast container if it doesn't exist
+            let container = document.getElementById('toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'toast-container';
+                container.className = 'fixed bottom-4 right-4 z-50 flex flex-col gap-2';
+                document.body.appendChild(container);
+            }
+
+            // Create toast element
+            const toast = document.createElement('div');
+            toast.className = `px-4 py-2 rounded-lg shadow-lg text-white transform transition-all duration-300 ${
+                type === 'success' ? 'bg-green-600' :
+                type === 'error' ? 'bg-red-600' :
+                'bg-gray-800'
+            }`;
+            toast.textContent = message;
+
+            container.appendChild(toast);
+
+            // Auto-remove after 3 seconds
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-x-full');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // ==========================================
+        // Email OAuth Functions
+        // ==========================================
+
+        // Global variable to store connected accounts
+        window.connectedEmailAccounts = [];
+
+        // Load email connection status on page load
+        async function loadEmailStatus() {
+            try {
+                const response = await fetch('/api/email/status');
+                const data = await response.json();
+                updateEmailStatusUI(data.accounts);
+            } catch (error) {
+                console.error('Failed to load email status:', error);
+            }
+        }
+
+        // Update UI based on connected accounts
+        function updateEmailStatusUI(accounts) {
+            const statusText = document.getElementById('email-status-text');
+            const connectBtn = document.getElementById('connect-email-btn');
+            const connectedSection = document.getElementById('connected-accounts');
+            const connectedList = document.getElementById('connected-accounts-list');
+
+            window.connectedEmailAccounts = accounts;
+
+            if (accounts.length === 0) {
+                statusText.textContent = 'Not connected';
+                statusText.className = 'text-sm text-gray-500';
+                connectBtn.textContent = 'Connect';
+                connectedSection.classList.add('hidden');
+            } else {
+                const emails = accounts.map(a => a.email).join(', ');
+                statusText.textContent = emails;
+                statusText.className = 'text-sm text-green-600';
+                connectBtn.textContent = 'Manage';
+
+                // Update connected accounts in modal
+                connectedSection.classList.remove('hidden');
+                connectedList.innerHTML = accounts.map(account => `
+                    <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm font-medium capitalize">${account.provider}</span>
+                            <span class="text-sm text-gray-600">${account.email}</span>
+                        </div>
+                        <button onclick="disconnectEmail('${account.provider}')" class="text-red-600 hover:text-red-800 text-sm">
+                            Disconnect
+                        </button>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // Show email connect modal
+        function showEmailConnectModal() {
+            document.getElementById('email-connect-modal').classList.remove('hidden');
+            loadEmailStatus();  // Refresh status
+        }
+
+        // Close email connect modal
+        function closeEmailConnectModal() {
+            document.getElementById('email-connect-modal').classList.add('hidden');
+        }
+
+        // Start OAuth flow for provider
+        function connectEmail(provider) {
+            window.location.href = `/api/email/auth/${provider}`;
+        }
+
+        // Disconnect email account
+        async function disconnectEmail(provider) {
+            if (!confirm(`Disconnect ${provider} account?`)) return;
+
+            try {
+                const response = await fetch(`/api/email/disconnect?provider=${provider}`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showToast(`${provider} disconnected`, 'success');
+                    loadEmailStatus();
+                } else {
+                    showToast('Failed to disconnect', 'error');
+                }
+            } catch (error) {
+                console.error('Disconnect error:', error);
+                showToast('Failed to disconnect', 'error');
+            }
+        }
+
+        // Handle OAuth callback parameters on page load
+        function handleEmailCallbackParams() {
+            const params = new URLSearchParams(window.location.search);
+
+            if (params.has('email_connected')) {
+                const provider = params.get('email_connected');
+                const email = params.get('email');
+                showToast(`Connected ${provider}: ${email}`, 'success');
+                window.history.replaceState({}, '', window.location.pathname);
+                loadEmailStatus();
+            }
+
+            if (params.has('email_error')) {
+                const error = params.get('email_error');
+                showToast(`Email connection failed: ${error}`, 'error');
+                window.history.replaceState({}, '', window.location.pathname);
+            }
+        }
+
         // Close modals on escape key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
@@ -3822,6 +3964,8 @@ Best,
         loadHomeStats();
         loadHomeTemplates();
         loadEmailClientSetting();
+        loadEmailStatus();
+        handleEmailCallbackParams();
         loadJobs();
     </script>
 </body>
