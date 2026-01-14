@@ -93,6 +93,16 @@ class ContactCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class ContactUpdate(BaseModel):
+    """Partial update model - all fields optional."""
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    title: Optional[str] = None
+    linkedin_url: Optional[str] = None
+
+
 class EmailSend(BaseModel):
     provider: str  # 'gmail' or 'outlook'
     to: str
@@ -871,6 +881,44 @@ async def get_contact_full(contact_id: str):
         if not row:
             raise HTTPException(status_code=404, detail="Contact not found")
 
+        return dict(row)
+
+
+@app.patch("/api/contacts/{contact_id}")
+async def update_contact(contact_id: str, updates: ContactUpdate):
+    """Update contact fields. Only provided fields are updated."""
+    async with get_db(settings.effective_database_path) as db:
+        # Verify contact exists
+        cursor = await db.execute("SELECT id FROM contacts WHERE id = ?", (contact_id,))
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        # Build update query from non-None fields
+        update_data = updates.model_dump(exclude_none=True)
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        # Build SET clause
+        set_clause = ", ".join(f"{key} = ?" for key in update_data.keys())
+        values = list(update_data.values()) + [contact_id]
+
+        await db.execute(
+            f"UPDATE contacts SET {set_clause} WHERE id = ?",
+            values
+        )
+        await db.commit()
+
+        # Return updated contact
+        cursor = await db.execute(
+            """
+            SELECT ct.*, c.name as company_name
+            FROM contacts ct
+            LEFT JOIN companies c ON ct.company_id = c.id
+            WHERE ct.id = ?
+            """,
+            (contact_id,)
+        )
+        row = await cursor.fetchone()
         return dict(row)
 
 

@@ -1756,7 +1756,8 @@
         }
 
         function renderContactPageDetails(contact) {
-            const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unknown';
+            // Editable field style
+            const editableClass = 'cursor-pointer hover:bg-cream-100 rounded px-1 -mx-1 transition-colors';
 
             // Apply accent color for personal contacts
             const headerCard = document.getElementById('contactPageName').closest('.bg-white');
@@ -1768,16 +1769,21 @@
                 headerCard.style.borderTop = 'none';
             }
 
-            document.getElementById('contactPageName').textContent = name;
+            // Render name as editable (first + last name)
+            const nameEl = document.getElementById('contactPageName');
+            const firstName = contact.first_name || '';
+            const lastName = contact.last_name || '';
+            nameEl.innerHTML = `<span class="${editableClass}" data-value="${firstName}" onclick="makeFieldEditable(this, 'first_name')">${firstName || 'First'}</span> <span class="${editableClass}" data-value="${lastName}" onclick="makeFieldEditable(this, 'last_name')">${lastName || 'Last'}</span>`;
 
-            // Show relationship badge for personal contacts, title for CRM
+            // Show relationship badge for personal contacts, editable title for CRM
+            const titleEl = document.getElementById('contactPageTitle');
             if (contact.contact_type === 'personal' && contact.relationship) {
                 const colors = getRelationshipColor(contact.relationship);
                 const relationshipLabel = contact.relationship.charAt(0).toUpperCase() + contact.relationship.slice(1);
-                document.getElementById('contactPageTitle').innerHTML =
-                    `<span class="inline-block px-2 py-0.5 rounded-full text-sm ${colors.badge}">${relationshipLabel}</span>`;
+                titleEl.innerHTML = `<span class="inline-block px-2 py-0.5 rounded-full text-sm ${colors.badge}">${relationshipLabel}</span>`;
             } else {
-                document.getElementById('contactPageTitle').textContent = contact.title || '';
+                const title = contact.title || '';
+                titleEl.innerHTML = `<span class="${editableClass}" data-value="${title}" onclick="makeFieldEditable(this, 'title')">${title || '<span class="text-sage-400 italic">Add title...</span>'}</span>`;
             }
 
             // Company name - make clickable if company_id exists
@@ -1788,25 +1794,31 @@
                 companyEl.textContent = contact.company_name || '';
             }
 
-            // Contact details (email, phone, linkedin)
+            // Contact details (email, phone, linkedin) - all editable
             let detailsHtml = '';
-            if (contact.email) {
-                detailsHtml += `<div><a href="mailto:${contact.email}" class="text-terracotta-600 hover:underline">${contact.email}</a></div>`;
-            }
-            if (contact.phone) {
-                if (contact.contact_type === 'personal') {
-                    detailsHtml += `<div class="flex items-center gap-2">
-                        <span class="text-sage-600">${contact.phone}</span>
-                        <a href="sms:${contact.phone}" class="text-green-500 hover:text-green-600 text-sm font-medium">iMessage</a>
-                    </div>`;
-                } else {
-                    detailsHtml += `<div class="text-sage-600">${contact.phone}</div>`;
-                }
-            }
-            if (contact.linkedin_url) {
-                detailsHtml += `<div><a href="${contact.linkedin_url}" target="_blank" class="text-sage-600 hover:underline">LinkedIn Profile</a></div>`;
-            }
-            document.getElementById('contactPageDetails').innerHTML = detailsHtml || '<div class="text-sage-400">No contact details</div>';
+
+            // Email - editable
+            const email = contact.email || '';
+            detailsHtml += `<div class="flex items-center gap-2">
+                <span class="${editableClass} text-terracotta-600" data-value="${email}" onclick="makeFieldEditable(this, 'email', 'email')">${email || '<span class="text-sage-400 italic">Add email...</span>'}</span>
+                ${email ? `<a href="mailto:${email}" class="text-sage-400 hover:text-sage-600 text-xs">↗</a>` : ''}
+            </div>`;
+
+            // Phone - editable
+            const phone = contact.phone || '';
+            detailsHtml += `<div class="flex items-center gap-2">
+                <span class="${editableClass} text-sage-600" data-value="${phone}" onclick="makeFieldEditable(this, 'phone', 'tel')">${phone || '<span class="text-sage-400 italic">Add phone...</span>'}</span>
+                ${phone && contact.contact_type === 'personal' ? `<a href="sms:${phone}" class="text-green-500 hover:text-green-600 text-xs font-medium">iMessage</a>` : ''}
+            </div>`;
+
+            // LinkedIn - editable
+            const linkedin = contact.linkedin_url || '';
+            detailsHtml += `<div class="flex items-center gap-2">
+                <span class="${editableClass} text-sage-600 truncate max-w-[200px]" data-value="${linkedin}" onclick="makeFieldEditable(this, 'linkedin_url', 'url')">${linkedin ? 'LinkedIn Profile' : '<span class="text-sage-400 italic">Add LinkedIn...</span>'}</span>
+                ${linkedin ? `<a href="${linkedin}" target="_blank" class="text-sage-400 hover:text-sage-600 text-xs">↗</a>` : ''}
+            </div>`;
+
+            document.getElementById('contactPageDetails').innerHTML = detailsHtml;
 
             // Email button state
             const emailBtn = document.getElementById('contactPageEmailBtn');
@@ -4183,6 +4195,90 @@ Best,
                 closeComposeModal();
             }
         });
+
+        // ==========================================
+        // Inline Contact Editing Functions
+        // ==========================================
+
+        // Make a field editable when clicked
+        function makeFieldEditable(element, fieldName, inputType = 'text') {
+            // Don't re-edit if already editing
+            if (element.querySelector('input')) return;
+
+            const currentValue = element.dataset.value || element.textContent.trim();
+            const originalContent = element.innerHTML;
+
+            // Create input
+            const input = document.createElement('input');
+            input.type = inputType;
+            input.value = currentValue;
+            input.className = 'w-full px-2 py-1 border border-terracotta-300 rounded focus:ring-2 focus:ring-terracotta-300 focus:outline-none text-sage-800';
+            if (fieldName === 'first_name' || fieldName === 'last_name') {
+                input.className += ' text-lg font-bold';
+            }
+
+            // Replace content with input
+            element.innerHTML = '';
+            element.appendChild(input);
+            input.focus();
+            input.select();
+
+            // Handle save on blur or Enter
+            const save = async () => {
+                const newValue = input.value.trim();
+
+                // If empty and it's a required field, show error
+                if (fieldName === 'first_name' && !newValue) {
+                    showToast('First name is required', 'error');
+                    element.innerHTML = originalContent;
+                    return;
+                }
+
+                // If unchanged, just restore
+                if (newValue === currentValue) {
+                    element.innerHTML = originalContent;
+                    return;
+                }
+
+                // Save to server
+                try {
+                    const response = await fetch(`/api/contacts/${currentContactPageData.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ [fieldName]: newValue || null })
+                    });
+
+                    if (response.ok) {
+                        const updated = await response.json();
+                        // Update local data
+                        currentContactPageData = { ...currentContactPageData, ...updated };
+                        // Re-render the details
+                        renderContactPageDetails(currentContactPageData);
+                        // Brief success flash
+                        element.classList.add('bg-green-100');
+                        setTimeout(() => element.classList.remove('bg-green-100'), 500);
+                    } else {
+                        showToast('Failed to save changes', 'error');
+                        element.innerHTML = originalContent;
+                    }
+                } catch (error) {
+                    console.error('Save error:', error);
+                    showToast('Failed to save changes', 'error');
+                    element.innerHTML = originalContent;
+                }
+            };
+
+            input.addEventListener('blur', save);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    input.blur();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    element.innerHTML = originalContent;
+                }
+            });
+        }
 
         // Initial load
         initHashRouting();
