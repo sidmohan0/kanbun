@@ -2102,20 +2102,22 @@
         function contactPageSendEmail() {
             if (!currentContactPageData?.email) return;
 
+            // Use the OAuth compose modal for sending emails
+            openComposeModal(currentContactPageData);
+
+            // Pre-select the template if one is chosen in the contact page
             const templateSelect = document.getElementById('contactPageTemplateSelect');
             const templateId = templateSelect.value;
-            const template = templateId ? contactPageTemplatesCache[templateId] : null;
-
-            let subject = '';
-            let body = '';
-
-            if (template) {
-                subject = substituteTemplateVariables(template.subject, currentContactPageData);
-                body = substituteTemplateVariables(template.body, currentContactPageData);
+            if (templateId) {
+                // Wait for modal to initialize then apply the template
+                setTimeout(() => {
+                    const composeTemplateSelect = document.getElementById('compose-template');
+                    if (composeTemplateSelect) {
+                        composeTemplateSelect.value = templateId;
+                        applyComposeTemplate();
+                    }
+                }, 100);
             }
-
-            const mailtoUrl = `mailto:${currentContactPageData.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-            window.open(mailtoUrl, '_blank');
         }
 
         async function deleteTimelineNote(noteId) {
