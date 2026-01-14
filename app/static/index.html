@@ -4012,6 +4012,165 @@ Best,
             }
         }
 
+        // ==========================================
+        // Compose Email Functions
+        // ==========================================
+
+        // Current contact being emailed (set when opening modal)
+        let currentComposeContact = null;
+
+        // Open compose modal for a contact
+        function openComposeModal(contact) {
+            currentComposeContact = contact;
+
+            // Check if any accounts are connected
+            const accounts = window.connectedEmailAccounts || [];
+            if (accounts.length === 0) {
+                showToast('No email account connected. Please connect Gmail or Outlook first.', 'error');
+                showEmailConnectModal();
+                return;
+            }
+
+            // Populate provider dropdown
+            const providerSelect = document.getElementById('compose-provider');
+            providerSelect.innerHTML = accounts.map(a =>
+                `<option value="${a.provider}">${a.provider} (${a.email})</option>`
+            ).join('');
+
+            // Set To field
+            document.getElementById('compose-to').value = contact.email || '';
+
+            // Clear other fields
+            document.getElementById('compose-cc').value = '';
+            document.getElementById('compose-bcc').value = '';
+            document.getElementById('compose-subject').value = '';
+            document.getElementById('compose-body').value = '';
+            document.getElementById('compose-template').value = '';
+
+            // Load templates into dropdown
+            loadTemplatesForCompose();
+
+            // Show modal
+            document.getElementById('compose-email-modal').classList.remove('hidden');
+        }
+
+        // Close compose modal
+        function closeComposeModal() {
+            document.getElementById('compose-email-modal').classList.add('hidden');
+            currentComposeContact = null;
+        }
+
+        // Load templates into compose dropdown
+        async function loadTemplatesForCompose() {
+            try {
+                const response = await fetch('/api/templates');
+                const templates = await response.json();
+
+                const select = document.getElementById('compose-template');
+                select.innerHTML = '<option value="">-- No template --</option>' +
+                    templates.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+            } catch (error) {
+                console.error('Failed to load templates:', error);
+            }
+        }
+
+        // Apply selected template to compose fields
+        async function applyComposeTemplate() {
+            const templateId = document.getElementById('compose-template').value;
+            if (!templateId) return;
+
+            try {
+                const response = await fetch(`/api/templates/${templateId}`);
+                const template = await response.json();
+
+                // Replace placeholders with contact data
+                let subject = template.subject || '';
+                let body = template.body || '';
+
+                if (currentComposeContact) {
+                    const replacements = {
+                        '{{first_name}}': currentComposeContact.first_name || '',
+                        '{{last_name}}': currentComposeContact.last_name || '',
+                        '{{company}}': currentComposeContact.company_name || '',
+                        '{{title}}': currentComposeContact.title || ''
+                    };
+
+                    for (const [placeholder, value] of Object.entries(replacements)) {
+                        subject = subject.split(placeholder).join(value);
+                        body = body.split(placeholder).join(value);
+                    }
+                }
+
+                document.getElementById('compose-subject').value = subject;
+                document.getElementById('compose-body').value = body;
+            } catch (error) {
+                console.error('Failed to load template:', error);
+                showToast('Failed to load template', 'error');
+            }
+        }
+
+        // Send the composed email
+        async function sendComposedEmail() {
+            const to = document.getElementById('compose-to').value;
+            const cc = document.getElementById('compose-cc').value;
+            const bcc = document.getElementById('compose-bcc').value;
+            const subject = document.getElementById('compose-subject').value;
+            const body = document.getElementById('compose-body').value;
+            const provider = document.getElementById('compose-provider').value;
+
+            if (!to) {
+                showToast('Recipient email is required', 'error');
+                return;
+            }
+
+            if (!subject) {
+                showToast('Subject is required', 'error');
+                return;
+            }
+
+            if (!body) {
+                showToast('Message body is required', 'error');
+                return;
+            }
+
+            // Disable send button and show loading state
+            const sendBtn = document.getElementById('compose-send-btn');
+            const originalText = sendBtn.textContent;
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending...';
+
+            try {
+                const response = await fetch('/api/email/send', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        provider,
+                        to,
+                        subject,
+                        body,
+                        cc: cc || null,
+                        bcc: bcc || null
+                    })
+                });
+
+                if (response.ok) {
+                    showToast('Email sent successfully!', 'success');
+                    closeComposeModal();
+                } else {
+                    const error = await response.json();
+                    showToast(`Failed to send: ${error.detail || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Send email error:', error);
+                showToast('Failed to send email', 'error');
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = originalText;
+            }
+        }
+
         // Close modals on escape key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
@@ -4019,6 +4178,7 @@ Best,
                 closeScreenshotModal();
                 closeContactModal();
                 closeTemplateEditor();
+                closeComposeModal();
             }
         });
 
