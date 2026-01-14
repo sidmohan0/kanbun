@@ -111,6 +111,10 @@
                         <div class="font-medium text-sage-800">View Pipeline</div>
                         <div class="text-sm text-sage-500">Track your outreach progress</div>
                     </button>
+                    <button onclick="openAddContactModal()" class="p-4 border-2 border-dashed border-cream-300 rounded-xl hover:border-terracotta-400 hover:bg-terracotta-50 transition-colors text-left">
+                        <div class="font-medium text-sage-800">Add Contact</div>
+                        <div class="text-sm text-sage-500">Add a new personal or CRM contact</div>
+                    </button>
                 </div>
             </div>
 
@@ -314,6 +318,9 @@
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold">People</h2>
                 <div class="flex space-x-2">
+                    <button onclick="openAddContactModal()" class="bg-terracotta-500 text-white px-4 py-2 rounded-lg hover:bg-terracotta-600 text-sm">
+                        + Add Contact
+                    </button>
                     <button id="bulkScreenshotBtn" onclick="regenerateAllScreenshots()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm">
                         Regenerate Screenshots
                     </button>
@@ -937,6 +944,106 @@
         </div>
     </div>
 
+    <!-- Add Contact Modal -->
+    <div id="addContactModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-sage-800">Add Contact</h2>
+                    <button onclick="closeAddContactModal()" class="text-sage-400 hover:text-sage-600 text-2xl">&times;</button>
+                </div>
+
+                <!-- Contact Type Toggle -->
+                <div class="flex gap-2 mb-4 p-1 bg-cream-100 rounded-lg">
+                    <button id="addContactTypePersonal" onclick="setAddContactType('personal')"
+                            class="flex-1 py-2 rounded-lg text-sm font-medium bg-white text-sage-700 shadow-sm">
+                        Personal
+                    </button>
+                    <button id="addContactTypeCRM" onclick="setAddContactType('crm')"
+                            class="flex-1 py-2 rounded-lg text-sm font-medium text-sage-600">
+                        CRM
+                    </button>
+                </div>
+
+                <form id="addContactForm" onsubmit="submitAddContact(event)">
+                    <input type="hidden" id="addContactTypeValue" value="personal">
+
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-sage-700 mb-1">First Name *</label>
+                        <input type="text" id="addContactFirstName" required
+                               class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-sage-700 mb-1">Last Name</label>
+                        <input type="text" id="addContactLastName"
+                               class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300">
+                    </div>
+
+                    <div id="addContactRelationshipGroup" class="mb-3">
+                        <label class="block text-sm font-medium text-sage-700 mb-1">Relationship</label>
+                        <select id="addContactRelationship"
+                                class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300">
+                            <option value="">Select...</option>
+                            <option value="family">Family</option>
+                            <option value="friend">Friend</option>
+                            <option value="acquaintance">Acquaintance</option>
+                        </select>
+                    </div>
+
+                    <div id="addContactCompanyGroup" class="mb-3 hidden">
+                        <label class="block text-sm font-medium text-sage-700 mb-1">Company</label>
+                        <select id="addContactCompany"
+                                class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300">
+                            <option value="">Select company...</option>
+                        </select>
+                    </div>
+
+                    <div id="addContactTitleGroup" class="mb-3 hidden">
+                        <label class="block text-sm font-medium text-sage-700 mb-1">Title</label>
+                        <input type="text" id="addContactTitle"
+                               class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-sage-700 mb-1">Email</label>
+                        <input type="email" id="addContactEmail"
+                               class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-sage-700 mb-1">Phone</label>
+                        <input type="tel" id="addContactPhone"
+                               class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-sage-700 mb-1">LinkedIn URL</label>
+                        <input type="url" id="addContactLinkedIn"
+                               class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-sage-700 mb-1">Notes</label>
+                        <textarea id="addContactNotes" rows="2"
+                                  class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300"></textarea>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button type="button" onclick="closeAddContactModal()"
+                                class="flex-1 px-4 py-2 border border-cream-300 rounded-lg text-sage-600 hover:bg-cream-50">
+                            Cancel
+                        </button>
+                        <button type="submit"
+                                class="flex-1 px-4 py-2 bg-terracotta-500 text-white rounded-lg hover:bg-terracotta-600">
+                            Add Contact
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script>
         let currentJobId = null;
         let pollInterval = null;
@@ -955,6 +1062,109 @@
         // Global search
         let globalSearchTimeout = null;
         let searchResultsVisible = false;
+
+        // Add Contact Modal
+        let addContactCompaniesCache = [];
+
+        function openAddContactModal() {
+            document.getElementById('addContactModal').classList.remove('hidden');
+            document.getElementById('addContactForm').reset();
+            setAddContactType('personal');
+            loadCompaniesForAddContact();
+        }
+
+        function closeAddContactModal() {
+            document.getElementById('addContactModal').classList.add('hidden');
+        }
+
+        function setAddContactType(type) {
+            document.getElementById('addContactTypeValue').value = type;
+
+            const personalBtn = document.getElementById('addContactTypePersonal');
+            const crmBtn = document.getElementById('addContactTypeCRM');
+            const relationshipGroup = document.getElementById('addContactRelationshipGroup');
+            const companyGroup = document.getElementById('addContactCompanyGroup');
+            const titleGroup = document.getElementById('addContactTitleGroup');
+
+            if (type === 'personal') {
+                personalBtn.classList.add('bg-white', 'text-sage-700', 'shadow-sm');
+                personalBtn.classList.remove('text-sage-600');
+                crmBtn.classList.remove('bg-white', 'text-sage-700', 'shadow-sm');
+                crmBtn.classList.add('text-sage-600');
+                relationshipGroup.classList.remove('hidden');
+                companyGroup.classList.add('hidden');
+                titleGroup.classList.add('hidden');
+            } else {
+                crmBtn.classList.add('bg-white', 'text-sage-700', 'shadow-sm');
+                crmBtn.classList.remove('text-sage-600');
+                personalBtn.classList.remove('bg-white', 'text-sage-700', 'shadow-sm');
+                personalBtn.classList.add('text-sage-600');
+                relationshipGroup.classList.add('hidden');
+                companyGroup.classList.remove('hidden');
+                titleGroup.classList.remove('hidden');
+            }
+        }
+
+        async function loadCompaniesForAddContact() {
+            try {
+                const response = await fetch('/api/database/companies?limit=500');
+                const data = await response.json();
+                addContactCompaniesCache = data.companies || [];
+
+                const select = document.getElementById('addContactCompany');
+                select.innerHTML = '<option value="">Select company...</option>' +
+                    addContactCompaniesCache.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+            } catch (err) {
+                console.error('Failed to load companies:', err);
+            }
+        }
+
+        async function submitAddContact(event) {
+            event.preventDefault();
+
+            const contactType = document.getElementById('addContactTypeValue').value;
+            const payload = {
+                first_name: document.getElementById('addContactFirstName').value,
+                last_name: document.getElementById('addContactLastName').value || null,
+                email: document.getElementById('addContactEmail').value || null,
+                phone: document.getElementById('addContactPhone').value || null,
+                linkedin_url: document.getElementById('addContactLinkedIn').value || null,
+                notes: document.getElementById('addContactNotes').value || null,
+                contact_type: contactType
+            };
+
+            if (contactType === 'personal') {
+                payload.relationship = document.getElementById('addContactRelationship').value || null;
+            } else {
+                payload.company_id = document.getElementById('addContactCompany').value || null;
+                payload.title = document.getElementById('addContactTitle').value || null;
+            }
+
+            try {
+                const response = await fetch('/api/contacts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(error.detail || 'Failed to create contact');
+                    return;
+                }
+
+                closeAddContactModal();
+                // Refresh current view
+                if (!document.getElementById('pipelineContent').classList.contains('hidden')) {
+                    loadPipeline();
+                } else if (!document.getElementById('databaseContent').classList.contains('hidden')) {
+                    loadContacts();
+                }
+            } catch (err) {
+                console.error('Failed to create contact:', err);
+                alert('Failed to create contact');
+            }
+        }
 
         function handleGlobalSearch(query) {
             clearTimeout(globalSearchTimeout);
