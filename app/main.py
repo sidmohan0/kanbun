@@ -73,8 +73,23 @@ class NoteCreate(BaseModel):
     content: str
 
 
-VALID_STAGES = {"backlog", "contacted", "reaching_out", "engaged", "meeting", "won", "lost", "naf"}
+VALID_STAGES = {"backlog", "contacted", "reaching_out", "engaged", "meeting", "won", "lost", "naf", "personal"}
 VALID_OUTREACH_TYPES = {"email", "linkedin", "call", "other"}
+VALID_CONTACT_TYPES = {"crm", "personal"}
+VALID_PERSONAL_RELATIONSHIPS = {"family", "friend", "acquaintance"}
+
+
+class ContactCreate(BaseModel):
+    first_name: str
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    contact_type: str = "personal"
+    relationship: Optional[str] = None
+    company_id: Optional[str] = None
+    title: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    notes: Optional[str] = None
 
 
 @asynccontextmanager
@@ -436,11 +451,12 @@ async def get_all_companies(limit: int = 100, offset: int = 0, status: str = Non
 
 
 @app.get("/api/database/contacts")
-async def get_all_contacts(limit: int = 100, offset: int = 0, search: str = None):
+async def get_all_contacts(limit: int = 100, offset: int = 0, search: str = None, contact_type: str = None):
     async with get_db(settings.effective_database_path) as db:
         base_query = """
             SELECT ct.id, ct.first_name, ct.last_name, ct.email, ct.phone, ct.title,
                    ct.linkedin_url, ct.stage, ct.notes, ct.relationship, ct.company_id,
+                   ct.contact_type,
                    c.name as company_name, c.website_url as company_website,
                    c.company_description, c.meta_title, c.meta_description
             FROM contacts ct
@@ -451,16 +467,24 @@ async def get_all_contacts(limit: int = 100, offset: int = 0, search: str = None
             LEFT JOIN companies c ON ct.company_id = c.id
         """
         params = []
+        where_clauses = []
 
         if search:
-            search_clause = """
-                WHERE ct.first_name LIKE ? OR ct.last_name LIKE ?
-                OR ct.email LIKE ? OR c.name LIKE ? OR ct.title LIKE ?
-            """
+            where_clauses.append("""
+                (ct.first_name LIKE ? OR ct.last_name LIKE ?
+                OR ct.email LIKE ? OR c.name LIKE ? OR ct.title LIKE ?)
+            """)
             search_param = f"%{search}%"
-            params = [search_param] * 5
-            base_query += search_clause
-            count_query += search_clause
+            params.extend([search_param] * 5)
+
+        if contact_type and contact_type in VALID_CONTACT_TYPES:
+            where_clauses.append("ct.contact_type = ?")
+            params.append(contact_type)
+
+        if where_clauses:
+            where_sql = " WHERE " + " AND ".join(where_clauses)
+            base_query += where_sql
+            count_query += where_sql
 
         base_query += " ORDER BY ct.created_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
@@ -468,7 +492,7 @@ async def get_all_contacts(limit: int = 100, offset: int = 0, search: str = None
         cursor = await db.execute(base_query, params)
         rows = await cursor.fetchall()
 
-        count_params = [f"%{search}%"] * 5 if search else []
+        count_params = params[:-2]
         count_cursor = await db.execute(count_query, count_params)
         total = (await count_cursor.fetchone())[0]
 
@@ -1016,7 +1040,10 @@ async def get_pipeline():
                 ct.first_name,
                 ct.last_name,
                 ct.email,
+                ct.phone,
                 ct.title,
+                ct.contact_type,
+                ct.relationship,
                 c.name as company_name,
                 ct.company_id,
                 ct.stage,
@@ -1032,7 +1059,6 @@ async def get_pipeline():
         )
         rows = await cursor.fetchall()
 
-        # Group by stage
         pipeline = {stage: [] for stage in VALID_STAGES}
         for row in rows:
             contact = dict(row)
@@ -1040,7 +1066,6 @@ async def get_pipeline():
             if stage in pipeline:
                 pipeline[stage].append(contact)
             else:
-                # Default to 'backlog' if stage is invalid
                 pipeline["backlog"].append(contact)
 
         return pipeline
@@ -1314,6 +1339,56 @@ async def global_search(q: str = ""):
         companies = [dict(row) for row in await cursor.fetchall()]
 
         return {"contacts": contacts, "companies": companies}
+
+
+@app.post("/api/contacts")
+async def create_contact(contact: ContactCreate):
+    """Create a new contact (CRM or personal)."""
+    if contact.contact_type not in VALID_CONTACT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid contact_type. Must be one of: {', '.join(VALID_CONTACT_TYPES)}"
+        )
+
+    if contact.contact_type == "personal" and contact.relationship:
+        if contact.relationship not in VALID_PERSONAL_RELATIONSHIPS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid relationship. Must be one of: {', '.join(VALID_PERSONAL_RELATIONSHIPS)}"
+            )
+
+    contact_id = str(uuid.uuid4())
+    stage = "personal" if contact.contact_type == "personal" else "backlog"
+
+    async with get_db(settings.effective_database_path) as db:
+        if contact.company_id:
+            cursor = await db.execute("SELECT id FROM companies WHERE id = ?", (contact.company_id,))
+            if not await cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Company not found")
+
+        await db.execute(
+            """
+            INSERT INTO contacts (id, first_name, last_name, email, phone, title,
+                                  linkedin_url, company_id, stage, contact_type, relationship, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (contact_id, contact.first_name, contact.last_name, contact.email,
+             contact.phone, contact.title, contact.linkedin_url, contact.company_id,
+             stage, contact.contact_type, contact.relationship, contact.notes)
+        )
+        await db.commit()
+
+        cursor = await db.execute(
+            """
+            SELECT ct.*, c.name as company_name
+            FROM contacts ct
+            LEFT JOIN companies c ON ct.company_id = c.id
+            WHERE ct.id = ?
+            """,
+            (contact_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row)
 
 
 # Mount static files last to avoid conflicting with API routes

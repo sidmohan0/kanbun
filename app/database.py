@@ -165,6 +165,7 @@ MIGRATIONS = [
     "ALTER TABLE contacts ADD COLUMN stage TEXT DEFAULT 'new'",
     "ALTER TABLE contacts ADD COLUMN notes TEXT",
     "ALTER TABLE contacts ADD COLUMN relationship TEXT",
+    "ALTER TABLE contacts ADD COLUMN contact_type TEXT DEFAULT 'crm'",
 ]
 
 
