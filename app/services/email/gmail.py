@@ -48,8 +48,11 @@ from app.config import settings
 from .base import EmailProvider
 
 
-# Gmail API scope for sending emails
-GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
+# Gmail API scopes - send emails and read user's email address
+GMAIL_SCOPES = [
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.readonly"  # Needed to get user's email via getProfile
+]
 
 
 class GmailProvider(EmailProvider):

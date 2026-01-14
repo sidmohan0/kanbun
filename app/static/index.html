@@ -548,8 +548,66 @@
                     </div>
                 </div>
 
-                <!-- Right Column: Activity Timeline -->
-                <div class="lg:col-span-2">
+                <!-- Right Column: Compose Panel + Activity Timeline -->
+                <div class="lg:col-span-2 space-y-4">
+                    <!-- Compose Email Panel (expandable) -->
+                    <div id="contactPageComposePanel" class="hidden bg-white rounded-2xl shadow-sm border border-cream-200 overflow-hidden">
+                        <div class="flex items-center justify-between p-4 border-b border-cream-200 bg-cream-50">
+                            <h3 class="font-semibold text-sage-800">Compose Email</h3>
+                            <button onclick="toggleComposePanel()" class="text-sage-400 hover:text-sage-600">✕</button>
+                        </div>
+                        <div class="p-4 space-y-3">
+                            <!-- To field - readonly -->
+                            <div>
+                                <label class="block text-sm text-sage-600 mb-1">To</label>
+                                <input id="contactPageComposeTo" readonly class="w-full border border-cream-300 rounded-lg px-3 py-2 bg-cream-50 text-sage-700 text-sm" />
+                            </div>
+
+                            <!-- CC/BCC row -->
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-sm text-sage-600 mb-1">CC <span class="text-sage-400">(optional)</span></label>
+                                    <input id="contactPageComposeCc" class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 text-sm focus:ring-2 focus:ring-terracotta-300" placeholder="email@example.com" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm text-sage-600 mb-1">BCC <span class="text-sage-400">(optional)</span></label>
+                                    <input id="contactPageComposeBcc" class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 text-sm focus:ring-2 focus:ring-terracotta-300" placeholder="email@example.com" />
+                                </div>
+                            </div>
+
+                            <!-- Subject -->
+                            <div>
+                                <label class="block text-sm text-sage-600 mb-1">Subject</label>
+                                <input id="contactPageComposeSubject" class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 text-sm focus:ring-2 focus:ring-terracotta-300" />
+                            </div>
+
+                            <!-- Body -->
+                            <div>
+                                <label class="block text-sm text-sage-600 mb-1">Message</label>
+                                <textarea id="contactPageComposeBody" rows="8" class="w-full border border-cream-300 rounded-lg px-3 py-2 text-sage-700 text-sm font-mono focus:ring-2 focus:ring-terracotta-300"></textarea>
+                            </div>
+
+                            <!-- Actions -->
+                            <div class="flex justify-between items-center pt-2">
+                                <div class="flex items-center gap-2">
+                                    <label class="text-sm text-sage-600">Send via:</label>
+                                    <select id="contactPageComposeProvider" class="border border-cream-300 rounded-lg px-3 py-2 text-sage-700 text-sm focus:ring-2 focus:ring-terracotta-300">
+                                        <!-- Populated dynamically -->
+                                    </select>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="toggleComposePanel()" class="px-4 py-2 text-sage-600 hover:bg-cream-100 rounded-lg transition-colors text-sm">
+                                        Cancel
+                                    </button>
+                                    <button id="contactPageComposeSendBtn" onclick="contactPageSendComposedEmail()" class="px-4 py-2 bg-terracotta-500 text-white rounded-lg hover:bg-terracotta-600 transition-colors text-sm">
+                                        Send Email
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Activity Timeline -->
                     <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
                         <h2 class="text-lg font-semibold text-sage-800 mb-4">Activity</h2>
 
@@ -2112,23 +2170,143 @@
         }
 
         function contactPageSendEmail() {
-            if (!currentContactPageData?.email) return;
+            if (!currentContactPageData?.email) {
+                showToast('No email address for this contact', 'error');
+                return;
+            }
 
-            // Use the OAuth compose modal for sending emails
-            openComposeModal(currentContactPageData);
+            // Check if any accounts are connected
+            const accounts = window.connectedEmailAccounts || [];
+            if (accounts.length === 0) {
+                showToast('No email account connected. Please connect Gmail or Outlook first.', 'error');
+                showEmailConnectModal();
+                return;
+            }
 
-            // Pre-select the template if one is chosen in the contact page
-            const templateSelect = document.getElementById('contactPageTemplateSelect');
-            const templateId = templateSelect.value;
-            if (templateId) {
-                // Wait for modal to initialize then apply the template
-                setTimeout(() => {
-                    const composeTemplateSelect = document.getElementById('compose-template');
-                    if (composeTemplateSelect) {
-                        composeTemplateSelect.value = templateId;
-                        applyComposeTemplate();
+            // Toggle the inline compose panel
+            toggleComposePanel(true);
+        }
+
+        // Toggle the compose panel visibility
+        function toggleComposePanel(open) {
+            const panel = document.getElementById('contactPageComposePanel');
+            const isHidden = panel.classList.contains('hidden');
+
+            if (open === true || (open === undefined && isHidden)) {
+                // Open panel
+                panel.classList.remove('hidden');
+
+                // Populate fields
+                document.getElementById('contactPageComposeTo').value = currentContactPageData.email || '';
+                document.getElementById('contactPageComposeCc').value = '';
+                document.getElementById('contactPageComposeBcc').value = '';
+                document.getElementById('contactPageComposeSubject').value = '';
+                document.getElementById('contactPageComposeBody').value = '';
+
+                // Populate provider dropdown
+                const accounts = window.connectedEmailAccounts || [];
+                const providerSelect = document.getElementById('contactPageComposeProvider');
+                providerSelect.innerHTML = accounts.map(a =>
+                    `<option value="${a.provider}">${a.provider} (${a.email})</option>`
+                ).join('');
+
+                // Apply template if one is selected
+                const templateSelect = document.getElementById('contactPageTemplateSelect');
+                const templateId = templateSelect.value;
+                if (templateId) {
+                    applyContactPageTemplate(templateId);
+                }
+
+                // Scroll panel into view
+                panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else {
+                // Close panel
+                panel.classList.add('hidden');
+            }
+        }
+
+        // Apply template to the inline compose panel
+        async function applyContactPageTemplate(templateId) {
+            if (!templateId) return;
+
+            try {
+                const response = await fetch(`/api/templates/${templateId}`);
+                const template = await response.json();
+
+                let subject = template.subject || '';
+                let body = template.body || '';
+
+                // Replace placeholders
+                if (currentContactPageData) {
+                    const replacements = {
+                        '{{first_name}}': currentContactPageData.first_name || '',
+                        '{{last_name}}': currentContactPageData.last_name || '',
+                        '{{company}}': currentContactPageData.company_name || '',
+                        '{{title}}': currentContactPageData.title || ''
+                    };
+                    for (const [placeholder, value] of Object.entries(replacements)) {
+                        subject = subject.split(placeholder).join(value);
+                        body = body.split(placeholder).join(value);
                     }
-                }, 100);
+                }
+
+                document.getElementById('contactPageComposeSubject').value = subject;
+                document.getElementById('contactPageComposeBody').value = body;
+            } catch (error) {
+                console.error('Failed to load template:', error);
+            }
+        }
+
+        // Send email from the inline compose panel
+        async function contactPageSendComposedEmail() {
+            const to = document.getElementById('contactPageComposeTo').value;
+            const cc = document.getElementById('contactPageComposeCc').value;
+            const bcc = document.getElementById('contactPageComposeBcc').value;
+            const subject = document.getElementById('contactPageComposeSubject').value;
+            const body = document.getElementById('contactPageComposeBody').value;
+            const provider = document.getElementById('contactPageComposeProvider').value;
+
+            if (!subject) {
+                showToast('Subject is required', 'error');
+                return;
+            }
+            if (!body) {
+                showToast('Message body is required', 'error');
+                return;
+            }
+
+            const sendBtn = document.getElementById('contactPageComposeSendBtn');
+            const originalText = sendBtn.textContent;
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending...';
+
+            try {
+                const response = await fetch('/api/email/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider,
+                        to,
+                        subject,
+                        body,
+                        cc: cc || null,
+                        bcc: bcc || null
+                    })
+                });
+
+                if (response.ok) {
+                    showToast('Email sent successfully!', 'success');
+                    toggleComposePanel(false);
+                } else {
+                    const error = await response.json();
+                    showToast(`Failed to send: ${error.detail || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Send email error:', error);
+                showToast('Failed to send email', 'error');
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = originalText;
             }
         }
 
