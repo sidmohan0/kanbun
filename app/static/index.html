@@ -2314,6 +2314,7 @@
                 if (response.ok) {
                     showToast('Email sent successfully!', 'success');
                     toggleComposePanel(false);
+                    await refreshContactPageTimeline();
                 } else {
                     const error = await response.json();
                     showToast(`Failed to send: ${error.detail || 'Unknown error'}`, 'error');

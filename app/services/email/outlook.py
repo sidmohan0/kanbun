@@ -47,9 +47,10 @@ from .base import EmailProvider
 # Microsoft OAuth authority (common supports both personal and work accounts)
 AUTHORITY = "https://login.microsoftonline.com/common"
 
-# Microsoft Graph API scopes for sending email and reading user profile
+# Microsoft Graph API scopes for sending email, reading messages, and user profile
 OUTLOOK_SCOPES = [
     "https://graph.microsoft.com/Mail.Send",
+    "https://graph.microsoft.com/Mail.Read",
     "https://graph.microsoft.com/User.Read",
 ]
 
@@ -321,3 +322,111 @@ class OutlookProvider(EmailProvider):
         )
 
         return new_access_token
+
+    async def get_email_history(
+        self,
+        db: aiosqlite.Connection,
+        contact_email: str,
+        limit: int = 10
+    ) -> list[dict]:
+        """
+        Fetch email history with a specific contact.
+
+        Searches for emails to/from the contact's email address using
+        Microsoft Graph API and returns subject, snippet, date, and direction.
+
+        Args:
+            db: Database connection
+            contact_email: The contact's email address to search for
+            limit: Maximum number of emails to return (default 10)
+
+        Returns:
+            List of email dicts with: id, subject, snippet, date, direction (sent/received)
+        """
+        tokens = await self.token_store.get_tokens(db, self.provider_name)
+        if not tokens:
+            raise ValueError("No Outlook account connected")
+
+        # Check if token needs refresh
+        if self.token_store.is_token_expired(tokens["expires_at"]):
+            await self.refresh_access_token(db)
+            tokens = await self.token_store.get_tokens(db, self.provider_name)
+
+        access_token = tokens["access_token"]
+        my_email = tokens["email"].lower()
+
+        # Search for messages involving this contact
+        # Using $search for better matching across from/to fields
+        search_query = f'"{contact_email}"'
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{GRAPH_API_URL}/me/messages",
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={
+                    "$search": search_query,
+                    "$top": limit,
+                    "$select": "id,conversationId,subject,bodyPreview,from,toRecipients,receivedDateTime",
+                    "$orderby": "receivedDateTime desc",
+                },
+            )
+
+            if response.status_code == 401:
+                # Token expired, refresh and retry
+                await self.refresh_access_token(db)
+                tokens = await self.token_store.get_tokens(db, self.provider_name)
+                response = await client.get(
+                    f"{GRAPH_API_URL}/me/messages",
+                    headers={"Authorization": f"Bearer {tokens['access_token']}"},
+                    params={
+                        "$search": search_query,
+                        "$top": limit,
+                        "$select": "id,conversationId,subject,bodyPreview,from,toRecipients,receivedDateTime",
+                        "$orderby": "receivedDateTime desc",
+                    },
+                )
+
+            if response.status_code != 200:
+                error_data = response.json() if response.content else {}
+                error_msg = error_data.get("error", {}).get("message", response.text)
+                raise ValueError(f"Failed to fetch emails: {error_msg}")
+
+            data = response.json()
+            messages = data.get("value", [])
+
+        emails = []
+        for msg in messages:
+            # Determine direction based on sender
+            from_email = msg.get("from", {}).get("emailAddress", {}).get("address", "").lower()
+            direction = "sent" if from_email == my_email else "received"
+
+            # Parse date - Graph API returns ISO 8601 format
+            date_str = msg.get("receivedDateTime", "")
+
+            # Convert to Unix timestamp
+            timestamp = 0
+            if date_str:
+                from datetime import datetime
+                try:
+                    dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                    timestamp = int(dt.timestamp())
+                except (ValueError, AttributeError):
+                    pass
+
+            # Build to recipients string
+            to_list = [r.get("emailAddress", {}).get("address", "") for r in msg.get("toRecipients", [])]
+            to_str = ", ".join(to_list)
+
+            emails.append({
+                "id": msg.get("id", ""),
+                "thread_id": msg.get("conversationId", ""),
+                "subject": msg.get("subject", "(No subject)"),
+                "snippet": msg.get("bodyPreview", ""),
+                "date": date_str,
+                "timestamp": timestamp,
+                "direction": direction,
+                "from": msg.get("from", {}).get("emailAddress", {}).get("address", ""),
+                "to": to_str,
+            })
+
+        return emails

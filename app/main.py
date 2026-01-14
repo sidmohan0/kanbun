@@ -1553,23 +1553,39 @@ async def get_email_history(contact_email: str, limit: int = 10):
     """
     Fetch email history with a specific contact.
 
-    Returns emails to/from the contact's email address from connected Gmail account.
+    Returns emails to/from the contact's email address from all connected email accounts.
     """
-    # Currently only Gmail supports email history
-    try:
-        email_provider = get_email_provider("gmail")
-        async with get_db(settings.effective_database_path) as db:
-            # Check if Gmail is connected
-            tokens = await email_provider.token_store.get_tokens(db, "gmail")
-            if not tokens:
-                return {"emails": [], "connected": False}
+    all_emails = []
+    connected = False
 
-            emails = await email_provider.get_email_history(db, contact_email, limit)
-            return {"emails": emails, "connected": True}
-    except ValueError as e:
-        return {"emails": [], "connected": False, "error": str(e)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch email history: {str(e)}")
+    async with get_db(settings.effective_database_path) as db:
+        # Try Gmail
+        try:
+            gmail_provider = get_email_provider("gmail")
+            gmail_tokens = await gmail_provider.token_store.get_tokens(db, "gmail")
+            if gmail_tokens:
+                connected = True
+                gmail_emails = await gmail_provider.get_email_history(db, contact_email, limit)
+                all_emails.extend(gmail_emails)
+        except Exception as e:
+            print(f"Gmail email history error: {e}")
+
+        # Try Outlook
+        try:
+            outlook_provider = get_email_provider("outlook")
+            outlook_tokens = await outlook_provider.token_store.get_tokens(db, "outlook")
+            if outlook_tokens:
+                connected = True
+                outlook_emails = await outlook_provider.get_email_history(db, contact_email, limit)
+                all_emails.extend(outlook_emails)
+        except Exception as e:
+            print(f"Outlook email history error: {e}")
+
+    # Sort all emails by timestamp (newest first) and limit
+    all_emails.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+    all_emails = all_emails[:limit]
+
+    return {"emails": all_emails, "connected": connected}
 
 
 # Mount static files last to avoid conflicting with API routes
