@@ -365,6 +365,12 @@
             <!-- Search/Filter -->
             <div class="bg-white rounded-lg shadow p-4 mb-6">
                 <div class="flex items-center space-x-4">
+                    <select id="contactTypeFilter" onchange="loadPeopleTable()"
+                            class="border border-cream-300 rounded-lg px-3 py-2 text-sage-700 focus:ring-2 focus:ring-terracotta-300">
+                        <option value="">All Contacts</option>
+                        <option value="crm">CRM Contacts</option>
+                        <option value="personal">Personal Contacts</option>
+                    </select>
                     <input type="text" id="contactSearch" placeholder="Search by name, email, company..."
                            class="border rounded px-3 py-2 flex-1" onkeyup="debounceSearch()">
                     <span id="contactCount" class="text-gray-500 text-sm"></span>
@@ -378,7 +384,8 @@
                         <tr>
                             <th class="px-3 py-3 text-left w-16"></th>
                             <th class="px-4 py-3 text-left">Name</th>
-                            <th class="px-4 py-3 text-left">Title</th>
+                            <th class="px-4 py-3 text-left w-24">Type</th>
+                            <th class="px-4 py-3 text-left">Title / Relationship</th>
                             <th class="px-4 py-3 text-left">Company</th>
                             <th class="px-4 py-3 text-left">Email</th>
                             <th class="px-4 py-3 text-left">Phone</th>
@@ -2411,11 +2418,14 @@
         // Load people (contacts) for database view - contact-centric
         async function loadPeopleTable() {
             const search = document.getElementById('contactSearch')?.value || '';
+            const contactTypeFilter = document.getElementById('contactTypeFilter')?.value || '';
+
             const params = new URLSearchParams({
                 limit: pageSize,
                 offset: currentPage * pageSize
             });
             if (search) params.append('search', search);
+            if (contactTypeFilter) params.append('contact_type', contactTypeFilter);
 
             const response = await fetch(`/api/database/contacts?${params}`);
             const data = await response.json();
@@ -2426,7 +2436,7 @@
 
             const tbody = document.getElementById('contactsTableBody');
             if (data.contacts.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">No people found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">No people found</td></tr>';
                 return;
             }
 
@@ -2444,7 +2454,16 @@
                     <td class="px-4 py-2">
                         <div class="font-medium text-sage-800">${[c.first_name, c.last_name].filter(Boolean).join(' ') || '-'}</div>
                     </td>
-                    <td class="px-4 py-2 text-xs text-gray-600">${c.title || '-'}</td>
+                    <td class="px-4 py-2">
+                        ${c.contact_type === 'personal'
+                            ? '<span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs">Personal</span>'
+                            : '<span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs">CRM</span>'}
+                    </td>
+                    <td class="px-4 py-2 text-xs text-gray-600">
+                        ${c.contact_type === 'personal'
+                            ? (c.relationship ? c.relationship.charAt(0).toUpperCase() + c.relationship.slice(1) : '-')
+                            : (c.title || '-')}
+                    </td>
                     <td class="px-4 py-2 text-xs" onclick="event.stopPropagation()">
                         ${c.company_id ? `<a href="#" onclick="event.preventDefault(); navigateToCompany('${c.company_id}')" class="font-medium text-sage-700 hover:text-terracotta-600 hover:underline">${c.company_name || '-'}</a>` : `<div class="font-medium">${c.company_name || '-'}</div>`}
                     </td>
