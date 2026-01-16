@@ -131,6 +131,26 @@ VALID_EMAIL_PROVIDERS = {"gmail", "outlook"}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db(get_current_db_path())
+
+    # Auto-resume any jobs that were processing when server stopped
+    async with get_db(get_current_db_path()) as db:
+        cursor = await db.execute(
+            "SELECT id FROM jobs WHERE status = 'processing'"
+        )
+        processing_jobs = await cursor.fetchall()
+
+        for row in processing_jobs:
+            job_id = row[0]
+            print(f"[INFO] Auto-resuming job: {job_id}")
+            asyncio.create_task(
+                process_job(
+                    get_current_db_path(),
+                    job_id,
+                    settings.firecrawl_api_key,
+                    settings.anthropic_api_key
+                )
+            )
+
     yield
 
 
