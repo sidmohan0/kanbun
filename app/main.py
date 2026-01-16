@@ -116,6 +116,22 @@ class ContactUpdate(BaseModel):
     linkedin_url: Optional[str] = None
 
 
+class CompanyUpdate(BaseModel):
+    """Partial update model for companies - all fields optional."""
+    name: Optional[str] = None
+    website_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    company_description: Optional[str] = None
+    mission_statement: Optional[str] = None
+    founded_year: Optional[str] = None
+    headquarters: Optional[str] = None
+    company_size: Optional[str] = None
+    industry: Optional[str] = None
+    pricing_model: Optional[str] = None
+    products_services: Optional[str] = None
+    target_customers: Optional[str] = None
+
+
 class EmailSend(BaseModel):
     provider: str  # 'gmail' or 'outlook'
     to: str
@@ -1396,6 +1412,248 @@ async def delete_company_note(note_id: str):
         return {"status": "deleted"}
 
 
+@app.delete("/api/companies/{company_id}")
+async def delete_company(company_id: str):
+    """Delete a company. Associated contacts are orphaned (kept but unlinked)."""
+    async with get_db(get_current_db_path()) as db:
+        # Check if company exists
+        cursor = await db.execute("SELECT id, name FROM companies WHERE id = ?", (company_id,))
+        company = await cursor.fetchone()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        company_name = company["name"]
+
+        # Orphan associated contacts (set company_id to NULL)
+        await db.execute("UPDATE contacts SET company_id = NULL WHERE company_id = ?", (company_id,))
+
+        # Delete associated data
+        await db.execute("DELETE FROM company_notes WHERE company_id = ?", (company_id,))
+        await db.execute("DELETE FROM company_activities WHERE company_id = ?", (company_id,))
+        await db.execute("DELETE FROM keywords WHERE company_id = ?", (company_id,))
+        await db.execute("DELETE FROM about_descriptions WHERE company_id = ?", (company_id,))
+
+        # Delete the company
+        await db.execute("DELETE FROM companies WHERE id = ?", (company_id,))
+        await db.commit()
+
+    # Try to delete screenshot file if it exists
+    try:
+        screenshot_path = get_screenshot_path(company_id)
+        if screenshot_path.exists():
+            screenshot_path.unlink()
+    except Exception:
+        pass  # Ignore screenshot deletion errors
+
+    return {
+        "message": "Company deleted",
+        "company_id": company_id,
+        "name": company_name
+    }
+
+
+@app.put("/api/companies/{company_id}")
+async def update_company(company_id: str, updates: CompanyUpdate):
+    """Update company fields. Logs changes to activity timeline."""
+    async with get_db(get_current_db_path()) as db:
+        # Get current company data
+        cursor = await db.execute("SELECT * FROM companies WHERE id = ?", (company_id,))
+        company = await cursor.fetchone()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        company = dict(company)
+        update_data = updates.model_dump(exclude_unset=True)
+
+        if not update_data:
+            return company
+
+        # Build update query and log changes
+        set_clauses = []
+        params = []
+        for field, new_value in update_data.items():
+            old_value = company.get(field)
+            if old_value != new_value:
+                set_clauses.append(f"{field} = ?")
+                params.append(new_value)
+
+                # Log the change to activity timeline
+                activity_id = str(uuid.uuid4())
+                await db.execute(
+                    """INSERT INTO company_activities (id, company_id, activity_type, description, old_value, new_value)
+                       VALUES (?, ?, 'field_update', ?, ?, ?)""",
+                    (activity_id, company_id, f"Updated {field.replace('_', ' ')}",
+                     str(old_value) if old_value else None,
+                     str(new_value) if new_value else None)
+                )
+
+        if set_clauses:
+            params.append(company_id)
+            await db.execute(
+                f"UPDATE companies SET {', '.join(set_clauses)} WHERE id = ?",
+                params
+            )
+            await db.commit()
+
+        # Return updated company
+        cursor = await db.execute("SELECT * FROM companies WHERE id = ?", (company_id,))
+        return dict(await cursor.fetchone())
+
+
+@app.get("/api/companies/{company_id}/timeline")
+async def get_company_timeline(company_id: str):
+    """Get company activity timeline (notes + activities combined)."""
+    async with get_db(get_current_db_path()) as db:
+        # Check company exists
+        cursor = await db.execute("SELECT id FROM companies WHERE id = ?", (company_id,))
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        # Get activities
+        cursor = await db.execute(
+            """SELECT id, activity_type, description, old_value, new_value, created_at
+               FROM company_activities WHERE company_id = ?
+               ORDER BY created_at DESC""",
+            (company_id,)
+        )
+        activities = [dict(row) for row in await cursor.fetchall()]
+
+        # Get notes (as 'note' type activities)
+        cursor = await db.execute(
+            """SELECT id, content, created_at
+               FROM company_notes WHERE company_id = ?
+               ORDER BY created_at DESC""",
+            (company_id,)
+        )
+        notes = await cursor.fetchall()
+
+        # Combine into unified timeline
+        timeline = []
+        for a in activities:
+            timeline.append({
+                "id": a["id"],
+                "type": a["activity_type"],
+                "description": a["description"],
+                "old_value": a["old_value"],
+                "new_value": a["new_value"],
+                "created_at": a["created_at"],
+                "deletable": False
+            })
+
+        for n in notes:
+            timeline.append({
+                "id": n["id"],
+                "type": "note",
+                "description": n["content"],
+                "old_value": None,
+                "new_value": None,
+                "created_at": n["created_at"],
+                "deletable": True
+            })
+
+        # Sort by created_at descending
+        timeline.sort(key=lambda x: x["created_at"], reverse=True)
+
+        return {"timeline": timeline}
+
+
+@app.post("/api/companies/{company_id}/activity")
+async def log_company_activity(company_id: str, activity_type: str, description: str = ""):
+    """Log a manual activity for a company."""
+    async with get_db(get_current_db_path()) as db:
+        cursor = await db.execute("SELECT id FROM companies WHERE id = ?", (company_id,))
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        activity_id = str(uuid.uuid4())
+        await db.execute(
+            """INSERT INTO company_activities (id, company_id, activity_type, description)
+               VALUES (?, ?, ?, ?)""",
+            (activity_id, company_id, activity_type, description)
+        )
+        await db.commit()
+
+        return {"id": activity_id, "activity_type": activity_type, "description": description}
+
+
+@app.get("/api/companies/{company_id}/keywords")
+async def get_company_keywords(company_id: str):
+    """Get all keywords for a company."""
+    async with get_db(get_current_db_path()) as db:
+        cursor = await db.execute("SELECT id FROM companies WHERE id = ?", (company_id,))
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        cursor = await db.execute(
+            "SELECT id, category, keyword, created_at FROM keywords WHERE company_id = ? ORDER BY category, keyword",
+            (company_id,)
+        )
+        keywords = [dict(row) for row in await cursor.fetchall()]
+        return {"keywords": keywords}
+
+
+@app.post("/api/companies/{company_id}/keywords")
+async def add_company_keyword(company_id: str, keyword: str, category: str = "manual"):
+    """Add a keyword to a company."""
+    async with get_db(get_current_db_path()) as db:
+        cursor = await db.execute("SELECT id FROM companies WHERE id = ?", (company_id,))
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        # Check if keyword already exists
+        cursor = await db.execute(
+            "SELECT id FROM keywords WHERE company_id = ? AND keyword = ?",
+            (company_id, keyword)
+        )
+        if await cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Keyword already exists")
+
+        keyword_id = str(uuid.uuid4())
+        await db.execute(
+            "INSERT INTO keywords (id, company_id, category, keyword) VALUES (?, ?, ?, ?)",
+            (keyword_id, company_id, category, keyword)
+        )
+
+        # Log activity
+        activity_id = str(uuid.uuid4())
+        await db.execute(
+            """INSERT INTO company_activities (id, company_id, activity_type, description, new_value)
+               VALUES (?, ?, 'keyword_added', ?, ?)""",
+            (activity_id, company_id, f"Added keyword: {keyword}", keyword)
+        )
+
+        await db.commit()
+        return {"id": keyword_id, "keyword": keyword, "category": category}
+
+
+@app.delete("/api/companies/{company_id}/keywords/{keyword_id}")
+async def delete_company_keyword(company_id: str, keyword_id: str):
+    """Remove a keyword from a company."""
+    async with get_db(get_current_db_path()) as db:
+        cursor = await db.execute(
+            "SELECT keyword FROM keywords WHERE id = ? AND company_id = ?",
+            (keyword_id, company_id)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Keyword not found")
+
+        keyword_text = row["keyword"]
+
+        await db.execute("DELETE FROM keywords WHERE id = ?", (keyword_id,))
+
+        # Log activity
+        activity_id = str(uuid.uuid4())
+        await db.execute(
+            """INSERT INTO company_activities (id, company_id, activity_type, description, old_value)
+               VALUES (?, ?, 'keyword_removed', ?, ?)""",
+            (activity_id, company_id, f"Removed keyword: {keyword_text}", keyword_text)
+        )
+
+        await db.commit()
+        return {"status": "deleted", "keyword": keyword_text}
+
+
 @app.get("/api/search")
 async def global_search(q: str = ""):
     """Search contacts and companies."""
@@ -1483,6 +1741,33 @@ async def create_contact(contact: ContactCreate):
         )
         row = await cursor.fetchone()
         return dict(row)
+
+
+@app.delete("/api/contacts/{contact_id}")
+async def delete_contact(contact_id: str):
+    """Delete a contact and all associated data (notes, reminders, outreach logs)."""
+    async with get_db(get_current_db_path()) as db:
+        # Check if contact exists
+        cursor = await db.execute("SELECT id, first_name, last_name FROM contacts WHERE id = ?", (contact_id,))
+        contact = await cursor.fetchone()
+        if not contact:
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        # Delete associated data
+        await db.execute("DELETE FROM contact_notes WHERE contact_id = ?", (contact_id,))
+        await db.execute("DELETE FROM reminders WHERE contact_id = ?", (contact_id,))
+        await db.execute("DELETE FROM outreach_log WHERE contact_id = ?", (contact_id,))
+        await db.execute("DELETE FROM stage_changes WHERE contact_id = ?", (contact_id,))
+
+        # Delete the contact
+        await db.execute("DELETE FROM contacts WHERE id = ?", (contact_id,))
+        await db.commit()
+
+    return {
+        "message": "Contact deleted",
+        "contact_id": contact_id,
+        "name": f"{contact['first_name'] or ''} {contact['last_name'] or ''}".strip()
+    }
 
 
 # =============================================================================

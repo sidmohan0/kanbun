@@ -140,6 +140,18 @@ CREATE TABLE IF NOT EXISTS company_notes (
     FOREIGN KEY (company_id) REFERENCES companies(id)
 );
 
+CREATE TABLE IF NOT EXISTS company_activities (
+    id TEXT PRIMARY KEY,
+    company_id TEXT NOT NULL,
+    activity_type TEXT NOT NULL,
+    description TEXT,
+    old_value TEXT,
+    new_value TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_company_activities_company_id ON company_activities(company_id);
 CREATE INDEX IF NOT EXISTS idx_email_templates_category ON email_templates(category);
 CREATE INDEX IF NOT EXISTS idx_contact_notes_contact_id ON contact_notes(contact_id);
 CREATE INDEX IF NOT EXISTS idx_stage_changes_contact_id ON stage_changes(contact_id);
@@ -186,6 +198,18 @@ MIGRATIONS = [
         token_expires_at INTEGER,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )""",
+    # Company activities table for timeline
+    """CREATE TABLE IF NOT EXISTS company_activities (
+        id TEXT PRIMARY KEY,
+        company_id TEXT NOT NULL,
+        activity_type TEXT NOT NULL,
+        description TEXT,
+        old_value TEXT,
+        new_value TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_company_activities_company_id ON company_activities(company_id)",
 ]
 
 
