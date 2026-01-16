@@ -789,7 +789,8 @@
                 <div class="lg:col-span-2 space-y-4">
                     <!-- Company Header Card -->
                     <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
-                        <h1 id="companyPageName" class="text-2xl font-bold text-sage-800 mb-2"></h1>
+                        <h1 id="companyPageName" class="text-2xl font-bold text-sage-800 mb-2 cursor-pointer hover:bg-cream-50 rounded px-1 -mx-1 border border-transparent hover:border-cream-300 transition-colors"
+                            onclick="makeCompanyFieldEditable(this, 'name')" title="Click to edit"></h1>
                         <div id="companyPageLinks" class="flex gap-2 mb-4">
                             <!-- Website and LinkedIn buttons populated by JS -->
                         </div>
@@ -809,19 +810,57 @@
                             </button>
                         </div>
 
-                        <!-- Details -->
+                        <!-- Editable Details -->
                         <div id="companyPageDetails" class="grid grid-cols-2 gap-3 text-sm">
-                            <!-- Industry, size, headquarters, founded populated by JS -->
+                            <!-- Industry, size, headquarters, founded - now editable -->
                         </div>
                     </div>
 
                     <!-- Description Card -->
                     <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
                         <h3 class="font-medium text-sage-700 mb-3">About</h3>
-                        <p id="companyPageDescription" class="text-sm text-sage-600 whitespace-pre-wrap"></p>
-                        <div id="companyPageMission" class="mt-4 hidden">
+                        <p id="companyPageDescription" class="text-sm text-sage-600 whitespace-pre-wrap cursor-pointer hover:bg-cream-50 rounded p-1 -m-1 border border-transparent hover:border-cream-300 transition-colors min-h-[3rem]"
+                           onclick="makeCompanyFieldEditable(this, 'company_description', 'textarea')" title="Click to edit"></p>
+                        <div id="companyPageMission" class="mt-4">
                             <h4 class="font-medium text-sage-700 mb-2">Mission</h4>
-                            <p id="companyPageMissionText" class="text-sm text-sage-600 italic"></p>
+                            <p id="companyPageMissionText" class="text-sm text-sage-600 italic cursor-pointer hover:bg-cream-50 rounded p-1 -m-1 border border-transparent hover:border-cream-300 transition-colors min-h-[1.5rem]"
+                               onclick="makeCompanyFieldEditable(this, 'mission_statement', 'textarea')" title="Click to edit"></p>
+                        </div>
+                    </div>
+
+                    <!-- Keywords Section -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="font-medium text-sage-700">Keywords</h3>
+                            <button onclick="showAddKeywordInput()" class="text-sage-500 hover:text-sage-700 text-sm flex items-center gap-1">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                </svg>
+                                Add
+                            </button>
+                        </div>
+                        <!-- Add Keyword Input (hidden by default) -->
+                        <div id="addKeywordInput" class="hidden mb-3">
+                            <div class="flex gap-2">
+                                <input type="text" id="newKeywordInput" placeholder="Enter keyword..."
+                                       class="flex-1 border border-cream-300 rounded-lg px-3 py-1.5 text-sm text-sage-700 focus:ring-2 focus:ring-terracotta-300"
+                                       onkeydown="if(event.key==='Enter') addCompanyKeyword(); if(event.key==='Escape') hideAddKeywordInput();">
+                                <button onclick="addCompanyKeyword()"
+                                        class="bg-sage-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-sage-700 transition-colors">
+                                    Add
+                                </button>
+                                <button onclick="hideAddKeywordInput()"
+                                        class="text-sage-500 hover:text-sage-700 px-2">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Keywords Tags -->
+                        <div id="companyPageKeywords" class="flex flex-wrap gap-2">
+                            <!-- Keywords populated by JS -->
+                        </div>
+                        <div id="companyPageKeywordsEmpty" class="hidden text-sage-400 text-sm">
+                            No keywords yet
                         </div>
                     </div>
 
@@ -854,11 +893,11 @@
                     </div>
                 </div>
 
-                <!-- Right Column: Notes and Contacts (~60%) -->
+                <!-- Right Column: Activity Timeline and Contacts (~60%) -->
                 <div class="lg:col-span-3 space-y-4">
-                    <!-- Notes Section -->
+                    <!-- Activity Timeline Section -->
                     <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
-                        <h2 class="text-lg font-semibold text-sage-800 mb-4">Notes</h2>
+                        <h2 class="text-lg font-semibold text-sage-800 mb-4">Activity</h2>
 
                         <!-- Add Note Input -->
                         <div class="flex gap-2 mb-4">
@@ -871,13 +910,13 @@
                             </button>
                         </div>
 
-                        <!-- Notes List -->
-                        <div id="companyPageNotes" class="space-y-2">
-                            <!-- Notes populated by JS -->
+                        <!-- Activity Timeline -->
+                        <div id="companyPageTimeline" class="space-y-3">
+                            <!-- Timeline entries populated by JS -->
                         </div>
 
-                        <div id="companyPageNotesEmpty" class="hidden text-center py-4 text-sage-400 text-sm">
-                            No notes yet
+                        <div id="companyPageTimelineEmpty" class="hidden text-center py-4 text-sage-400 text-sm">
+                            No activity yet
                         </div>
                     </div>
 
@@ -2558,10 +2597,11 @@
 
         async function loadCompanyPageData(companyId) {
             try {
-                const [companyRes, contactsRes, notesRes] = await Promise.all([
+                const [companyRes, contactsRes, timelineRes, keywordsRes] = await Promise.all([
                     fetch(`/api/companies/${companyId}/full`),
                     fetch(`/api/companies/${companyId}/contacts`),
-                    fetch(`/api/companies/${companyId}/notes`)
+                    fetch(`/api/companies/${companyId}/timeline`),
+                    fetch(`/api/companies/${companyId}/keywords`)
                 ]);
 
                 if (!companyRes.ok) {
@@ -2572,10 +2612,13 @@
 
                 const company = await companyRes.json();
                 const contactsData = await contactsRes.json();
-                const notesData = await notesRes.json();
+                const timelineData = await timelineRes.json();
+                const keywordsData = await keywordsRes.json();
 
                 currentCompanyPageData = company;
-                renderCompanyPage(company, contactsData.contacts, notesData.notes);
+                renderCompanyPage(company, contactsData.contacts);
+                renderCompanyTimeline(timelineData.timeline || []);
+                renderCompanyKeywords(keywordsData.keywords || []);
             } catch (err) {
                 console.error('Failed to load company page:', err);
                 alert('Failed to load company data');
@@ -2583,9 +2626,11 @@
             }
         }
 
-        function renderCompanyPage(company, contacts, notes = []) {
-            // Header
-            document.getElementById('companyPageName').textContent = company.name || 'Unknown Company';
+        function renderCompanyPage(company, contacts) {
+            // Header - editable
+            const nameEl = document.getElementById('companyPageName');
+            nameEl.textContent = company.name || 'Click to add name';
+            nameEl.dataset.value = company.name || '';
 
             // Links
             const linksHtml = [];
@@ -2604,25 +2649,31 @@
             screenshotImg.style.display = '';
             noScreenshot.classList.add('hidden');
 
-            // Details grid
-            const details = [];
-            if (company.industry) details.push(`<div><span class="text-sage-500">Industry:</span> <span class="text-sage-700">${company.industry}</span></div>`);
-            if (company.company_size) details.push(`<div><span class="text-sage-500">Size:</span> <span class="text-sage-700">${company.company_size}</span></div>`);
-            if (company.headquarters) details.push(`<div><span class="text-sage-500">HQ:</span> <span class="text-sage-700">${company.headquarters}</span></div>`);
-            if (company.founded_year) details.push(`<div><span class="text-sage-500">Founded:</span> <span class="text-sage-700">${company.founded_year}</span></div>`);
-            document.getElementById('companyPageDetails').innerHTML = details.join('');
+            // Editable details grid
+            const editableField = (label, field, value) => `
+                <div class="cursor-pointer hover:bg-cream-50 rounded p-1 -m-1 border border-transparent hover:border-cream-300 transition-colors"
+                     onclick="makeCompanyFieldEditable(this.querySelector('.editable-value'), '${field}')"
+                     title="Click to edit">
+                    <span class="text-sage-500">${label}:</span>
+                    <span class="editable-value text-sage-700" data-value="${value || ''}">${value || 'Add...'}</span>
+                </div>`;
 
-            // Description
-            document.getElementById('companyPageDescription').textContent = company.company_description || company.meta_description || 'No description available.';
+            document.getElementById('companyPageDetails').innerHTML = `
+                ${editableField('Industry', 'industry', company.industry)}
+                ${editableField('Size', 'company_size', company.company_size)}
+                ${editableField('HQ', 'headquarters', company.headquarters)}
+                ${editableField('Founded', 'founded_year', company.founded_year)}
+            `;
 
-            // Mission
-            const missionDiv = document.getElementById('companyPageMission');
-            if (company.mission_statement) {
-                document.getElementById('companyPageMissionText').textContent = company.mission_statement;
-                missionDiv.classList.remove('hidden');
-            } else {
-                missionDiv.classList.add('hidden');
-            }
+            // Description - editable
+            const descEl = document.getElementById('companyPageDescription');
+            descEl.textContent = company.company_description || 'Click to add description...';
+            descEl.dataset.value = company.company_description || '';
+
+            // Mission - editable
+            const missionEl = document.getElementById('companyPageMissionText');
+            missionEl.textContent = company.mission_statement || 'Click to add mission...';
+            missionEl.dataset.value = company.mission_statement || '';
 
             // Additional info
             const productsDiv = document.getElementById('companyPageProducts');
@@ -2667,9 +2718,6 @@
             } else {
                 pricingDiv.classList.add('hidden');
             }
-
-            // Notes
-            renderCompanyPageNotes(notes);
 
             // Contacts
             document.getElementById('companyPageContactsHeader').textContent = `Contacts (${contacts.length})`;
@@ -2759,30 +2807,80 @@
             }
         }
 
-        function renderCompanyPageNotes(notes) {
-            const container = document.getElementById('companyPageNotes');
-            const emptyMsg = document.getElementById('companyPageNotesEmpty');
+        function renderCompanyTimeline(timeline) {
+            const container = document.getElementById('companyPageTimeline');
+            const emptyMsg = document.getElementById('companyPageTimelineEmpty');
 
-            if (notes.length === 0) {
+            if (!timeline || timeline.length === 0) {
                 container.innerHTML = '';
                 emptyMsg.classList.remove('hidden');
-            } else {
-                emptyMsg.classList.add('hidden');
-                container.innerHTML = notes.map(note => {
-                    const date = new Date(note.created_at).toLocaleDateString('en-US', {
-                        month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
-                    });
-                    return `
-                        <div class="flex items-start justify-between p-3 rounded-lg bg-cream-50 border border-cream-200">
-                            <div class="flex-1">
-                                <p class="text-sm text-sage-700">${note.content}</p>
-                                <p class="text-xs text-sage-400 mt-1">${date}</p>
-                            </div>
-                            <button onclick="companyPageDeleteNote('${note.id}')" class="text-sage-400 hover:text-red-500 px-2">&times;</button>
-                        </div>
-                    `;
-                }).join('');
+                return;
             }
+
+            emptyMsg.classList.add('hidden');
+            container.innerHTML = timeline.map(entry => {
+                const date = new Date(entry.created_at).toLocaleDateString('en-US', {
+                    month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
+                });
+
+                // Different styling based on entry type
+                const isNote = entry.type === 'note';
+                const icon = getTimelineIcon(entry.type);
+                const content = getTimelineContent(entry);
+                const deleteBtn = isNote ? `<button onclick="companyPageDeleteNote('${entry.id}')" class="text-sage-400 hover:text-red-500 px-2">&times;</button>` : '';
+
+                return `
+                    <div class="flex gap-3 p-3 rounded-lg ${isNote ? 'bg-cream-50' : 'bg-white'} border border-cream-200">
+                        <div class="flex-shrink-0 w-8 h-8 rounded-full ${isNote ? 'bg-sage-100' : 'bg-cream-100'} flex items-center justify-center">
+                            ${icon}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm text-sage-700">${content}</p>
+                            <p class="text-xs text-sage-400 mt-1">${date}</p>
+                        </div>
+                        ${deleteBtn}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getTimelineIcon(type) {
+            const icons = {
+                'note': '<svg class="w-4 h-4 text-sage-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>',
+                'field_update': '<svg class="w-4 h-4 text-terracotta-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>',
+                'keyword_added': '<svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>',
+                'keyword_removed': '<svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>',
+                'contact_added': '<svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>',
+                'email_sent': '<svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>'
+            };
+            return icons[type] || icons['note'];
+        }
+
+        function getTimelineContent(entry) {
+            if (entry.type === 'note') {
+                return escapeHtml(entry.content || entry.description || '');
+            }
+            if (entry.type === 'field_update') {
+                const field = entry.description || 'field';
+                const oldVal = entry.old_value ? `"${escapeHtml(truncate(entry.old_value, 30))}"` : 'empty';
+                const newVal = entry.new_value ? `"${escapeHtml(truncate(entry.new_value, 30))}"` : 'empty';
+                return `Updated <strong>${escapeHtml(field)}</strong>: ${oldVal} → ${newVal}`;
+            }
+            if (entry.type === 'keyword_added') {
+                return `Added keyword: <span class="px-1.5 py-0.5 bg-cream-100 rounded text-xs">${escapeHtml(entry.new_value || '')}</span>`;
+            }
+            if (entry.type === 'keyword_removed') {
+                return `Removed keyword: <span class="px-1.5 py-0.5 bg-cream-100 rounded text-xs line-through">${escapeHtml(entry.old_value || '')}</span>`;
+            }
+            if (entry.type === 'email_sent') {
+                return `Email sent: ${escapeHtml(entry.description || '')}`;
+            }
+            return escapeHtml(entry.description || entry.content || '');
+        }
+
+        function truncate(str, len) {
+            if (!str) return '';
+            return str.length > len ? str.substring(0, len) + '...' : str;
         }
 
         async function companyPageAddNote() {
@@ -2799,7 +2897,7 @@
 
                 if (res.ok) {
                     input.value = '';
-                    await refreshCompanyPageNotes();
+                    await refreshCompanyPageTimeline();
                 }
             } catch (err) {
                 console.error('Failed to add note:', err);
@@ -2812,21 +2910,112 @@
 
             try {
                 await fetch(`/api/company-notes/${noteId}`, { method: 'DELETE' });
-                await refreshCompanyPageNotes();
+                await refreshCompanyPageTimeline();
             } catch (err) {
                 console.error('Failed to delete note:', err);
                 alert('Failed to delete note');
             }
         }
 
-        async function refreshCompanyPageNotes() {
+        async function refreshCompanyPageTimeline() {
             if (!currentCompanyPageId) return;
             try {
-                const res = await fetch(`/api/companies/${currentCompanyPageId}/notes`);
+                const res = await fetch(`/api/companies/${currentCompanyPageId}/timeline`);
                 const data = await res.json();
-                renderCompanyPageNotes(data.notes);
+                renderCompanyTimeline(data.timeline || []);
             } catch (err) {
-                console.error('Failed to refresh notes:', err);
+                console.error('Failed to refresh timeline:', err);
+            }
+        }
+
+        // Keywords functionality
+        async function loadCompanyKeywords() {
+            if (!currentCompanyPageId) return;
+            try {
+                const res = await fetch(`/api/companies/${currentCompanyPageId}/keywords`);
+                const data = await res.json();
+                renderCompanyKeywords(data.keywords || []);
+            } catch (err) {
+                console.error('Failed to load keywords:', err);
+            }
+        }
+
+        function renderCompanyKeywords(keywords) {
+            const container = document.getElementById('companyPageKeywords');
+            const emptyState = document.getElementById('companyPageKeywordsEmpty');
+
+            if (!keywords || keywords.length === 0) {
+                container.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            container.innerHTML = keywords.map(kw => `
+                <span class="inline-flex items-center gap-1 px-2 py-1 bg-cream-100 text-sage-700 rounded-full text-sm group">
+                    ${escapeHtml(kw.keyword)}
+                    <button onclick="removeCompanyKeyword('${escapeHtml(kw.keyword)}')"
+                            class="text-sage-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity ml-0.5"
+                            title="Remove keyword">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </span>
+            `).join('');
+        }
+
+        function showAddKeywordInput() {
+            document.getElementById('addKeywordInput').classList.remove('hidden');
+            document.getElementById('newKeywordInput').focus();
+        }
+
+        function hideAddKeywordInput() {
+            document.getElementById('addKeywordInput').classList.add('hidden');
+            document.getElementById('newKeywordInput').value = '';
+        }
+
+        async function addCompanyKeyword() {
+            const input = document.getElementById('newKeywordInput');
+            const keyword = input.value.trim();
+            if (!keyword || !currentCompanyPageId) return;
+
+            try {
+                const res = await fetch(`/api/companies/${currentCompanyPageId}/keywords`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ keyword })
+                });
+
+                if (res.ok) {
+                    hideAddKeywordInput();
+                    await loadCompanyKeywords();
+                    await refreshCompanyPageTimeline();
+                } else {
+                    const data = await res.json();
+                    alert(data.detail || 'Failed to add keyword');
+                }
+            } catch (err) {
+                console.error('Failed to add keyword:', err);
+                alert('Failed to add keyword');
+            }
+        }
+
+        async function removeCompanyKeyword(keyword) {
+            if (!currentCompanyPageId) return;
+
+            try {
+                const res = await fetch(`/api/companies/${currentCompanyPageId}/keywords/${encodeURIComponent(keyword)}`, {
+                    method: 'DELETE'
+                });
+
+                if (res.ok) {
+                    await loadCompanyKeywords();
+                    await refreshCompanyPageTimeline();
+                }
+            } catch (err) {
+                console.error('Failed to remove keyword:', err);
+                alert('Failed to remove keyword');
             }
         }
 
@@ -3035,7 +3224,7 @@
                 ).join(' ') : '-';
 
                 return `
-                    <tr class="group border-t hover:bg-gray-50 cursor-pointer" onclick="showCompanyDetail('${c.id}')">
+                    <tr class="group border-t hover:bg-gray-50 cursor-pointer" onclick="navigateToCompany('${c.id}')">
                         <td class="px-3 py-2">
                             <img src="/api/screenshots/${c.id}"
                                  class="w-12 h-8 object-cover rounded border cursor-pointer hover:opacity-80"
@@ -4899,6 +5088,92 @@ Best,
             input.addEventListener('blur', save);
             input.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
+                    e.preventDefault();
+                    input.blur();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    element.innerHTML = originalContent;
+                }
+            });
+        }
+
+        // Company inline editing
+        async function makeCompanyFieldEditable(element, fieldName, inputType = 'text') {
+            // Don't re-edit if already editing
+            if (element.querySelector('input') || element.querySelector('textarea')) return;
+
+            const currentValue = element.dataset.value || element.textContent.trim();
+            const originalContent = element.innerHTML;
+
+            // Create input element
+            let input;
+            if (inputType === 'textarea') {
+                input = document.createElement('textarea');
+                input.rows = 3;
+                input.className = 'w-full px-2 py-1 border border-terracotta-300 rounded focus:ring-2 focus:ring-terracotta-300 focus:outline-none text-sage-800 text-sm';
+            } else {
+                input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'w-full px-2 py-1 border border-terracotta-300 rounded focus:ring-2 focus:ring-terracotta-300 focus:outline-none text-sage-800';
+                if (fieldName === 'name') {
+                    input.className += ' text-2xl font-bold';
+                }
+            }
+            input.value = currentValue === 'Click to add description...' || currentValue === 'Click to add mission...' ||
+                          currentValue === 'Click to add name' || currentValue === 'Add...' ? '' : currentValue;
+
+            // Replace content with input
+            element.innerHTML = '';
+            element.appendChild(input);
+            input.focus();
+            input.select();
+
+            // Handle save
+            const save = async () => {
+                const newValue = input.value.trim();
+
+                // If unchanged, just restore
+                if (newValue === currentValue || (newValue === '' && !currentValue)) {
+                    element.innerHTML = originalContent;
+                    return;
+                }
+
+                // Save to server
+                try {
+                    const response = await fetch(`/api/companies/${currentCompanyPageId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ [fieldName]: newValue || null })
+                    });
+
+                    if (response.ok) {
+                        const updated = await response.json();
+                        currentCompanyPageData = updated;
+
+                        // Update the element
+                        element.textContent = newValue || (inputType === 'textarea' ? 'Click to add...' : 'Add...');
+                        element.dataset.value = newValue || '';
+
+                        // Brief success flash
+                        element.classList.add('bg-green-100');
+                        setTimeout(() => element.classList.remove('bg-green-100'), 500);
+
+                        // Refresh timeline to show the change
+                        refreshCompanyPageTimeline();
+                    } else {
+                        alert('Failed to save changes');
+                        element.innerHTML = originalContent;
+                    }
+                } catch (error) {
+                    console.error('Save error:', error);
+                    alert('Failed to save changes');
+                    element.innerHTML = originalContent;
+                }
+            };
+
+            input.addEventListener('blur', save);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && inputType !== 'textarea') {
                     e.preventDefault();
                     input.blur();
                 } else if (e.key === 'Escape') {
