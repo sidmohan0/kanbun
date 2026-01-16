@@ -4,6 +4,7 @@ import uuid
 import random
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import anthropic
@@ -11,6 +12,28 @@ import anthropic
 from app.database import get_db
 from app.services.keyword_extractor import extract_keywords
 from app.services.screenshot_service import enrich_company_website, screenshot_exists
+
+
+# Path to the backup script
+BACKUP_SCRIPT = Path(__file__).parent.parent.parent / "scripts" / "backup_to_gdrive.sh"
+
+
+async def trigger_cloud_backup():
+    """Trigger a cloud backup after job completion."""
+    if not BACKUP_SCRIPT.exists():
+        print(f"[WARN] Backup script not found: {BACKUP_SCRIPT}")
+        return
+
+    try:
+        # Run backup script in background (non-blocking)
+        process = await asyncio.create_subprocess_exec(
+            "/bin/bash", str(BACKUP_SCRIPT),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+        print(f"[INFO] Cloud backup triggered (pid: {process.pid})")
+    except Exception as e:
+        print(f"[WARN] Failed to trigger cloud backup: {e}")
 
 
 async def create_job(
@@ -235,6 +258,9 @@ async def process_job(
                     (datetime.now().isoformat(), job_id)
                 )
                 await db.commit()
+
+            # Trigger cloud backup after job completes
+            await trigger_cloud_backup()
 
     except Exception as e:
         async with get_db(db_path) as db:
