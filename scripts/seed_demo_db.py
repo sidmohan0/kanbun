@@ -33,24 +33,24 @@ from app.database import SCHEMA, MIGRATIONS, DEFAULT_TEMPLATE
 
 
 # =============================================================================
-# DEMO DATA
+# DEMO DATA - All fictional companies and contacts
 # =============================================================================
 
 COMPANIES = [
     {
-        "name": "Stripe",
-        "website_url": "https://stripe.com",
-        "linkedin_url": "https://linkedin.com/company/stripe",
-        "meta_title": "Stripe | Payment Processing Platform",
-        "meta_description": "Online payment processing for internet businesses. Stripe is a suite of payment APIs that powers commerce for online businesses.",
-        "company_description": "Stripe is a technology company that builds economic infrastructure for the internet. Businesses of every size use their software to accept payments and manage their businesses online.",
+        "name": "Nimbus Payments",
+        "website_url": "https://nimbuspay.example.com",
+        "linkedin_url": "https://linkedin.com/company/nimbuspay",
+        "meta_title": "Nimbus Payments | Modern Payment Infrastructure",
+        "meta_description": "Payment processing built for the modern internet. Nimbus provides APIs and tools for businesses to accept payments globally.",
+        "company_description": "Nimbus Payments is a technology company that builds payment infrastructure for the internet. Businesses of every size use their software to accept payments and manage their finances online.",
         "industry": "Financial Technology",
-        "headquarters": "San Francisco, CA",
-        "founded_year": "2010",
-        "company_size": "5000-10000",
+        "headquarters": "Austin, TX",
+        "founded_year": "2015",
+        "company_size": "500-1000",
         "products_services": "Payment processing, billing, invoicing, fraud prevention, financial reporting",
         "target_customers": "Online businesses, SaaS companies, e-commerce platforms, marketplaces",
-        "technologies": '["API-first", "React", "Ruby", "Go", "AWS"]',
+        "technologies": '["API-first", "React", "Python", "Go", "AWS"]',
         "keywords": {
             "core_product": ["payment processing", "payment APIs", "billing platform", "subscription management"],
             "category_language": ["fintech", "B2B SaaS", "developer tools", "payment infrastructure"],
@@ -60,16 +60,16 @@ COMPANIES = [
         }
     },
     {
-        "name": "Notion",
-        "website_url": "https://notion.so",
-        "linkedin_url": "https://linkedin.com/company/notionhq",
-        "meta_title": "Notion - Your connected workspace",
-        "meta_description": "A new tool that blends your everyday work apps into one. It's the all-in-one workspace for you and your team.",
-        "company_description": "Notion is an all-in-one workspace that combines notes, docs, wikis, and project management. Teams use Notion to collaborate and stay organized in one place.",
+        "name": "Canopy Workspace",
+        "website_url": "https://canopywork.example.com",
+        "linkedin_url": "https://linkedin.com/company/canopyworkspace",
+        "meta_title": "Canopy - Your connected workspace",
+        "meta_description": "A unified tool that combines your everyday work apps into one. The all-in-one workspace for modern teams.",
+        "company_description": "Canopy is an all-in-one workspace that combines notes, docs, wikis, and project management. Teams use Canopy to collaborate and stay organized in one place.",
         "industry": "Productivity Software",
-        "headquarters": "San Francisco, CA",
-        "founded_year": "2016",
-        "company_size": "500-1000",
+        "headquarters": "Seattle, WA",
+        "founded_year": "2017",
+        "company_size": "200-500",
         "products_services": "Note-taking, wikis, databases, project management, team collaboration",
         "target_customers": "Knowledge workers, product teams, startups, enterprises",
         "technologies": '["React", "TypeScript", "PostgreSQL", "AWS"]',
@@ -82,17 +82,17 @@ COMPANIES = [
         }
     },
     {
-        "name": "Figma",
-        "website_url": "https://figma.com",
-        "linkedin_url": "https://linkedin.com/company/figma",
-        "meta_title": "Figma: The Collaborative Interface Design Tool",
-        "meta_description": "Figma is the leading collaborative design tool for building meaningful products. Seamlessly design, prototype, develop, and collect feedback.",
-        "company_description": "Figma is a collaborative web-based design tool used for UI/UX design, prototyping, and design systems. It enables real-time collaboration between designers and stakeholders.",
+        "name": "Prism Design",
+        "website_url": "https://prismdesign.example.com",
+        "linkedin_url": "https://linkedin.com/company/prismdesign",
+        "meta_title": "Prism: Collaborative Interface Design",
+        "meta_description": "Prism is the leading collaborative design tool for building meaningful products. Design, prototype, and collect feedback seamlessly.",
+        "company_description": "Prism is a collaborative web-based design tool used for UI/UX design, prototyping, and design systems. It enables real-time collaboration between designers and stakeholders.",
         "industry": "Design Software",
-        "headquarters": "San Francisco, CA",
-        "founded_year": "2012",
-        "company_size": "1000-2000",
-        "products_services": "UI design, prototyping, design systems, developer handoff, FigJam whiteboarding",
+        "headquarters": "New York, NY",
+        "founded_year": "2014",
+        "company_size": "500-1000",
+        "products_services": "UI design, prototyping, design systems, developer handoff, whiteboarding",
         "target_customers": "Product designers, UX designers, design teams, product managers",
         "technologies": '["WebGL", "TypeScript", "C++", "WebAssembly"]',
         "keywords": {
@@ -104,14 +104,14 @@ COMPANIES = [
         }
     },
     {
-        "name": "Linear",
-        "website_url": "https://linear.app",
-        "linkedin_url": "https://linkedin.com/company/linear-app",
-        "meta_title": "Linear – A better way to build products",
-        "meta_description": "Linear is a purpose-built tool for planning and building products. Streamline issues, projects, and product roadmaps.",
-        "company_description": "Linear is a modern issue tracking and project management tool built for high-performance teams. It focuses on speed, keyboard shortcuts, and a streamlined workflow.",
+        "name": "Velocity PM",
+        "website_url": "https://velocitypm.example.com",
+        "linkedin_url": "https://linkedin.com/company/velocitypm",
+        "meta_title": "Velocity - A better way to build products",
+        "meta_description": "Velocity is a purpose-built tool for planning and building products. Streamline issues, projects, and product roadmaps.",
+        "company_description": "Velocity is a modern issue tracking and project management tool built for high-performance teams. It focuses on speed, keyboard shortcuts, and a streamlined workflow.",
         "industry": "Project Management",
-        "headquarters": "San Francisco, CA",
+        "headquarters": "Denver, CO",
         "founded_year": "2019",
         "company_size": "50-100",
         "products_services": "Issue tracking, project management, roadmaps, cycles, triage",
@@ -126,21 +126,21 @@ COMPANIES = [
         }
     },
     {
-        "name": "Vercel",
-        "website_url": "https://vercel.com",
-        "linkedin_url": "https://linkedin.com/company/vercel",
-        "meta_title": "Vercel: Build and deploy the best web experiences",
-        "meta_description": "Vercel is the platform for frontend developers, providing the speed and reliability innovators need to create at the moment of inspiration.",
-        "company_description": "Vercel is a cloud platform for frontend developers that enables teams to build, deploy, and scale web applications. Creators of Next.js framework.",
+        "name": "Launchpad Cloud",
+        "website_url": "https://launchpadcloud.example.com",
+        "linkedin_url": "https://linkedin.com/company/launchpadcloud",
+        "meta_title": "Launchpad: Deploy web apps instantly",
+        "meta_description": "Launchpad is the platform for frontend developers, providing the speed and reliability innovators need.",
+        "company_description": "Launchpad is a cloud platform for frontend developers that enables teams to build, deploy, and scale web applications with zero configuration.",
         "industry": "Cloud Infrastructure",
-        "headquarters": "San Francisco, CA",
-        "founded_year": "2015",
-        "company_size": "500-1000",
-        "products_services": "Frontend cloud, edge network, serverless functions, Next.js framework",
+        "headquarters": "Portland, OR",
+        "founded_year": "2016",
+        "company_size": "200-500",
+        "products_services": "Frontend cloud, edge network, serverless functions, framework support",
         "target_customers": "Frontend developers, web agencies, enterprise teams",
         "technologies": '["Next.js", "React", "Edge Functions", "Rust"]',
         "keywords": {
-            "core_product": ["frontend cloud", "deployment platform", "edge network", "Next.js"],
+            "core_product": ["frontend cloud", "deployment platform", "edge network", "serverless"],
             "category_language": ["DX-focused", "serverless", "JAMstack", "edge computing"],
             "industry_depth": ["ISR", "edge functions", "preview deployments", "analytics"],
             "pain_points": ["deployment complexity", "performance optimization", "scaling"],
@@ -148,37 +148,37 @@ COMPANIES = [
         }
     },
     {
-        "name": "Supabase",
-        "website_url": "https://supabase.com",
-        "linkedin_url": "https://linkedin.com/company/supabase",
-        "meta_title": "Supabase | The Open Source Firebase Alternative",
-        "meta_description": "Build production-grade applications with a Postgres database, Authentication, instant APIs, Realtime, Functions, Storage and Vector embeddings.",
-        "company_description": "Supabase is an open-source Firebase alternative providing all the backend services you need to build a product. Built on top of PostgreSQL.",
+        "name": "Basecamp DB",
+        "website_url": "https://basecampdb.example.com",
+        "linkedin_url": "https://linkedin.com/company/basecampdb",
+        "meta_title": "Basecamp DB | Open Source Backend Platform",
+        "meta_description": "Build production-grade applications with a Postgres database, Authentication, instant APIs, and Realtime features.",
+        "company_description": "Basecamp DB is an open-source backend platform providing all the services you need to build a product. Built on top of PostgreSQL with a great developer experience.",
         "industry": "Backend as a Service",
-        "headquarters": "Singapore",
+        "headquarters": "Vancouver, BC",
         "founded_year": "2020",
-        "company_size": "100-200",
+        "company_size": "50-100",
         "products_services": "Database, authentication, storage, realtime subscriptions, edge functions",
         "target_customers": "Full-stack developers, indie hackers, startups, enterprises",
         "technologies": '["PostgreSQL", "Elixir", "TypeScript", "Deno"]',
         "keywords": {
             "core_product": ["backend platform", "PostgreSQL hosting", "authentication", "realtime"],
-            "category_language": ["open source", "Firebase alternative", "BaaS", "developer-first"],
+            "category_language": ["open source", "backend as a service", "developer-first"],
             "industry_depth": ["row level security", "edge functions", "vector embeddings", "branching"],
             "pain_points": ["backend complexity", "scaling databases", "auth implementation"],
             "customer_segments": ["indie developers", "startups", "enterprises", "agencies"]
         }
     },
     {
-        "name": "Resend",
-        "website_url": "https://resend.com",
-        "linkedin_url": "https://linkedin.com/company/resend-inc",
-        "meta_title": "Resend - Email for developers",
+        "name": "Courier Mail",
+        "website_url": "https://couriermail.example.com",
+        "linkedin_url": "https://linkedin.com/company/couriermail",
+        "meta_title": "Courier - Email for developers",
         "meta_description": "The best way to reach humans instead of spam folders. Build, test, and deliver transactional emails at scale.",
-        "company_description": "Resend is a modern email API built for developers. It provides a simple way to send transactional emails with high deliverability and great developer experience.",
+        "company_description": "Courier is a modern email API built for developers. It provides a simple way to send transactional emails with high deliverability and great developer experience.",
         "industry": "Email Infrastructure",
-        "headquarters": "San Francisco, CA",
-        "founded_year": "2022",
+        "headquarters": "Boston, MA",
+        "founded_year": "2021",
         "company_size": "10-50",
         "products_services": "Email API, React Email, email analytics, domain management",
         "target_customers": "Developers, SaaS companies, startups",
@@ -192,16 +192,16 @@ COMPANIES = [
         }
     },
     {
-        "name": "Loom",
-        "website_url": "https://loom.com",
-        "linkedin_url": "https://linkedin.com/company/loomai",
-        "meta_title": "Loom: Async Video Messaging for Work",
+        "name": "Screencast Pro",
+        "website_url": "https://screencastpro.example.com",
+        "linkedin_url": "https://linkedin.com/company/screencastpro",
+        "meta_title": "Screencast Pro: Async Video for Work",
         "meta_description": "Record and share video messages of your screen, cam, or both. Faster than typing, more personal than email.",
-        "company_description": "Loom is a video messaging platform that helps teams communicate faster with instant video. Record your screen and camera, then share with a link.",
+        "company_description": "Screencast Pro is a video messaging platform that helps teams communicate faster with instant video. Record your screen and camera, then share with a link.",
         "industry": "Video Communication",
-        "headquarters": "San Francisco, CA",
-        "founded_year": "2015",
-        "company_size": "200-500",
+        "headquarters": "Miami, FL",
+        "founded_year": "2016",
+        "company_size": "100-200",
         "products_services": "Screen recording, video messaging, video analytics, transcription",
         "target_customers": "Remote teams, sales teams, customer success, educators",
         "technologies": '["React", "WebRTC", "AWS", "TypeScript"]',
@@ -214,16 +214,16 @@ COMPANIES = [
         }
     },
     {
-        "name": "Airtable",
-        "website_url": "https://airtable.com",
-        "linkedin_url": "https://linkedin.com/company/airtable",
-        "meta_title": "Airtable | The platform to build next-gen apps",
-        "meta_description": "Airtable is a platform to build next-gen apps, faster. Move beyond rigid tools and build apps that power your workflows.",
-        "company_description": "Airtable is a low-code platform that combines the simplicity of a spreadsheet with the power of a database. Teams use it to build custom apps and workflows.",
+        "name": "GridBase",
+        "website_url": "https://gridbase.example.com",
+        "linkedin_url": "https://linkedin.com/company/gridbase",
+        "meta_title": "GridBase | Build apps without code",
+        "meta_description": "GridBase is a platform to build apps faster. Move beyond rigid tools and create apps that power your workflows.",
+        "company_description": "GridBase is a low-code platform that combines the simplicity of a spreadsheet with the power of a database. Teams use it to build custom apps and workflows.",
         "industry": "Low-Code Platform",
-        "headquarters": "San Francisco, CA",
-        "founded_year": "2012",
-        "company_size": "500-1000",
+        "headquarters": "Chicago, IL",
+        "founded_year": "2013",
+        "company_size": "200-500",
         "products_services": "Relational databases, automations, interfaces, extensions, API",
         "target_customers": "Operations teams, product teams, marketing teams, enterprises",
         "technologies": '["React", "Node.js", "PostgreSQL", "AWS"]',
@@ -236,16 +236,16 @@ COMPANIES = [
         }
     },
     {
-        "name": "Retool",
-        "website_url": "https://retool.com",
-        "linkedin_url": "https://linkedin.com/company/retlokai",
-        "meta_title": "Retool | The fastest way to build internal tools",
-        "meta_description": "Build internal tools remarkably fast. Retool is a new approach to building internal tools where visual programming meets the power of real code.",
-        "company_description": "Retool is a low-code platform for building internal tools. It connects to any database or API and lets teams build dashboards, admin panels, and CRUD apps quickly.",
+        "name": "BuildKit",
+        "website_url": "https://buildkit.example.com",
+        "linkedin_url": "https://linkedin.com/company/buildkit",
+        "meta_title": "BuildKit | Internal tools, fast",
+        "meta_description": "Build internal tools remarkably fast. BuildKit is visual programming meets the power of real code.",
+        "company_description": "BuildKit is a low-code platform for building internal tools. It connects to any database or API and lets teams build dashboards, admin panels, and CRUD apps quickly.",
         "industry": "Internal Tools",
-        "headquarters": "San Francisco, CA",
-        "founded_year": "2017",
-        "company_size": "200-500",
+        "headquarters": "Salt Lake City, UT",
+        "founded_year": "2018",
+        "company_size": "100-200",
         "products_services": "Internal tool builder, database GUI, workflow automation, mobile apps",
         "target_customers": "Engineering teams, operations teams, data teams",
         "technologies": '["React", "TypeScript", "PostgreSQL", "Docker"]',
@@ -258,14 +258,14 @@ COMPANIES = [
         }
     },
     {
-        "name": "Posthog",
-        "website_url": "https://posthog.com",
-        "linkedin_url": "https://linkedin.com/company/posthog",
-        "meta_title": "PostHog - The open source Product OS",
-        "meta_description": "PostHog is the all-in-one platform for building better products - with product analytics, feature flags, A/B testing, session replay, and more.",
-        "company_description": "PostHog is an open-source product analytics platform. It provides everything product teams need to understand user behavior - analytics, session replay, feature flags, and A/B testing.",
+        "name": "Beacon Analytics",
+        "website_url": "https://beaconanalytics.example.com",
+        "linkedin_url": "https://linkedin.com/company/beaconanalytics",
+        "meta_title": "Beacon - Product Analytics Platform",
+        "meta_description": "Beacon is the all-in-one platform for building better products - with analytics, feature flags, A/B testing, and session replay.",
+        "company_description": "Beacon is an open-source product analytics platform. It provides everything product teams need to understand user behavior - analytics, session replay, feature flags, and experiments.",
         "industry": "Product Analytics",
-        "headquarters": "London, UK",
+        "headquarters": "Berlin, Germany",
         "founded_year": "2020",
         "company_size": "50-100",
         "products_services": "Product analytics, session replay, feature flags, A/B testing, surveys",
@@ -273,23 +273,23 @@ COMPANIES = [
         "technologies": '["React", "Python", "ClickHouse", "Kafka"]',
         "keywords": {
             "core_product": ["product analytics", "session replay", "feature flags", "A/B testing"],
-            "category_language": ["open source", "self-hosted", "all-in-one", "Product OS"],
+            "category_language": ["open source", "self-hosted", "all-in-one", "product intelligence"],
             "industry_depth": ["funnels", "retention", "cohorts", "autocapture"],
             "pain_points": ["data silos", "tool fragmentation", "privacy compliance"],
             "customer_segments": ["product teams", "engineers", "startups", "enterprise"]
         }
     },
     {
-        "name": "Clerk",
-        "website_url": "https://clerk.com",
-        "linkedin_url": "https://linkedin.com/company/clerkinc",
-        "meta_title": "Clerk | Authentication and User Management",
-        "meta_description": "Clerk is a complete suite of embeddable UIs, flexible APIs, and admin dashboards to authenticate and manage your users.",
-        "company_description": "Clerk provides drop-in authentication and user management for modern applications. It handles sign-up, sign-in, user profiles, and organization management out of the box.",
+        "name": "AuthStack",
+        "website_url": "https://authstack.example.com",
+        "linkedin_url": "https://linkedin.com/company/authstack",
+        "meta_title": "AuthStack | Drop-in Authentication",
+        "meta_description": "AuthStack is a complete suite of embeddable UIs, flexible APIs, and admin dashboards for user authentication.",
+        "company_description": "AuthStack provides drop-in authentication and user management for modern applications. It handles sign-up, sign-in, user profiles, and organization management out of the box.",
         "industry": "Authentication",
-        "headquarters": "San Francisco, CA",
-        "founded_year": "2020",
-        "company_size": "50-100",
+        "headquarters": "Toronto, ON",
+        "founded_year": "2021",
+        "company_size": "20-50",
         "products_services": "Authentication, user management, organizations, OAuth, MFA",
         "target_customers": "Frontend developers, startups, SaaS companies",
         "technologies": '["React", "Next.js", "TypeScript", "PostgreSQL"]',
@@ -304,47 +304,47 @@ COMPANIES = [
 ]
 
 CONTACTS_DATA = [
-    # Stripe contacts
-    {"company": "Stripe", "first_name": "Patrick", "last_name": "Collison", "title": "CEO", "email": "patrick@stripe.com", "stage": "meeting"},
-    {"company": "Stripe", "first_name": "Claire", "last_name": "Hughes Johnson", "title": "COO", "email": "claire@stripe.com", "stage": "engaged"},
-    {"company": "Stripe", "first_name": "David", "last_name": "Singleton", "title": "CTO", "email": "david.s@stripe.com", "stage": "contacted"},
-    # Notion contacts
-    {"company": "Notion", "first_name": "Ivan", "last_name": "Zhao", "title": "CEO", "email": "ivan@notion.so", "stage": "engaged"},
-    {"company": "Notion", "first_name": "Akshay", "last_name": "Kothari", "title": "COO", "email": "akshay@notion.so", "stage": "reaching_out"},
-    # Figma contacts
-    {"company": "Figma", "first_name": "Dylan", "last_name": "Field", "title": "CEO", "email": "dylan@figma.com", "stage": "won"},
-    {"company": "Figma", "first_name": "Sho", "last_name": "Kuwamoto", "title": "VP Product", "email": "sho@figma.com", "stage": "meeting"},
-    # Linear contacts
-    {"company": "Linear", "first_name": "Karri", "last_name": "Saarinen", "title": "CEO", "email": "karri@linear.app", "stage": "engaged"},
-    {"company": "Linear", "first_name": "Tuomas", "last_name": "Artman", "title": "CTO", "email": "tuomas@linear.app", "stage": "backlog"},
-    # Vercel contacts
-    {"company": "Vercel", "first_name": "Guillermo", "last_name": "Rauch", "title": "CEO", "email": "guillermo@vercel.com", "stage": "contacted"},
-    {"company": "Vercel", "first_name": "Lee", "last_name": "Robinson", "title": "VP DX", "email": "lee@vercel.com", "stage": "reaching_out"},
-    # Supabase contacts
-    {"company": "Supabase", "first_name": "Paul", "last_name": "Copplestone", "title": "CEO", "email": "paul@supabase.io", "stage": "meeting"},
-    {"company": "Supabase", "first_name": "Ant", "last_name": "Wilson", "title": "CTO", "email": "ant@supabase.io", "stage": "backlog"},
-    # Resend contacts
-    {"company": "Resend", "first_name": "Zeno", "last_name": "Rocha", "title": "CEO", "email": "zeno@resend.com", "stage": "lost"},
-    # Loom contacts
-    {"company": "Loom", "first_name": "Joe", "last_name": "Thomas", "title": "CEO", "email": "joe@loom.com", "stage": "naf"},
-    {"company": "Loom", "first_name": "Vinay", "last_name": "Hiremath", "title": "CTO", "email": "vinay@loom.com", "stage": "backlog"},
-    # Airtable contacts
-    {"company": "Airtable", "first_name": "Howie", "last_name": "Liu", "title": "CEO", "email": "howie@airtable.com", "stage": "reaching_out"},
-    {"company": "Airtable", "first_name": "Andrew", "last_name": "Ofstad", "title": "CPO", "email": "andrew@airtable.com", "stage": "backlog"},
-    # Retool contacts
-    {"company": "Retool", "first_name": "David", "last_name": "Hsu", "title": "CEO", "email": "david@retool.com", "stage": "engaged"},
-    # Posthog contacts
-    {"company": "Posthog", "first_name": "James", "last_name": "Hawkins", "title": "CEO", "email": "james@posthog.com", "stage": "contacted"},
-    {"company": "Posthog", "first_name": "Tim", "last_name": "Glaser", "title": "CTO", "email": "tim@posthog.com", "stage": "backlog"},
-    # Clerk contacts
-    {"company": "Clerk", "first_name": "Colin", "last_name": "Sidoti", "title": "CEO", "email": "colin@clerk.com", "stage": "backlog"},
-    {"company": "Clerk", "first_name": "Braden", "last_name": "Sidoti", "title": "CTO", "email": "braden@clerk.com", "stage": "backlog"},
+    # Nimbus Payments contacts
+    {"company": "Nimbus Payments", "first_name": "Marcus", "last_name": "Chen", "title": "CEO", "email": "marcus@nimbuspay.example.com", "stage": "meeting"},
+    {"company": "Nimbus Payments", "first_name": "Diana", "last_name": "Ross", "title": "COO", "email": "diana@nimbuspay.example.com", "stage": "engaged"},
+    {"company": "Nimbus Payments", "first_name": "Raj", "last_name": "Patel", "title": "CTO", "email": "raj@nimbuspay.example.com", "stage": "contacted"},
+    # Canopy Workspace contacts
+    {"company": "Canopy Workspace", "first_name": "Elena", "last_name": "Volkov", "title": "CEO", "email": "elena@canopywork.example.com", "stage": "engaged"},
+    {"company": "Canopy Workspace", "first_name": "James", "last_name": "Wright", "title": "COO", "email": "james@canopywork.example.com", "stage": "reaching_out"},
+    # Prism Design contacts
+    {"company": "Prism Design", "first_name": "Sophie", "last_name": "Laurent", "title": "CEO", "email": "sophie@prismdesign.example.com", "stage": "won"},
+    {"company": "Prism Design", "first_name": "Kevin", "last_name": "Nakamura", "title": "VP Product", "email": "kevin@prismdesign.example.com", "stage": "meeting"},
+    # Velocity PM contacts
+    {"company": "Velocity PM", "first_name": "Anna", "last_name": "Kowalski", "title": "CEO", "email": "anna@velocitypm.example.com", "stage": "engaged"},
+    {"company": "Velocity PM", "first_name": "Tom", "last_name": "Fischer", "title": "CTO", "email": "tom@velocitypm.example.com", "stage": "backlog"},
+    # Launchpad Cloud contacts
+    {"company": "Launchpad Cloud", "first_name": "Miguel", "last_name": "Santos", "title": "CEO", "email": "miguel@launchpadcloud.example.com", "stage": "contacted"},
+    {"company": "Launchpad Cloud", "first_name": "Rachel", "last_name": "Kim", "title": "VP Engineering", "email": "rachel@launchpadcloud.example.com", "stage": "reaching_out"},
+    # Basecamp DB contacts
+    {"company": "Basecamp DB", "first_name": "Oliver", "last_name": "Thompson", "title": "CEO", "email": "oliver@basecampdb.example.com", "stage": "meeting"},
+    {"company": "Basecamp DB", "first_name": "Priya", "last_name": "Sharma", "title": "CTO", "email": "priya@basecampdb.example.com", "stage": "backlog"},
+    # Courier Mail contacts
+    {"company": "Courier Mail", "first_name": "Lucas", "last_name": "Andersen", "title": "CEO", "email": "lucas@couriermail.example.com", "stage": "lost"},
+    # Screencast Pro contacts
+    {"company": "Screencast Pro", "first_name": "Emma", "last_name": "Davis", "title": "CEO", "email": "emma@screencastpro.example.com", "stage": "naf"},
+    {"company": "Screencast Pro", "first_name": "Chris", "last_name": "Miller", "title": "CTO", "email": "chris@screencastpro.example.com", "stage": "backlog"},
+    # GridBase contacts
+    {"company": "GridBase", "first_name": "Sarah", "last_name": "O'Brien", "title": "CEO", "email": "sarah@gridbase.example.com", "stage": "reaching_out"},
+    {"company": "GridBase", "first_name": "David", "last_name": "Lee", "title": "CPO", "email": "david@gridbase.example.com", "stage": "backlog"},
+    # BuildKit contacts
+    {"company": "BuildKit", "first_name": "Jennifer", "last_name": "Martinez", "title": "CEO", "email": "jennifer@buildkit.example.com", "stage": "engaged"},
+    # Beacon Analytics contacts
+    {"company": "Beacon Analytics", "first_name": "Alex", "last_name": "Mueller", "title": "CEO", "email": "alex@beaconanalytics.example.com", "stage": "contacted"},
+    {"company": "Beacon Analytics", "first_name": "Nina", "last_name": "Petrov", "title": "CTO", "email": "nina@beaconanalytics.example.com", "stage": "backlog"},
+    # AuthStack contacts
+    {"company": "AuthStack", "first_name": "Ryan", "last_name": "Burke", "title": "CEO", "email": "ryan@authstack.example.com", "stage": "backlog"},
+    {"company": "AuthStack", "first_name": "Amy", "last_name": "Chen", "title": "CTO", "email": "amy@authstack.example.com", "stage": "backlog"},
 ]
 
 PERSONAL_CONTACTS = [
-    {"first_name": "Sarah", "last_name": "Chen", "email": "sarah.chen@gmail.com", "phone": "+1 (555) 123-4567", "relationship": "friend", "notes": "Met at React Conf 2023. Interested in developer tools."},
-    {"first_name": "Michael", "last_name": "Torres", "email": "m.torres@outlook.com", "phone": "+1 (555) 234-5678", "relationship": "acquaintance", "notes": "Connected on LinkedIn. Works at Google Cloud."},
-    {"first_name": "Emily", "last_name": "Johnson", "email": "emily.j@icloud.com", "phone": "+1 (555) 345-6789", "relationship": "family", "notes": "Cousin. Software engineer at Netflix."},
+    {"first_name": "Jordan", "last_name": "Rivera", "email": "jordan.rivera@example.com", "phone": "+1 (555) 123-4567", "relationship": "friend", "notes": "Met at Tech Summit 2023. Interested in developer tools."},
+    {"first_name": "Taylor", "last_name": "Brooks", "email": "t.brooks@example.com", "phone": "+1 (555) 234-5678", "relationship": "acquaintance", "notes": "Connected at a meetup. Works in cloud infrastructure."},
+    {"first_name": "Morgan", "last_name": "Hayes", "email": "morgan.h@example.com", "phone": "+1 (555) 345-6789", "relationship": "family", "notes": "Cousin. Works as a software architect."},
 ]
 
 EMAIL_TEMPLATES = [
@@ -434,10 +434,10 @@ OUTREACH_NOTES = [
 
 CONTACT_NOTE_TEMPLATES = [
     "Key decision maker. Reports directly to CEO.",
-    "Previously worked at {company}. Good technical background.",
+    "Previously worked at a competitor. Good technical background.",
     "Prefers async communication. Very responsive on email.",
     "Budget approved for Q1. Need to move fast.",
-    "Introduced by {name}. Warm lead.",
+    "Introduced by a mutual connection. Warm lead.",
     "Mentioned they're unhappy with current solution.",
     "Technical buyer - will need to see documentation.",
     "Has influence over purchasing but not final decision maker.",
@@ -445,7 +445,7 @@ CONTACT_NOTE_TEMPLATES = [
 
 COMPANY_NOTE_TEMPLATES = [
     "Series B funded, growing quickly. Good timing for our product.",
-    "Competitor to {company}. Could be strategic partnership opportunity.",
+    "Competitor to another prospect. Could be strategic partnership opportunity.",
     "Recently announced expansion to Europe. May need localization.",
     "Strong engineering culture. Will appreciate technical depth.",
     "Just raised funding - likely have budget allocated.",
@@ -624,7 +624,6 @@ async def seed_activity(db_path: str, contact_ids: dict):
             # Add contact notes
             if random.random() > 0.4:
                 note_text = random.choice(CONTACT_NOTE_TEMPLATES)
-                note_text = note_text.format(company="Google", name="John Smith")
 
                 await db.execute(
                     """INSERT INTO contact_notes (id, contact_id, content, created_at)
@@ -688,7 +687,6 @@ async def seed_company_notes(db_path: str, company_ids: dict):
 
         for company_name, company_id in companies_with_notes:
             note_text = random.choice(COMPANY_NOTE_TEMPLATES)
-            note_text = note_text.format(company="Notion", name="Alex")
 
             await db.execute(
                 """INSERT INTO company_notes (id, company_id, content, created_at)
