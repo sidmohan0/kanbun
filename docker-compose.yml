@@ -1,5 +1,8 @@
+name: kanbun
+
 services:
   app:
+    container_name: kanbun
     build: .
     ports:
       - "8000:8000"

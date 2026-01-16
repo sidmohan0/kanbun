@@ -154,14 +154,99 @@
             <!-- Settings -->
             <div class="bg-white rounded-2xl shadow-sm border border-cream-200 p-6 mt-6">
                 <h2 class="text-xl font-semibold text-sage-700 mb-4">Settings</h2>
-                <div class="flex items-center gap-4">
-                    <label class="text-sm text-sage-600">Open emails in:</label>
-                    <select id="emailClientSetting" onchange="saveEmailClientSetting()"
-                            class="border border-cream-300 rounded-lg px-3 py-1.5 text-sage-700 text-sm focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300">
-                        <option value="mailto">Default email app</option>
-                        <option value="gmail">Gmail (web)</option>
-                        <option value="outlook">Outlook (web)</option>
-                    </select>
+
+                <!-- Email Settings -->
+                <div class="space-y-4">
+                    <div>
+                        <h3 class="text-sm font-medium text-sage-700 mb-2">Email</h3>
+                        <div class="space-y-3 pl-2">
+                            <!-- Email Client Preference -->
+                            <div class="flex items-center gap-4">
+                                <label class="text-sm text-sage-600 w-36">Open emails in:</label>
+                                <select id="emailClientSetting" onchange="saveEmailClientSetting()"
+                                        class="border border-cream-300 rounded-lg px-3 py-1.5 text-sage-700 text-sm focus:ring-2 focus:ring-terracotta-300 focus:border-terracotta-300">
+                                    <option value="mailto">Default email app</option>
+                                    <option value="gmail">Gmail (web)</option>
+                                    <option value="outlook">Outlook (web)</option>
+                                </select>
+                            </div>
+
+                            <!-- Connected Email Accounts -->
+                            <div class="flex items-start gap-4">
+                                <label class="text-sm text-sage-600 w-36 pt-1">Connected accounts:</label>
+                                <div class="flex-1">
+                                    <div id="settings-email-accounts" class="space-y-2">
+                                        <p class="text-sm text-sage-400">Loading...</p>
+                                    </div>
+                                    <div class="flex gap-2 mt-2">
+                                        <button onclick="connectEmail('gmail')" class="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                                            <svg class="w-4 h-4" viewBox="0 0 24 24">
+                                                <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/>
+                                            </svg>
+                                            Add Gmail
+                                        </button>
+                                        <button onclick="connectEmail('outlook')" class="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                                            <svg class="w-4 h-4" viewBox="0 0 24 24">
+                                                <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/>
+                                            </svg>
+                                            Add Outlook
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="border-cream-200">
+
+                    <!-- Demo Mode -->
+                    <div>
+                        <h3 class="text-sm font-medium text-sage-700 mb-2">Demo Mode</h3>
+                        <div class="space-y-3 pl-2">
+                            <div class="flex items-center gap-4">
+                                <label class="text-sm text-sage-600 w-36">Use demo data:</label>
+                                <div class="flex items-center gap-3">
+                                    <button id="demoModeToggle" onclick="toggleDemoMode()"
+                                            class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-terracotta-300 focus:ring-offset-2 bg-gray-200">
+                                        <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
+                                    </button>
+                                    <span id="demoModeStatus" class="text-sm text-sage-500">Off</span>
+                                </div>
+                            </div>
+                            <p class="text-xs text-sage-400 ml-40">Switch between your real data and demo data for testing or screenshots.</p>
+
+                            <div class="flex items-center gap-4 mt-2">
+                                <label class="text-sm text-sage-600 w-36">Demo database:</label>
+                                <div class="flex items-center gap-2">
+                                    <span id="demoDatabaseStatus" class="text-sm text-sage-500">Checking...</span>
+                                    <button onclick="seedDemoDatabase()" id="seedDemoBtn"
+                                            class="text-sm text-terracotta-600 hover:text-terracotta-800">
+                                        Regenerate
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="border-cream-200">
+
+                    <!-- Data Management -->
+                    <div>
+                        <h3 class="text-sm font-medium text-sage-700 mb-2">Data</h3>
+                        <div class="space-y-3 pl-2">
+                            <div class="flex items-center gap-4">
+                                <label class="text-sm text-sage-600 w-36">Current database:</label>
+                                <span id="currentDatabasePath" class="text-sm text-sage-500 font-mono">data/kanbun.db</span>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <label class="text-sm text-sage-600 w-36">Actions:</label>
+                                <button onclick="confirmClearDatabase()"
+                                        class="text-sm text-red-600 hover:text-red-800">
+                                    Clear all data
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -4106,6 +4191,230 @@ Best,
             document.getElementById('emailClientSetting').value = saved;
         }
 
+        // ============== Settings Management ==============
+
+        async function loadAppSettings() {
+            try {
+                const response = await fetch('/api/settings');
+                const settings = await response.json();
+                console.log('Loaded settings:', settings);
+
+                // Update demo mode toggle
+                updateDemoModeUI(settings.demo_mode);
+
+                // Update other settings display
+                const dbPath = document.getElementById('currentDatabasePath');
+                const demoDbStatus = document.getElementById('demoDatabaseStatus');
+
+                dbPath.textContent = settings.current_database;
+                demoDbStatus.textContent = settings.demo_db_exists ? 'Ready' : 'Not created';
+                demoDbStatus.classList.toggle('text-green-600', settings.demo_db_exists);
+                demoDbStatus.classList.toggle('text-sage-500', !settings.demo_db_exists);
+
+            } catch (error) {
+                console.error('Failed to load settings:', error);
+            }
+        }
+
+        let demoModeToggling = false;
+
+        async function toggleDemoMode() {
+            // Prevent double-clicks
+            if (demoModeToggling) return;
+            demoModeToggling = true;
+
+            const toggle = document.getElementById('demoModeToggle');
+            const status = document.getElementById('demoModeStatus');
+
+            // Get current state from server first to avoid race conditions
+            try {
+                const settingsResponse = await fetch('/api/settings');
+                const currentSettings = await settingsResponse.json();
+                const newState = !currentSettings.demo_mode;
+
+                console.log('Toggling demo mode:', currentSettings.demo_mode, '->', newState);
+
+                const response = await fetch('/api/settings/demo-mode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: newState })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    showToast(error.detail || 'Failed to toggle demo mode', 'error');
+                    return;
+                }
+
+                const result = await response.json();
+                console.log('Demo mode result:', result);
+
+                // Update toggle appearance based on server response
+                updateDemoModeUI(result.demo_mode);
+
+                document.getElementById('currentDatabasePath').textContent = result.current_database;
+                showToast(result.message, 'success');
+
+                // Reload data after toggling
+                setTimeout(() => {
+                    loadPipeline();
+                    loadJobsList();
+                    loadDatabaseContacts();
+                    loadCompanies();
+                    loadHomeReminders();
+                }, 500);
+
+            } catch (error) {
+                console.error('Failed to toggle demo mode:', error);
+                showToast('Failed to toggle demo mode', 'error');
+            } finally {
+                demoModeToggling = false;
+            }
+        }
+
+        function updateDemoModeUI(isOn) {
+            const toggle = document.getElementById('demoModeToggle');
+            const status = document.getElementById('demoModeStatus');
+
+            if (isOn) {
+                toggle.classList.remove('bg-gray-200');
+                toggle.classList.add('bg-terracotta-500');
+                toggle.querySelector('span').classList.remove('translate-x-1');
+                toggle.querySelector('span').classList.add('translate-x-6');
+                status.textContent = 'On';
+                status.classList.remove('text-sage-500');
+                status.classList.add('text-terracotta-600');
+            } else {
+                toggle.classList.remove('bg-terracotta-500');
+                toggle.classList.add('bg-gray-200');
+                toggle.querySelector('span').classList.remove('translate-x-6');
+                toggle.querySelector('span').classList.add('translate-x-1');
+                status.textContent = 'Off';
+                status.classList.remove('text-terracotta-600');
+                status.classList.add('text-sage-500');
+            }
+        }
+
+        async function seedDemoDatabase() {
+            const btn = document.getElementById('seedDemoBtn');
+            const originalText = btn.textContent;
+            btn.textContent = 'Seeding...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/api/settings/seed-demo', {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    showToast(error.detail || 'Failed to seed demo database', 'error');
+                    return;
+                }
+
+                const result = await response.json();
+                showToast('Demo database seeded successfully!', 'success');
+
+                // Update status
+                document.getElementById('demoDatabaseStatus').textContent = 'Ready';
+                document.getElementById('demoDatabaseStatus').classList.add('text-green-600');
+                document.getElementById('demoDatabaseStatus').classList.remove('text-sage-500');
+
+                // Reload if in demo mode
+                const toggle = document.getElementById('demoModeToggle');
+                if (toggle.classList.contains('bg-terracotta-500')) {
+                    loadPipeline();
+                    loadJobsList();
+                    loadDatabaseContacts();
+                    loadCompanies();
+                    loadHomeReminders();
+                }
+
+            } catch (error) {
+                console.error('Failed to seed demo database:', error);
+                showToast('Failed to seed demo database', 'error');
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        function confirmClearDatabase() {
+            const dbPath = document.getElementById('currentDatabasePath').textContent;
+            if (confirm(`Are you sure you want to clear all data from ${dbPath}?\n\nThis action cannot be undone.`)) {
+                clearDatabase();
+            }
+        }
+
+        async function clearDatabase() {
+            try {
+                const response = await fetch('/api/settings/clear-data', {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    showToast(error.detail || 'Failed to clear database', 'error');
+                    return;
+                }
+
+                showToast('Database cleared successfully', 'success');
+
+                // Reload all data
+                loadPipeline();
+                loadJobsList();
+                loadDatabaseContacts();
+                loadCompanies();
+                loadHomeReminders();
+                loadHomeTemplates();
+
+            } catch (error) {
+                console.error('Failed to clear database:', error);
+                showToast('Failed to clear database', 'error');
+            }
+        }
+
+        async function loadSettingsEmailAccounts() {
+            try {
+                const response = await fetch('/api/email/status');
+                const data = await response.json();
+                const container = document.getElementById('settings-email-accounts');
+
+                if (data.accounts && data.accounts.length > 0) {
+                    container.innerHTML = data.accounts.map(account => `
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-sage-700">
+                                <span class="font-medium capitalize">${account.provider}</span>: ${account.email}
+                            </span>
+                            <button onclick="disconnectEmailFromSettings('${account.provider}')"
+                                    class="text-red-500 hover:text-red-700 text-xs">
+                                Disconnect
+                            </button>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = '<p class="text-sm text-sage-400">No accounts connected</p>';
+                }
+            } catch (error) {
+                console.error('Failed to load email accounts:', error);
+            }
+        }
+
+        async function disconnectEmailFromSettings(provider) {
+            if (!confirm(`Disconnect ${provider}?`)) return;
+
+            try {
+                await fetch(`/api/email/disconnect?provider=${provider}`, {
+                    method: 'POST'
+                });
+                showToast(`${provider} disconnected`, 'success');
+                loadSettingsEmailAccounts();
+                loadEmailStatus();
+            } catch (error) {
+                showToast('Failed to disconnect', 'error');
+            }
+        }
+
         // ==========================================
         // Toast Notification Functions
         // ==========================================
@@ -4508,6 +4817,8 @@ Best,
         loadHomeTemplates();
         loadEmailClientSetting();
         loadEmailStatus();
+        loadAppSettings();
+        loadSettingsEmailAccounts();
         handleEmailCallbackParams();
         loadJobs();
     </script>

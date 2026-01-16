@@ -28,6 +28,19 @@ from app.services.email import get_email_provider, TokenStore
 from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse
 
 
+# Runtime settings storage (persists until server restart)
+_runtime_settings = {
+    "demo_mode": False
+}
+
+
+def get_current_db_path() -> str:
+    """Get the current database path based on runtime demo mode setting."""
+    if _runtime_settings.get("demo_mode", False):
+        return "data/demo.db"
+    return settings.effective_database_path
+
+
 # Pydantic models for CRM endpoints
 class ReminderCreate(BaseModel):
     due_date: str
@@ -117,7 +130,7 @@ VALID_EMAIL_PROVIDERS = {"gmail", "outlook"}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db(settings.effective_database_path)
+    await init_db(get_current_db_path())
     yield
 
 
@@ -139,7 +152,7 @@ async def upload_csv(
     # Check for existing companies
     duplicates_skipped = 0
     if skip_duplicates:
-        async with get_db(settings.effective_database_path) as db:
+        async with get_db(get_current_db_path()) as db:
             existing_names = set()
             cursor = await db.execute("SELECT LOWER(name) FROM companies")
             rows = await cursor.fetchall()
@@ -166,11 +179,11 @@ async def upload_csv(
             detail=f"All {duplicates_skipped} companies already exist in database. Use skip_duplicates=false to create a new job anyway."
         )
 
-    job_id = await create_job(settings.effective_database_path, file.filename, companies, contacts)
+    job_id = await create_job(get_current_db_path(), file.filename, companies, contacts)
 
     asyncio.create_task(
         process_job(
-            settings.effective_database_path,
+            get_current_db_path(),
             job_id,
             settings.firecrawl_api_key,
             settings.anthropic_api_key
@@ -187,7 +200,7 @@ async def upload_csv(
 
 @app.get("/api/jobs/{job_id}", response_model=JobStatusResponse)
 async def get_job_status_endpoint(job_id: str):
-    status = await get_job_status(settings.effective_database_path, job_id)
+    status = await get_job_status(get_current_db_path(), job_id)
     if not status:
         raise HTTPException(status_code=404, detail="Job not found")
     return JobStatusResponse(**status)
@@ -195,41 +208,41 @@ async def get_job_status_endpoint(job_id: str):
 
 @app.get("/api/jobs/{job_id}/companies")
 async def get_job_companies_endpoint(job_id: str):
-    job = await get_job(settings.effective_database_path, job_id)
+    job = await get_job(get_current_db_path(), job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    companies = await get_job_companies(settings.effective_database_path, job_id)
+    companies = await get_job_companies(get_current_db_path(), job_id)
     return {"companies": companies}
 
 
 @app.get("/api/jobs/{job_id}/contacts")
 async def get_job_contacts_endpoint(job_id: str):
-    job = await get_job(settings.effective_database_path, job_id)
+    job = await get_job(get_current_db_path(), job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    contacts = await get_job_contacts(settings.effective_database_path, job_id)
+    contacts = await get_job_contacts(get_current_db_path(), job_id)
     return {"contacts": contacts}
 
 
 @app.get("/api/jobs/{job_id}/results")
 async def get_job_results_endpoint(job_id: str):
-    job = await get_job(settings.effective_database_path, job_id)
+    job = await get_job(get_current_db_path(), job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    results = await get_job_results(settings.effective_database_path, job_id)
+    results = await get_job_results(get_current_db_path(), job_id)
     return {"results": results}
 
 
 @app.get("/api/jobs/{job_id}/export")
 async def export_job_results(job_id: str):
-    job = await get_job(settings.effective_database_path, job_id)
+    job = await get_job(get_current_db_path(), job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    results = await get_job_results(settings.effective_database_path, job_id)
+    results = await get_job_results(get_current_db_path(), job_id)
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -305,7 +318,7 @@ async def export_job_results(job_id: str):
 
 @app.get("/api/jobs")
 async def list_jobs():
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             "SELECT * FROM jobs ORDER BY created_at DESC LIMIT 50"
         )
@@ -315,11 +328,11 @@ async def list_jobs():
 
 @app.delete("/api/jobs/{job_id}")
 async def cancel_job(job_id: str):
-    job = await get_job(settings.effective_database_path, job_id)
+    job = await get_job(get_current_db_path(), job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         await db.execute(
             "UPDATE jobs SET status = 'cancelled' WHERE id = ? AND status IN ('pending', 'processing')",
             (job_id,)
@@ -335,11 +348,11 @@ async def cancel_job(job_id: str):
 
 @app.post("/api/jobs/{job_id}/restart")
 async def restart_job(job_id: str):
-    job = await get_job(settings.effective_database_path, job_id)
+    job = await get_job(get_current_db_path(), job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         await db.execute(
             "UPDATE jobs SET status = 'processing' WHERE id = ?",
             (job_id,)
@@ -348,7 +361,7 @@ async def restart_job(job_id: str):
 
     asyncio.create_task(
         process_job(
-            settings.effective_database_path,
+            get_current_db_path(),
             job_id,
             settings.firecrawl_api_key,
             settings.anthropic_api_key
@@ -360,11 +373,11 @@ async def restart_job(job_id: str):
 
 @app.post("/api/jobs/{job_id}/retry-failed")
 async def retry_failed_companies(job_id: str):
-    job = await get_job(settings.effective_database_path, job_id)
+    job = await get_job(get_current_db_path(), job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             "SELECT COUNT(*) FROM companies WHERE job_id = ? AND status = 'failed'",
             (job_id,)
@@ -386,7 +399,7 @@ async def retry_failed_companies(job_id: str):
 
     asyncio.create_task(
         process_job(
-            settings.effective_database_path,
+            get_current_db_path(),
             job_id,
             settings.firecrawl_api_key,
             settings.anthropic_api_key
@@ -399,7 +412,7 @@ async def retry_failed_companies(job_id: str):
 @app.delete("/api/database/clear")
 async def clear_database():
     """Clear all data from the database."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         await db.execute("DELETE FROM keywords")
         await db.execute("DELETE FROM about_descriptions")
         await db.execute("DELETE FROM contacts")
@@ -412,7 +425,7 @@ async def clear_database():
 
 @app.get("/api/database/stats")
 async def get_database_stats():
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         jobs_cursor = await db.execute("SELECT COUNT(*) FROM jobs")
         jobs_count = (await jobs_cursor.fetchone())[0]
 
@@ -439,7 +452,7 @@ async def get_database_stats():
 
 @app.get("/api/database/companies")
 async def get_all_companies(limit: int = 100, offset: int = 0, status: str = None):
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         query = """
             SELECT c.*, j.filename as job_filename,
                    (SELECT GROUP_CONCAT(k.keyword, ', ') FROM keywords k WHERE k.company_id = c.id) as all_keywords,
@@ -475,7 +488,7 @@ async def get_all_companies(limit: int = 100, offset: int = 0, status: str = Non
 
 @app.get("/api/database/contacts")
 async def get_all_contacts(limit: int = 100, offset: int = 0, search: str = None, contact_type: str = None):
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         base_query = """
             SELECT ct.id, ct.first_name, ct.last_name, ct.email, ct.phone, ct.title,
                    ct.linkedin_url, ct.stage, ct.notes, ct.relationship, ct.company_id,
@@ -545,7 +558,7 @@ async def check_screenshot_exists(company_id: str):
 @app.post("/api/screenshots/{company_id}/regenerate")
 async def regenerate_screenshot(company_id: str):
     """Regenerate screenshot for a company."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             "SELECT id, website_url FROM companies WHERE id = ?",
             (company_id,)
@@ -577,7 +590,7 @@ async def regenerate_all_screenshots(job_id: str = None):
     if bulk_screenshot_status["running"]:
         raise HTTPException(status_code=409, detail="Bulk screenshot regeneration already in progress")
 
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         if job_id:
             cursor = await db.execute(
                 "SELECT id, website_url FROM companies WHERE job_id = ? AND website_url IS NOT NULL AND status = 'completed'",
@@ -633,7 +646,7 @@ async def get_bulk_screenshot_status():
 @app.get("/api/contacts/{contact_id}/reminders")
 async def get_contact_reminders(contact_id: str):
     """Get all reminders for a contact ordered by due_date."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             """
             SELECT id, contact_id, due_date, note, completed, created_at
@@ -652,7 +665,7 @@ async def create_reminder(contact_id: str, reminder: ReminderCreate):
     """Create a new reminder for a contact."""
     reminder_id = str(uuid.uuid4())
 
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         # Verify contact exists
         cursor = await db.execute(
             "SELECT id FROM contacts WHERE id = ?",
@@ -682,7 +695,7 @@ async def create_reminder(contact_id: str, reminder: ReminderCreate):
 @app.put("/api/reminders/{reminder_id}")
 async def update_reminder(reminder_id: str, reminder: ReminderUpdate):
     """Update a reminder's completed status or note."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         # Verify reminder exists
         cursor = await db.execute(
             "SELECT id FROM reminders WHERE id = ?",
@@ -721,7 +734,7 @@ async def update_reminder(reminder_id: str, reminder: ReminderUpdate):
 @app.delete("/api/reminders/{reminder_id}")
 async def delete_reminder(reminder_id: str):
     """Delete a reminder."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             "SELECT id FROM reminders WHERE id = ?",
             (reminder_id,)
@@ -740,7 +753,7 @@ async def get_upcoming_reminders():
     """Get upcoming incomplete reminders for the next 7 days."""
     seven_days_from_now = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             """
             SELECT
@@ -771,7 +784,7 @@ async def update_contact_stage(contact_id: str, stage_update: StageUpdate):
             detail=f"Invalid stage. Must be one of: {', '.join(sorted(VALID_STAGES))}"
         )
 
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         # Get current stage
         cursor = await db.execute(
             "SELECT id, stage FROM contacts WHERE id = ?",
@@ -816,7 +829,7 @@ async def update_contact_stage(contact_id: str, stage_update: StageUpdate):
 @app.put("/api/contacts/{contact_id}/notes")
 async def update_contact_notes(contact_id: str, notes_update: NotesUpdate):
     """Update a contact's notes."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             "SELECT id FROM contacts WHERE id = ?",
             (contact_id,)
@@ -836,7 +849,7 @@ async def update_contact_notes(contact_id: str, notes_update: NotesUpdate):
 @app.put("/api/contacts/{contact_id}/relationship")
 async def update_contact_relationship(contact_id: str, rel_update: RelationshipUpdate):
     """Update a contact's relationship field."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             "SELECT id FROM contacts WHERE id = ?",
             (contact_id,)
@@ -856,7 +869,7 @@ async def update_contact_relationship(contact_id: str, rel_update: RelationshipU
 @app.get("/api/contacts/{contact_id}/full")
 async def get_contact_full(contact_id: str):
     """Get full contact details including company info."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             """
             SELECT
@@ -887,7 +900,7 @@ async def get_contact_full(contact_id: str):
 @app.patch("/api/contacts/{contact_id}")
 async def update_contact(contact_id: str, updates: ContactUpdate):
     """Update contact fields. Only provided fields are updated."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         # Verify contact exists
         cursor = await db.execute("SELECT id FROM contacts WHERE id = ?", (contact_id,))
         if not await cursor.fetchone():
@@ -925,7 +938,7 @@ async def update_contact(contact_id: str, updates: ContactUpdate):
 @app.get("/api/contacts/{contact_id}/timeline")
 async def get_contact_timeline(contact_id: str):
     """Get unified activity timeline for a contact."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         # Verify contact exists
         cursor = await db.execute("SELECT id FROM contacts WHERE id = ?", (contact_id,))
         if not await cursor.fetchone():
@@ -1001,7 +1014,7 @@ async def create_contact_note(contact_id: str, note: NoteCreate):
     """Add a note to a contact."""
     note_id = str(uuid.uuid4())
 
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         # Verify contact exists
         cursor = await db.execute("SELECT id FROM contacts WHERE id = ?", (contact_id,))
         if not await cursor.fetchone():
@@ -1024,7 +1037,7 @@ async def create_contact_note(contact_id: str, note: NoteCreate):
 @app.delete("/api/notes/{note_id}")
 async def delete_note(note_id: str):
     """Delete a note."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute("SELECT id FROM contact_notes WHERE id = ?", (note_id,))
         if not await cursor.fetchone():
             raise HTTPException(status_code=404, detail="Note not found")
@@ -1038,7 +1051,7 @@ async def delete_note(note_id: str):
 @app.get("/api/contacts/{contact_id}/outreach")
 async def get_contact_outreach(contact_id: str):
     """Get outreach history for a contact."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             """
             SELECT id, contact_id, outreach_type, note, sent_at
@@ -1063,7 +1076,7 @@ async def log_outreach(contact_id: str, outreach: OutreachCreate):
 
     outreach_id = str(uuid.uuid4())
 
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         # Verify contact exists
         cursor = await db.execute(
             "SELECT id FROM contacts WHERE id = ?",
@@ -1093,7 +1106,7 @@ async def log_outreach(contact_id: str, outreach: OutreachCreate):
 @app.get("/api/pipeline")
 async def get_pipeline():
     """Get all contacts grouped by stage with company info and next reminder."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             """
             SELECT
@@ -1137,7 +1150,7 @@ async def get_pipeline():
 @app.get("/api/templates")
 async def get_templates():
     """Get all email templates grouped by category."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             "SELECT * FROM email_templates ORDER BY category, name"
         )
@@ -1158,7 +1171,7 @@ async def get_templates():
 @app.get("/api/templates/categories")
 async def get_template_categories():
     """Get unique template categories."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             "SELECT DISTINCT category FROM email_templates WHERE category IS NOT NULL ORDER BY category"
         )
@@ -1171,7 +1184,7 @@ async def create_template(template: TemplateCreate):
     """Create a new email template."""
     template_id = str(uuid.uuid4())
 
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         await db.execute(
             """
             INSERT INTO email_templates (id, name, category, subject, body)
@@ -1192,7 +1205,7 @@ async def create_template(template: TemplateCreate):
 @app.put("/api/templates/{template_id}")
 async def update_template(template_id: str, template: TemplateUpdate):
     """Update an email template."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         # Check template exists
         cursor = await db.execute(
             "SELECT id FROM email_templates WHERE id = ?",
@@ -1237,7 +1250,7 @@ async def update_template(template_id: str, template: TemplateUpdate):
 @app.delete("/api/templates/{template_id}")
 async def delete_template(template_id: str):
     """Delete an email template."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             "SELECT id FROM email_templates WHERE id = ?",
             (template_id,)
@@ -1257,7 +1270,7 @@ async def delete_template(template_id: str):
 @app.get("/api/companies/{company_id}/full")
 async def get_company_full(company_id: str):
     """Get full company details with all enriched fields."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             """
             SELECT *
@@ -1276,7 +1289,7 @@ async def get_company_full(company_id: str):
 @app.get("/api/companies/{company_id}/contacts")
 async def get_company_contacts(company_id: str):
     """Get all contacts at a company."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         # Verify company exists
         cursor = await db.execute("SELECT id FROM companies WHERE id = ?", (company_id,))
         if not await cursor.fetchone():
@@ -1315,7 +1328,7 @@ async def get_company_contacts(company_id: str):
 @app.get("/api/companies/{company_id}/notes")
 async def get_company_notes(company_id: str):
     """Get all notes for a company."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute(
             "SELECT id, content, created_at FROM company_notes WHERE company_id = ? ORDER BY created_at DESC",
             (company_id,)
@@ -1329,7 +1342,7 @@ async def create_company_note(company_id: str, note: NoteCreate):
     """Add a note to a company."""
     note_id = str(uuid.uuid4())
 
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         # Verify company exists
         cursor = await db.execute("SELECT id FROM companies WHERE id = ?", (company_id,))
         if not await cursor.fetchone():
@@ -1352,7 +1365,7 @@ async def create_company_note(company_id: str, note: NoteCreate):
 @app.delete("/api/company-notes/{note_id}")
 async def delete_company_note(note_id: str):
     """Delete a company note."""
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         cursor = await db.execute("SELECT id FROM company_notes WHERE id = ?", (note_id,))
         if not await cursor.fetchone():
             raise HTTPException(status_code=404, detail="Note not found")
@@ -1371,7 +1384,7 @@ async def global_search(q: str = ""):
 
     search_term = f"%{q}%"
 
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         # Search contacts
         cursor = await db.execute(
             """
@@ -1421,7 +1434,7 @@ async def create_contact(contact: ContactCreate):
     contact_id = str(uuid.uuid4())
     stage = "personal" if contact.contact_type == "personal" else "backlog"
 
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         if contact.company_id:
             cursor = await db.execute("SELECT id FROM companies WHERE id = ?", (contact.company_id,))
             if not await cursor.fetchone():
@@ -1487,7 +1500,7 @@ async def email_callback(provider: str, code: str = None, error: str = None):
 
     try:
         email_provider = get_email_provider(provider)
-        async with get_db(settings.effective_database_path) as db:
+        async with get_db(get_current_db_path()) as db:
             result = await email_provider.handle_callback(db, code)
             email = result.get("email", "")
         return RedirectResponse(url=f"/?email_connected={provider}&email={email}")
@@ -1500,7 +1513,7 @@ async def email_callback(provider: str, code: str = None, error: str = None):
 async def email_status():
     """Get connected email accounts."""
     token_store = TokenStore()
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         accounts = await token_store.get_all_accounts(db)
     return {"accounts": accounts}
 
@@ -1515,7 +1528,7 @@ async def email_disconnect(provider: str):
         )
 
     token_store = TokenStore()
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         await token_store.delete_tokens(db, provider)
 
     return {"status": "disconnected", "provider": provider}
@@ -1532,7 +1545,7 @@ async def email_send(email_data: EmailSend):
 
     try:
         email_provider = get_email_provider(email_data.provider)
-        async with get_db(settings.effective_database_path) as db:
+        async with get_db(get_current_db_path()) as db:
             result = await email_provider.send_email(
                 db,
                 to=email_data.to,
@@ -1558,7 +1571,7 @@ async def get_email_history(contact_email: str, limit: int = 10):
     all_emails = []
     connected = False
 
-    async with get_db(settings.effective_database_path) as db:
+    async with get_db(get_current_db_path()) as db:
         # Try Gmail
         try:
             gmail_provider = get_email_provider("gmail")
@@ -1586,6 +1599,102 @@ async def get_email_history(contact_email: str, limit: int = 10):
     all_emails = all_emails[:limit]
 
     return {"emails": all_emails, "connected": connected}
+
+
+# =============================================================================
+# Settings Endpoints
+# =============================================================================
+
+class DemoModeToggle(BaseModel):
+    enabled: bool
+
+
+@app.get("/api/settings")
+async def get_settings():
+    """Get current application settings."""
+    from pathlib import Path
+
+    demo_db_exists = Path("data/demo.db").exists()
+    main_db_exists = Path("data/kanbun.db").exists()
+
+    return {
+        "demo_mode": _runtime_settings.get("demo_mode", False),
+        "demo_db_exists": demo_db_exists,
+        "main_db_exists": main_db_exists,
+        "current_database": "data/demo.db" if _runtime_settings.get("demo_mode") else "data/kanbun.db"
+    }
+
+
+@app.post("/api/settings/demo-mode")
+async def toggle_demo_mode(toggle: DemoModeToggle):
+    """Toggle demo mode on/off. Requires server restart to fully take effect."""
+    from pathlib import Path
+
+    if toggle.enabled and not Path("data/demo.db").exists():
+        raise HTTPException(
+            status_code=400,
+            detail="Demo database does not exist. Please seed demo data first."
+        )
+
+    _runtime_settings["demo_mode"] = toggle.enabled
+
+    return {
+        "demo_mode": toggle.enabled,
+        "message": f"Demo mode {'enabled' if toggle.enabled else 'disabled'}. Refresh the page to see changes.",
+        "current_database": "data/demo.db" if toggle.enabled else "data/kanbun.db"
+    }
+
+
+@app.post("/api/settings/seed-demo")
+async def seed_demo_database():
+    """Seed the demo database with sample data."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script_path = Path("scripts/seed_demo_db.py")
+    if not script_path.exists():
+        raise HTTPException(status_code=500, detail="Demo seed script not found")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script_path), "--output", "data/demo.db", "--clear"],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+
+        if result.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Seed script failed: {result.stderr}")
+
+        return {
+            "success": True,
+            "message": "Demo database seeded successfully",
+            "output": result.stdout
+        }
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="Seed script timed out")
+
+
+@app.post("/api/settings/clear-data")
+async def clear_current_database():
+    """Clear all data from the current database (based on demo mode)."""
+    db_path = get_current_db_path()
+
+    async with get_db(db_path) as db:
+        await db.execute("DELETE FROM keywords")
+        await db.execute("DELETE FROM about_descriptions")
+        await db.execute("DELETE FROM contact_notes")
+        await db.execute("DELETE FROM company_notes")
+        await db.execute("DELETE FROM stage_changes")
+        await db.execute("DELETE FROM outreach_log")
+        await db.execute("DELETE FROM reminders")
+        await db.execute("DELETE FROM contacts")
+        await db.execute("DELETE FROM companies")
+        await db.execute("DELETE FROM jobs")
+        await db.commit()
+
+    return {"success": True, "message": "Database cleared", "database": db_path}
 
 
 # Mount static files last to avoid conflicting with API routes
