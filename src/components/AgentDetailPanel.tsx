@@ -41,9 +41,22 @@ function toErrorMessage(error: unknown): string {
   return "Unknown error";
 }
 
+const PROCESS_RESTART_POLICY_KEY = "__kanbun_restart_policy";
+type ProcessRestartPolicy = "never" | "on_failure" | "always";
+
+function getProcessRestartPolicy(env: Record<string, string> | null): ProcessRestartPolicy {
+  const raw = env?.[PROCESS_RESTART_POLICY_KEY]?.trim().toLowerCase();
+  if (raw === "never" || raw === "always" || raw === "on_failure") return raw;
+  return "on_failure";
+}
+
 function formatEnvDraft(env: Record<string, string> | null): string {
-  if (!env || Object.keys(env).length === 0) return "{}";
-  return JSON.stringify(env, null, 2);
+  if (!env) return "{}";
+  const visible = Object.fromEntries(
+    Object.entries(env).filter(([key]) => key !== PROCESS_RESTART_POLICY_KEY)
+  );
+  if (Object.keys(visible).length === 0) return "{}";
+  return JSON.stringify(visible, null, 2);
 }
 
 function parseEnvDraft(raw: string): Record<string, string> | null {
@@ -107,6 +120,9 @@ export function AgentDetailPanel({
   const [activeTab, setActiveTab] = useState<TabId>("chat");
   const [adapterCommandDraft, setAdapterCommandDraft] = useState<string>(adapterConfig?.command ?? "");
   const [adapterEnvDraft, setAdapterEnvDraft] = useState<string>(formatEnvDraft(adapterConfig?.env ?? null));
+  const [processRestartPolicy, setProcessRestartPolicy] = useState<ProcessRestartPolicy>(
+    getProcessRestartPolicy(adapterConfig?.env ?? null)
+  );
   const [adapterConfigSaving, setAdapterConfigSaving] = useState(false);
   const [adapterConfigMessage, setAdapterConfigMessage] = useState<string | null>(null);
   const [adapterConfigError, setAdapterConfigError] = useState<string | null>(null);
@@ -125,6 +141,7 @@ export function AgentDetailPanel({
   useEffect(() => {
     setAdapterCommandDraft(adapterConfig?.command ?? "");
     setAdapterEnvDraft(formatEnvDraft(adapterConfig?.env ?? null));
+    setProcessRestartPolicy(getProcessRestartPolicy(adapterConfig?.env ?? null));
     setAdapterConfigMessage(null);
     setAdapterConfigError(null);
     setAdapterConfigSaving(false);
@@ -149,10 +166,18 @@ export function AgentDetailPanel({
       return;
     }
 
+    const nextEnv =
+      adapterConfig.adapter_type === "process"
+        ? {
+            ...(parsedEnv ?? {}),
+            [PROCESS_RESTART_POLICY_KEY]: processRestartPolicy,
+          }
+        : parsedEnv;
+
     const nextConfig: AdapterConfig = {
       ...adapterConfig,
       command: adapterCommandDraft.trim() ? adapterCommandDraft.trim() : null,
-      env: parsedEnv,
+      env: nextEnv,
     };
 
     setAdapterConfigSaving(true);
@@ -312,6 +337,35 @@ export function AgentDetailPanel({
                       disabled={adapterConfigSaving}
                     />
                   </label>
+                  {adapterConfig.adapter_type === "process" && (
+                    <label
+                      className="mn"
+                      style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 6, marginTop: 8 }}
+                    >
+                      Restart policy
+                      <select
+                        value={processRestartPolicy}
+                        onChange={(event) => {
+                          setProcessRestartPolicy(event.currentTarget.value as ProcessRestartPolicy);
+                          setAdapterConfigMessage(null);
+                          setAdapterConfigError(null);
+                        }}
+                        style={{
+                          border: "1px solid var(--border)",
+                          background: "var(--bg-card)",
+                          color: "var(--main)",
+                          padding: "6px 8px",
+                          fontFamily: "var(--font-mono)",
+                          fontSize: 11,
+                        }}
+                        disabled={adapterConfigSaving}
+                      >
+                        <option value="never">never</option>
+                        <option value="on_failure">on_failure</option>
+                        <option value="always">always</option>
+                      </select>
+                    </label>
+                  )}
                   <label
                     className="mn"
                     style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 6, marginTop: 8 }}
@@ -411,6 +465,9 @@ export function AgentDetailPanel({
               )}
               {adapterHealth?.retry_after_seconds !== null && adapterHealth?.retry_after_seconds !== undefined && (
                 <ConfigRow label="Retry In" value={`${adapterHealth.retry_after_seconds}s`} />
+              )}
+              {adapterHealth?.suppress_auto_restart && (
+                <ConfigRow label="Auto restart" value="paused until manual/start instruction" />
               )}
               {adapterHealth?.last_heartbeat && (
                 <ConfigRow label="Heartbeat" value={formatDate(adapterHealth.last_heartbeat)} />

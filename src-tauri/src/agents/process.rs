@@ -12,6 +12,7 @@ use std::time::Duration;
 const OUTPUT_RING_MAX_LINES: usize = 240;
 const STATUS_TAIL_LINES: usize = 8;
 const MAX_CAPTURE_CHARS: usize = 2000;
+const RESTART_POLICY_ENV_KEY: &str = "__kanbun_restart_policy";
 
 #[derive(Debug)]
 struct OutputRingBuffer {
@@ -61,6 +62,7 @@ impl OutputRingBuffer {
 #[derive(Debug)]
 struct ProcessSession {
     command: String,
+    restart_policy: RestartPolicy,
     child: Mutex<Child>,
     stdin: Mutex<ChildStdin>,
     output_ring: Mutex<OutputRingBuffer>,
@@ -95,9 +97,27 @@ fn remove_session(agent_id: &str) -> Option<Arc<ProcessSession>> {
         .and_then(|mut sessions| sessions.remove(agent_id))
 }
 
+#[derive(Clone, Copy)]
 enum ProcessState {
     Running,
     Exited(Option<i32>),
+}
+
+#[derive(Debug, Clone, Copy)]
+enum RestartPolicy {
+    Never,
+    OnFailure,
+    Always,
+}
+
+impl RestartPolicy {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Never => "never",
+            Self::OnFailure => "on_failure",
+            Self::Always => "always",
+        }
+    }
 }
 
 fn process_state(session: &Arc<ProcessSession>) -> Result<ProcessState, AdapterError> {
@@ -146,7 +166,7 @@ fn parse_env(config: &AdapterConfig) -> Vec<(String, String)> {
     };
 
     for (key, value) in map {
-        if key.trim().is_empty() {
+        if key.trim().is_empty() || key.starts_with("__kanbun_") {
             continue;
         }
         let resolved = value
@@ -157,6 +177,31 @@ fn parse_env(config: &AdapterConfig) -> Vec<(String, String)> {
     }
 
     parsed
+}
+
+fn parse_restart_policy(config: &AdapterConfig) -> RestartPolicy {
+    let policy = config
+        .env
+        .as_ref()
+        .and_then(|env| env.as_object())
+        .and_then(|map| map.get(RESTART_POLICY_ENV_KEY))
+        .and_then(|value| value.as_str())
+        .map(|value| value.trim().to_ascii_lowercase());
+
+    match policy.as_deref() {
+        Some("never") => RestartPolicy::Never,
+        Some("always") => RestartPolicy::Always,
+        Some("on_failure") => RestartPolicy::OnFailure,
+        _ => RestartPolicy::OnFailure,
+    }
+}
+
+fn should_suppress_auto_restart(policy: RestartPolicy, code: Option<i32>) -> bool {
+    match policy {
+        RestartPolicy::Never => true,
+        RestartPolicy::OnFailure => code.unwrap_or(0) == 0,
+        RestartPolicy::Always => false,
+    }
 }
 
 fn resolve_agent_working_directory(db: &Arc<Database>, agent_id: &str) -> Option<String> {
@@ -274,6 +319,7 @@ fn emit_status_message(db: &Arc<Database>, agent_id: &str, content: &str) {
 pub struct ProcessAdapter {
     command: String,
     env: Vec<(String, String)>,
+    restart_policy: RestartPolicy,
 }
 
 impl ProcessAdapter {
@@ -281,6 +327,7 @@ impl ProcessAdapter {
         Self {
             command: config.command.clone().unwrap_or_default(),
             env: parse_env(config),
+            restart_policy: parse_restart_policy(config),
         }
     }
 
@@ -338,6 +385,7 @@ impl ProcessAdapter {
 
         let session = Arc::new(ProcessSession {
             command: self.command.clone(),
+            restart_policy: self.restart_policy,
             child: Mutex::new(child),
             stdin: Mutex::new(stdin),
             output_ring: Mutex::new(OutputRingBuffer::new()),
@@ -405,7 +453,11 @@ impl Adapter for ProcessAdapter {
 
             let state = process_state(&session).unwrap_or(ProcessState::Exited(None));
             if let ProcessState::Exited(code) = state {
-                remove_session(&agent_id);
+                let suppress_auto_restart =
+                    should_suppress_auto_restart(session.restart_policy, code);
+                if !suppress_auto_restart {
+                    remove_session(&agent_id);
+                }
                 let (kind, status, note, agent_status) = if code.unwrap_or(0) == 0 {
                     (
                         MessageKind::Completed,
@@ -426,6 +478,11 @@ impl Adapter for ProcessAdapter {
                         ),
                         AgentStatus::Errored,
                     )
+                };
+                let note = if suppress_auto_restart {
+                    format!("{} Auto-restart paused by policy.", note)
+                } else {
+                    note
                 };
                 let message = Message::from_agent(&agent_id, kind, &note);
                 let _ = db.insert_message(&message);
@@ -525,12 +582,19 @@ impl Adapter for ProcessAdapter {
                 retry_after_seconds: None,
                 consecutive_failures: None,
                 last_error: None,
+                suppress_auto_restart: None,
             });
         };
 
         let state = process_state(&session)?;
+        let exit_code = match state {
+            ProcessState::Running => None,
+            ProcessState::Exited(code) => code,
+        };
         let active = matches!(state, ProcessState::Running);
-        if !active {
+        let suppress_auto_restart =
+            !active && should_suppress_auto_restart(session.restart_policy, exit_code);
+        if !active && !suppress_auto_restart {
             remove_session(agent_id);
         }
 
@@ -551,8 +615,9 @@ impl Adapter for ProcessAdapter {
             session_active: active,
             last_heartbeat: heartbeat,
             details: Some(format!(
-                "Process command: {}\nState: {}\nLast output: {}",
+                "Process command: {}\nRestart policy: {}\nState: {}\nLast output: {}",
                 session.command,
+                session.restart_policy.as_str(),
                 match state {
                     ProcessState::Running => "running".to_string(),
                     ProcessState::Exited(code) => code
@@ -563,7 +628,16 @@ impl Adapter for ProcessAdapter {
             )),
             retry_after_seconds: None,
             consecutive_failures: None,
-            last_error: None,
+            last_error: if !active && exit_code.unwrap_or(0) != 0 {
+                Some(
+                    exit_code
+                        .map(|code| format!("process exited with code {}", code))
+                        .unwrap_or_else(|| "process exited with failure".to_string()),
+                )
+            } else {
+                None
+            },
+            suppress_auto_restart: Some(suppress_auto_restart),
         })
     }
 }

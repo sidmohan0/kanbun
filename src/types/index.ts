@@ -178,6 +178,7 @@ export interface AdapterHealth {
   retry_after_seconds: number | null;
   consecutive_failures: number | null;
   last_error: string | null;
+  suppress_auto_restart: boolean | null;
 }
 
 export interface DatabaseSnapshotResult {

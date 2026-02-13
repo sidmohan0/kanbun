@@ -125,6 +125,10 @@ fn ensure_adapter_started(db: &Arc<Database>, agent_id: &str, force: bool) -> Re
         if state.started {
             match adapter.health_check(agent_id) {
                 Ok(health) if health.connected || health.session_active => return Ok(()),
+                Ok(health) if !force && health.suppress_auto_restart.unwrap_or(false) => {
+                    state.last_error = health.last_error.clone();
+                    return Ok(());
+                }
                 Ok(_) => {
                     log::warn!(
                         "Adapter for {} was marked started but is unhealthy; restarting",
@@ -704,6 +708,7 @@ pub fn get_adapter_health(
             retry_after_seconds: None,
             consecutive_failures: None,
             last_error: Some(error.to_string()),
+            suppress_auto_restart: None,
         },
     };
 

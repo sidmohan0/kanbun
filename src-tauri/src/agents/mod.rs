@@ -63,6 +63,7 @@ pub struct AdapterHealth {
     pub retry_after_seconds: Option<u64>,
     pub consecutive_failures: Option<u32>,
     pub last_error: Option<String>,
+    pub suppress_auto_restart: Option<bool>,
 }
 
 /// Create the appropriate adapter for a given config

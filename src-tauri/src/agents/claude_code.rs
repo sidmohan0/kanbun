@@ -365,6 +365,7 @@ impl Adapter for ClaudeCodeAdapter {
             retry_after_seconds: None,
             consecutive_failures: None,
             last_error: None,
+            suppress_auto_restart: None,
         })
     }
 }
