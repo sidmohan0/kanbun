@@ -1,0 +1,506 @@
+use super::{Adapter, AdapterError, AdapterHealth};
+use crate::db::Database;
+use crate::models::*;
+use chrono::Utc;
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::thread;
+use std::time::Duration;
+
+#[derive(Debug)]
+struct ProcessSession {
+    command: String,
+    child: Mutex<Child>,
+    stdin: Mutex<ChildStdin>,
+    last_output: Mutex<Option<String>>,
+    last_heartbeat: Mutex<Option<String>>,
+}
+
+static PROCESS_SESSIONS: OnceLock<Mutex<HashMap<String, Arc<ProcessSession>>>> = OnceLock::new();
+
+fn process_sessions() -> &'static Mutex<HashMap<String, Arc<ProcessSession>>> {
+    PROCESS_SESSIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn get_session(agent_id: &str) -> Option<Arc<ProcessSession>> {
+    process_sessions()
+        .lock()
+        .ok()
+        .and_then(|sessions| sessions.get(agent_id).cloned())
+}
+
+fn insert_session(agent_id: &str, session: Arc<ProcessSession>) -> Result<(), AdapterError> {
+    let mut sessions = process_sessions()
+        .lock()
+        .map_err(|_| AdapterError::Other("process session lock poisoned".to_string()))?;
+    sessions.insert(agent_id.to_string(), session);
+    Ok(())
+}
+
+fn remove_session(agent_id: &str) -> Option<Arc<ProcessSession>> {
+    process_sessions()
+        .lock()
+        .ok()
+        .and_then(|mut sessions| sessions.remove(agent_id))
+}
+
+enum ProcessState {
+    Running,
+    Exited(Option<i32>),
+}
+
+fn process_state(session: &Arc<ProcessSession>) -> Result<ProcessState, AdapterError> {
+    let mut child = session
+        .child
+        .lock()
+        .map_err(|_| AdapterError::Other("process child lock poisoned".to_string()))?;
+    match child.try_wait() {
+        Ok(Some(status)) => Ok(ProcessState::Exited(status.code())),
+        Ok(None) => Ok(ProcessState::Running),
+        Err(error) => Err(AdapterError::Other(format!(
+            "failed checking child process status: {}",
+            error
+        ))),
+    }
+}
+
+fn terminate_session(session: &Arc<ProcessSession>) -> Result<(), AdapterError> {
+    let mut child = session
+        .child
+        .lock()
+        .map_err(|_| AdapterError::Other("process child lock poisoned".to_string()))?;
+    match child.try_wait() {
+        Ok(Some(_)) => Ok(()),
+        Ok(None) => {
+            child.kill().map_err(|error| {
+                AdapterError::Other(format!("failed to stop process: {}", error))
+            })?;
+            let _ = child.wait();
+            Ok(())
+        }
+        Err(error) => Err(AdapterError::Other(format!(
+            "failed checking process status before stop: {}",
+            error
+        ))),
+    }
+}
+
+fn parse_env(config: &AdapterConfig) -> Vec<(String, String)> {
+    let mut parsed = Vec::new();
+    let Some(env) = &config.env else {
+        return parsed;
+    };
+    let Some(map) = env.as_object() else {
+        return parsed;
+    };
+
+    for (key, value) in map {
+        if key.trim().is_empty() {
+            continue;
+        }
+        let resolved = value
+            .as_str()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| value.to_string());
+        parsed.push((key.clone(), resolved));
+    }
+
+    parsed
+}
+
+fn resolve_agent_working_directory(db: &Arc<Database>, agent_id: &str) -> Option<String> {
+    db.list_agents()
+        .ok()
+        .and_then(|agents| agents.into_iter().find(|agent| agent.id == agent_id))
+        .and_then(|agent| agent.working_directory)
+        .map(|path| shellexpand::tilde(path.trim()).to_string())
+        .filter(|path| !path.trim().is_empty())
+}
+
+fn stream_output(
+    db: Arc<Database>,
+    agent_id: String,
+    session: Arc<ProcessSession>,
+    reader: impl BufRead,
+    stream_kind: &'static str,
+) {
+    for line in reader.lines() {
+        let Ok(line) = line else {
+            break;
+        };
+        let text = line.trim();
+        if text.is_empty() {
+            continue;
+        }
+
+        let rendered = if stream_kind == "stderr" {
+            format!("[stderr] {}", text)
+        } else {
+            text.to_string()
+        };
+
+        if let Ok(mut last_output) = session.last_output.lock() {
+            *last_output = Some(rendered.clone());
+        }
+        if let Ok(mut last_heartbeat) = session.last_heartbeat.lock() {
+            *last_heartbeat = Some(Utc::now().to_rfc3339());
+        }
+
+        let message = Message::from_agent(&agent_id, MessageKind::Output, &rendered);
+        let _ = db.insert_message(&message);
+        let _ = db.append_run_output(&agent_id, stream_kind, &rendered);
+        let _ = db.update_agent_status(&agent_id, &AgentStatus::Running);
+    }
+}
+
+fn spawn_output_threads(
+    db: Arc<Database>,
+    agent_id: String,
+    session: Arc<ProcessSession>,
+    stdout: ChildStdout,
+    stderr: ChildStderr,
+) {
+    let db_stdout = db.clone();
+    let session_stdout = session.clone();
+    let agent_stdout = agent_id.clone();
+    thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        stream_output(db_stdout, agent_stdout, session_stdout, reader, "stdout");
+    });
+
+    thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        stream_output(db, agent_id, session, reader, "stderr");
+    });
+}
+
+fn write_instruction(
+    session: &Arc<ProcessSession>,
+    content: &str,
+    with_newline: bool,
+) -> Result<(), AdapterError> {
+    let mut stdin = session
+        .stdin
+        .lock()
+        .map_err(|_| AdapterError::Other("process stdin lock poisoned".to_string()))?;
+
+    stdin.write_all(content.as_bytes()).map_err(|error| {
+        AdapterError::DeliveryFailed(format!("failed writing to stdin: {}", error))
+    })?;
+
+    if with_newline {
+        stdin.write_all(b"\n").map_err(|error| {
+            AdapterError::DeliveryFailed(format!("failed writing newline: {}", error))
+        })?;
+    }
+
+    stdin.flush().map_err(|error| {
+        AdapterError::DeliveryFailed(format!("failed flushing stdin: {}", error))
+    })?;
+    Ok(())
+}
+
+fn emit_status_message(db: &Arc<Database>, agent_id: &str, content: &str) {
+    let message = Message::from_agent(agent_id, MessageKind::StatusUpdate, content);
+    let _ = db.insert_message(&message);
+    let _ = db.append_run_output(agent_id, "status_update", content);
+}
+
+pub struct ProcessAdapter {
+    command: String,
+    env: Vec<(String, String)>,
+}
+
+impl ProcessAdapter {
+    pub fn new(config: &AdapterConfig) -> Self {
+        Self {
+            command: config.command.clone().unwrap_or_default(),
+            env: parse_env(config),
+        }
+    }
+
+    fn spawn_session(
+        &self,
+        agent_id: &str,
+        db: Arc<Database>,
+    ) -> Result<Arc<ProcessSession>, AdapterError> {
+        if self.command.trim().is_empty() {
+            return Err(AdapterError::SpawnFailed(
+                "Process adapter command is empty. Set adapter command in workstream settings."
+                    .to_string(),
+            ));
+        }
+
+        let mut command = if cfg!(target_os = "windows") {
+            let mut command = Command::new("cmd");
+            command.args(["/C", self.command.trim()]);
+            command
+        } else {
+            let mut command = Command::new("sh");
+            command.args(["-lc", self.command.trim()]);
+            command
+        };
+
+        if let Some(cwd) = resolve_agent_working_directory(&db, agent_id) {
+            command.current_dir(cwd);
+        }
+
+        for (key, value) in &self.env {
+            command.env(key, value);
+        }
+
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        let mut child = command.spawn().map_err(|error| {
+            AdapterError::SpawnFailed(format!("failed spawning process: {}", error))
+        })?;
+
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| AdapterError::SpawnFailed("child stdin unavailable".to_string()))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| AdapterError::SpawnFailed("child stdout unavailable".to_string()))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| AdapterError::SpawnFailed("child stderr unavailable".to_string()))?;
+
+        let session = Arc::new(ProcessSession {
+            command: self.command.clone(),
+            child: Mutex::new(child),
+            stdin: Mutex::new(stdin),
+            last_output: Mutex::new(None),
+            last_heartbeat: Mutex::new(Some(Utc::now().to_rfc3339())),
+        });
+
+        insert_session(agent_id, session.clone())?;
+        spawn_output_threads(db, agent_id.to_string(), session.clone(), stdout, stderr);
+
+        Ok(session)
+    }
+
+    fn ensure_session(
+        &self,
+        agent_id: &str,
+        db: Arc<Database>,
+    ) -> Result<Arc<ProcessSession>, AdapterError> {
+        if let Some(session) = get_session(agent_id) {
+            if matches!(process_state(&session)?, ProcessState::Running) {
+                return Ok(session);
+            }
+            remove_session(agent_id);
+        }
+
+        self.spawn_session(agent_id, db)
+    }
+}
+
+impl Adapter for ProcessAdapter {
+    fn deliver(&self, message: &Message) -> Result<(), AdapterError> {
+        let Some(session) = get_session(&message.agent_id) else {
+            return Err(AdapterError::NotConnected(
+                "process session is not running".to_string(),
+            ));
+        };
+
+        match message.kind {
+            MessageKind::Instruction | MessageKind::Resume => {
+                write_instruction(&session, &message.content, true)?;
+            }
+            MessageKind::Pause => {
+                let _ = write_instruction(&session, "\u{3}", false);
+            }
+            MessageKind::Cancel => {
+                terminate_session(&session)?;
+                remove_session(&message.agent_id);
+            }
+            MessageKind::StatusRequest => {}
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn start(&self, agent_id: &str, db: Arc<Database>) -> Result<(), AdapterError> {
+        let agent_id = agent_id.to_string();
+        let session = self.ensure_session(&agent_id, db.clone())?;
+        let _ = db.update_agent_status(&agent_id, &AgentStatus::Idle);
+
+        thread::spawn(move || loop {
+            match db.get_adapter_config(&agent_id) {
+                Ok(Some(config)) if config.adapter_type == AdapterType::Process => {}
+                Ok(_) => break,
+                Err(_) => break,
+            }
+
+            let state = process_state(&session).unwrap_or(ProcessState::Exited(None));
+            if let ProcessState::Exited(code) = state {
+                remove_session(&agent_id);
+                let (kind, status, note, agent_status) = if code.unwrap_or(0) == 0 {
+                    (
+                        MessageKind::Completed,
+                        RunStatus::Completed,
+                        format!(
+                            "Process exited normally{}.",
+                            code.map(|c| format!(" (code {})", c)).unwrap_or_default()
+                        ),
+                        AgentStatus::Completed,
+                    )
+                } else {
+                    (
+                        MessageKind::Error,
+                        RunStatus::Failed,
+                        format!(
+                            "Process exited with failure{}.",
+                            code.map(|c| format!(" (code {})", c)).unwrap_or_default()
+                        ),
+                        AgentStatus::Errored,
+                    )
+                };
+                let message = Message::from_agent(&agent_id, kind, &note);
+                let _ = db.insert_message(&message);
+                let _ = db.append_run_output(&agent_id, "process_exit", &note);
+                let _ = db.finalize_latest_run(&agent_id, status, Some(note.clone()));
+                let _ = db.update_agent_status(&agent_id, &agent_status);
+                break;
+            }
+
+            let mut cancel_requested = false;
+            if let Ok(pending) = db.get_pending_messages(&agent_id) {
+                for message in pending {
+                    match message.kind {
+                        MessageKind::Instruction | MessageKind::Resume => {
+                            let _ = db.start_instruction_run(&agent_id, &message.content);
+                            let _ = db.update_agent_status(&agent_id, &AgentStatus::Running);
+                            if let Err(error) = write_instruction(&session, &message.content, true)
+                            {
+                                let text = format!("failed to send instruction: {}", error);
+                                let error_message =
+                                    Message::from_agent(&agent_id, MessageKind::Error, &text);
+                                let _ = db.insert_message(&error_message);
+                                let _ = db.append_run_output(&agent_id, "error", &text);
+                                let _ = db.finalize_latest_run(
+                                    &agent_id,
+                                    RunStatus::Failed,
+                                    Some("Process instruction delivery failed".to_string()),
+                                );
+                                let _ = db.update_agent_status(&agent_id, &AgentStatus::Errored);
+                            }
+                        }
+                        MessageKind::Pause => {
+                            let _ = write_instruction(&session, "\u{3}", false);
+                            let _ = db.update_agent_status(&agent_id, &AgentStatus::Blocked);
+                            emit_status_message(
+                                &db,
+                                &agent_id,
+                                "Pause signal sent to process stdin.",
+                            );
+                        }
+                        MessageKind::Cancel => {
+                            let _ = terminate_session(&session);
+                            remove_session(&agent_id);
+                            let _ = db.append_run_output(&agent_id, "cancel", &message.content);
+                            let _ = db.finalize_latest_run(
+                                &agent_id,
+                                RunStatus::Failed,
+                                Some("Cancelled by operator".to_string()),
+                            );
+                            let _ = db.update_agent_status(&agent_id, &AgentStatus::Idle);
+                            emit_status_message(&db, &agent_id, "Process terminated.");
+                            cancel_requested = true;
+                        }
+                        MessageKind::StatusRequest => {
+                            let last_output = session
+                                .last_output
+                                .lock()
+                                .ok()
+                                .and_then(|value| value.clone())
+                                .unwrap_or_else(|| "No output captured yet.".to_string());
+                            let details = format!(
+                                "Process command `{}` is running.\nLast output: {}",
+                                session.command, last_output
+                            );
+                            emit_status_message(&db, &agent_id, &details);
+                        }
+                        _ => {}
+                    }
+                    let _ = db.mark_delivered(&message.id);
+                }
+            }
+
+            if cancel_requested {
+                break;
+            }
+
+            thread::sleep(Duration::from_millis(400));
+        });
+
+        Ok(())
+    }
+
+    fn stop(&self, agent_id: &str) -> Result<(), AdapterError> {
+        if let Some(session) = remove_session(agent_id) {
+            terminate_session(&session)?;
+        }
+        Ok(())
+    }
+
+    fn health_check(&self, agent_id: &str) -> Result<AdapterHealth, AdapterError> {
+        let Some(session) = get_session(agent_id) else {
+            return Ok(AdapterHealth {
+                connected: false,
+                session_active: false,
+                last_heartbeat: None,
+                details: Some("Process session not running.".to_string()),
+                retry_after_seconds: None,
+                consecutive_failures: None,
+                last_error: None,
+            });
+        };
+
+        let state = process_state(&session)?;
+        let active = matches!(state, ProcessState::Running);
+        if !active {
+            remove_session(agent_id);
+        }
+
+        let last_output = session
+            .last_output
+            .lock()
+            .ok()
+            .and_then(|value| value.clone())
+            .unwrap_or_else(|| "No output captured yet.".to_string());
+        let heartbeat = session
+            .last_heartbeat
+            .lock()
+            .ok()
+            .and_then(|value| value.clone());
+
+        Ok(AdapterHealth {
+            connected: active,
+            session_active: active,
+            last_heartbeat: heartbeat,
+            details: Some(format!(
+                "Process command: {}\nState: {}\nLast output: {}",
+                session.command,
+                match state {
+                    ProcessState::Running => "running".to_string(),
+                    ProcessState::Exited(code) => code
+                        .map(|value| format!("exited (code {})", value))
+                        .unwrap_or_else(|| "exited".to_string()),
+                },
+                last_output
+            )),
+            retry_after_seconds: None,
+            consecutive_failures: None,
+            last_error: None,
+        })
+    }
+}

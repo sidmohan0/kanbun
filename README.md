@@ -15,6 +15,7 @@ Kanbun is a Tauri desktop app for managing multiple AI workstreams from one plac
 - Conversation thread persistence (SQLite-backed).
 - Run history and run output tracking in the detail panel.
 - Adapter config persistence, adapter health checks, and adapter restart action.
+- Cross-platform `process` adapter (spawns a real child process, streams stdout/stderr, and supports restart).
 - Connector panel with config + sync flows for:
   - Todoist (API token),
   - Obsidian (local vault path).
@@ -26,7 +27,7 @@ Kanbun is a Tauri desktop app for managing multiple AI workstreams from one plac
 
 ### Partially built / pending
 
-- Additional adapters (`codex`, `http_webhook`, `process`) are scaffolded but not implemented.
+- Additional adapters (`codex`, `http_webhook`) are scaffolded but not implemented.
 - Cross-workstream orchestration and agent-to-agent messaging are not implemented yet.
 - Global command palette, approval workflows, and scheduled runs are not implemented yet.
 - Additional connectors (Notion/Linear/GitHub Issues) are planned but not implemented.
@@ -36,6 +37,7 @@ Kanbun is a Tauri desktop app for managing multiple AI workstreams from one plac
 - One Kanbun workstream = one `Agent` record in SQLite.
 - Each agent has its own adapter loop.
 - `claude_code` adapter starts and monitors one `tmux` session per workstream.
+- `process` adapter starts and monitors one child process per workstream.
 - `mock` adapter simulates responses without spawning an external CLI.
 
 There is no hard-coded cap for "14 workstreams x 10 tasks"; practical limits are system resources and adapter/process capacity.
@@ -103,7 +105,7 @@ kanbun/
 ## Open-Source Plan (next milestones)
 
 1. Harden adapter lifecycle and error recovery for long-running daily usage.
-2. Complete at least one more real adapter (`codex` or `process`).
+2. Complete at least one more real adapter (`codex` or `http_webhook`).
 3. Add cross-workstream command and context propagation.
 4. Add CI (lint/test/build) and contributor docs.
 5. Publish first tagged release with install docs.

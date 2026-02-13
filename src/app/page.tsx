@@ -125,6 +125,7 @@ type AgentDraft = {
   adapterType: AdapterType;
   sessionPrefix: string;
   claudeCommand: string;
+  processCommand: string;
 };
 type ContextDocDraft = {
   title: string;
@@ -146,6 +147,7 @@ const DEFAULT_AGENT_DRAFT: AgentDraft = {
   adapterType: "mock",
   sessionPrefix: "kanbun",
   claudeCommand: "claude",
+  processCommand: "",
 };
 
 const EMPTY_CONTEXT_DOC_DRAFT: ContextDocDraft = {
@@ -796,6 +798,10 @@ export default function Dashboard() {
       setAgentError("Select a project first.");
       return;
     }
+    if (agentDraft.adapterType === "process" && !agentDraft.processCommand.trim()) {
+      setAgentError("Process command is required for process adapter.");
+      return;
+    }
 
     setAgentBusy(true);
     try {
@@ -818,6 +824,14 @@ export default function Dashboard() {
               session_name: agentDraft.sessionPrefix.trim() || "kanbun",
               endpoint: agentDraft.claudeCommand.trim() || "claude",
               command: workingDirectory || null,
+              env: null,
+            }
+          : agentDraft.adapterType === "process"
+          ? {
+              adapter_type: "process" as const,
+              session_name: null,
+              endpoint: null,
+              command: agentDraft.processCommand.trim(),
               env: null,
             }
           : {
@@ -1671,6 +1685,7 @@ export default function Dashboard() {
                           >
                             <option value="mock">mock</option>
                             <option value="claude_code">claude_code</option>
+                            <option value="process">process</option>
                           </select>
                         </label>
                         {agentDraft.adapterType === "claude_code" && (
@@ -1722,6 +1737,31 @@ export default function Dashboard() {
                               />
                             </label>
                           </div>
+                        )}
+                        {agentDraft.adapterType === "process" && (
+                          <label
+                            className="mn"
+                            style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 6 }}
+                          >
+                            Process command
+                            <input
+                              type="text"
+                              value={agentDraft.processCommand}
+                              onChange={(event) =>
+                                handleAgentDraftChange({ processCommand: event.currentTarget.value })
+                              }
+                              placeholder="codex"
+                              style={{
+                                border: "1px solid var(--border)",
+                                background: "var(--bg-card)",
+                                color: "var(--main)",
+                                padding: "6px 8px",
+                                fontFamily: "var(--font-mono)",
+                                fontSize: 12,
+                              }}
+                              disabled={!isTauri || agentBusy}
+                            />
+                          </label>
                         )}
                       </div>
                       <div className="flex items-center gap-2" style={{ marginTop: 10 }}>

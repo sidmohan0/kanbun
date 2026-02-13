@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 pub mod claude_code;
 pub mod mock;
+pub mod process;
 
 /// The adapter trait. Each agent kind gets an implementation that translates
 /// between Kanbun's message protocol and the agent's native interface.
@@ -68,6 +69,7 @@ pub struct AdapterHealth {
 pub fn create_adapter(config: &AdapterConfig) -> Box<dyn Adapter> {
     match config.adapter_type {
         AdapterType::ClaudeCode => Box::new(claude_code::ClaudeCodeAdapter::new(config)),
+        AdapterType::Process => Box::new(process::ProcessAdapter::new(config)),
         AdapterType::Mock => Box::new(mock::MockAdapter::new()),
         // Future adapters:
         // AdapterType::Codex => Box::new(codex::CodexAdapter::new(config)),
