@@ -42,6 +42,7 @@ function toErrorMessage(error: unknown): string {
 }
 
 const PROCESS_RESTART_POLICY_KEY = "__kanbun_restart_policy";
+const WEBHOOK_AUTH_HEADER_KEY = "AUTH_HEADER";
 type ProcessRestartPolicy = "never" | "on_failure" | "always";
 
 function getProcessRestartPolicy(env: Record<string, string> | null): ProcessRestartPolicy {
@@ -53,10 +54,18 @@ function getProcessRestartPolicy(env: Record<string, string> | null): ProcessRes
 function formatEnvDraft(env: Record<string, string> | null): string {
   if (!env) return "{}";
   const visible = Object.fromEntries(
-    Object.entries(env).filter(([key]) => key !== PROCESS_RESTART_POLICY_KEY)
+    Object.entries(env).filter(
+      ([key]) => key !== PROCESS_RESTART_POLICY_KEY && key !== WEBHOOK_AUTH_HEADER_KEY
+    )
   );
   if (Object.keys(visible).length === 0) return "{}";
   return JSON.stringify(visible, null, 2);
+}
+
+function getWebhookAuthHeaderFromEnv(env: Record<string, string> | null): string {
+  if (!env) return "";
+  const value = env[WEBHOOK_AUTH_HEADER_KEY];
+  return typeof value === "string" ? value : "";
 }
 
 function parseEnvDraft(raw: string): Record<string, string> | null {
@@ -126,6 +135,10 @@ export function AgentDetailPanel({
   const [activeTab, setActiveTab] = useState<TabId>("chat");
   const [adapterCommandDraft, setAdapterCommandDraft] = useState<string>(adapterConfig?.command ?? "");
   const [adapterEnvDraft, setAdapterEnvDraft] = useState<string>(formatEnvDraft(adapterConfig?.env ?? null));
+  const [adapterEndpointDraft, setAdapterEndpointDraft] = useState<string>(adapterConfig?.endpoint ?? "");
+  const [adapterAuthHeaderDraft, setAdapterAuthHeaderDraft] = useState<string>(
+    getWebhookAuthHeaderFromEnv(adapterConfig?.env ?? null)
+  );
   const [processRestartPolicy, setProcessRestartPolicy] = useState<ProcessRestartPolicy>(
     getProcessRestartPolicy(adapterConfig?.env ?? null)
   );
@@ -147,6 +160,8 @@ export function AgentDetailPanel({
   useEffect(() => {
     setAdapterCommandDraft(adapterConfig?.command ?? "");
     setAdapterEnvDraft(formatEnvDraft(adapterConfig?.env ?? null));
+    setAdapterEndpointDraft(adapterConfig?.endpoint ?? "");
+    setAdapterAuthHeaderDraft(getWebhookAuthHeaderFromEnv(adapterConfig?.env ?? null));
     setProcessRestartPolicy(getProcessRestartPolicy(adapterConfig?.env ?? null));
     setAdapterConfigMessage(null);
     setAdapterConfigError(null);
@@ -163,6 +178,10 @@ export function AgentDetailPanel({
       setAdapterConfigError("Process command is required.");
       return;
     }
+    if (adapterConfig.adapter_type === "http_webhook" && !adapterEndpointDraft.trim()) {
+      setAdapterConfigError("Webhook endpoint is required.");
+      return;
+    }
 
     let parsedEnv: Record<string, string> | null = null;
     try {
@@ -172,17 +191,32 @@ export function AgentDetailPanel({
       return;
     }
 
-    const nextEnv =
-      adapterConfig.adapter_type === "process"
-        ? {
-            ...(parsedEnv ?? {}),
-            [PROCESS_RESTART_POLICY_KEY]: processRestartPolicy,
-          }
-        : parsedEnv;
+    let nextEnv = parsedEnv;
+    if (adapterConfig.adapter_type === "process") {
+      nextEnv = {
+        ...(parsedEnv ?? {}),
+        [PROCESS_RESTART_POLICY_KEY]: processRestartPolicy,
+      };
+    } else if (adapterConfig.adapter_type === "http_webhook") {
+      const nextWithAuth = { ...(parsedEnv ?? {}) };
+      const authHeader = adapterAuthHeaderDraft.trim();
+      if (authHeader) {
+        nextWithAuth[WEBHOOK_AUTH_HEADER_KEY] = authHeader;
+      } else {
+        delete nextWithAuth[WEBHOOK_AUTH_HEADER_KEY];
+      }
+      nextEnv = Object.keys(nextWithAuth).length > 0 ? nextWithAuth : null;
+    }
 
     const nextConfig: AdapterConfig = {
       ...adapterConfig,
-      command: adapterCommandDraft.trim() ? adapterCommandDraft.trim() : null,
+      endpoint: adapterConfig.adapter_type === "http_webhook" ? adapterEndpointDraft.trim() : adapterConfig.endpoint,
+      command:
+        adapterConfig.adapter_type === "http_webhook"
+          ? null
+          : adapterCommandDraft.trim()
+          ? adapterCommandDraft.trim()
+          : null,
       env: nextEnv,
     };
 
@@ -324,28 +358,77 @@ export function AgentDetailPanel({
                 </p>
               ) : (
                 <>
-                  <label className="mn" style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 6 }}>
-                    {adapterConfig.adapter_type === "process" ? "Process command" : "Command"}
-                    <input
-                      type="text"
-                      value={adapterCommandDraft}
-                      onChange={(event) => {
-                        setAdapterCommandDraft(event.currentTarget.value);
-                        setAdapterConfigMessage(null);
-                        setAdapterConfigError(null);
-                      }}
-                      placeholder={adapterConfig.adapter_type === "process" ? "codex --ask" : "Optional command"}
-                      style={{
-                        border: "1px solid var(--border)",
-                        background: "var(--bg-card)",
-                        color: "var(--main)",
-                        padding: "6px 8px",
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 11,
-                      }}
-                      disabled={adapterConfigSaving}
-                    />
-                  </label>
+                  {adapterConfig.adapter_type === "http_webhook" ? (
+                    <>
+                      <label className="mn" style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 6 }}>
+                        Webhook endpoint
+                        <input
+                          type="text"
+                          value={adapterEndpointDraft}
+                          onChange={(event) => {
+                            setAdapterEndpointDraft(event.currentTarget.value);
+                            setAdapterConfigMessage(null);
+                            setAdapterConfigError(null);
+                          }}
+                          placeholder="https://service.example.com/kanbun/webhook"
+                          style={{
+                            border: "1px solid var(--border)",
+                            background: "var(--bg-card)",
+                            color: "var(--main)",
+                            padding: "6px 8px",
+                            fontFamily: "var(--font-mono)",
+                            fontSize: 11,
+                          }}
+                          disabled={adapterConfigSaving}
+                        />
+                      </label>
+                      <label className="mn" style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 6, marginTop: 8 }}>
+                        Authorization header
+                        <input
+                          type="text"
+                          value={adapterAuthHeaderDraft}
+                          onChange={(event) => {
+                            setAdapterAuthHeaderDraft(event.currentTarget.value);
+                            setAdapterConfigMessage(null);
+                            setAdapterConfigError(null);
+                          }}
+                          placeholder='Authorization: "Bearer TOKEN"'
+                          style={{
+                            border: "1px solid var(--border)",
+                            background: "var(--bg-card)",
+                            color: "var(--main)",
+                            padding: "6px 8px",
+                            fontFamily: "var(--font-mono)",
+                            fontSize: 11,
+                          }}
+                          disabled={adapterConfigSaving}
+                        />
+                      </label>
+                    </>
+                  ) : (
+                    <label className="mn" style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 6 }}>
+                      {adapterConfig.adapter_type === "process" ? "Process command" : "Command"}
+                      <input
+                        type="text"
+                        value={adapterCommandDraft}
+                        onChange={(event) => {
+                          setAdapterCommandDraft(event.currentTarget.value);
+                          setAdapterConfigMessage(null);
+                          setAdapterConfigError(null);
+                        }}
+                        placeholder={adapterConfig.adapter_type === "process" ? "codex --ask" : "Optional command"}
+                        style={{
+                          border: "1px solid var(--border)",
+                          background: "var(--bg-card)",
+                          color: "var(--main)",
+                          padding: "6px 8px",
+                          fontFamily: "var(--font-mono)",
+                          fontSize: 11,
+                        }}
+                        disabled={adapterConfigSaving}
+                      />
+                    </label>
+                  )}
                   {adapterConfig.adapter_type === "process" && (
                     <label
                       className="mn"

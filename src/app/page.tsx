@@ -108,6 +108,7 @@ const EMPTY_CONNECTOR_DRAFT: ConnectorDraft = {
 const SETTINGS_STORAGE_KEY = "kanbun.settings.v1";
 const MIN_POLL_SECONDS = 1;
 const MAX_POLL_SECONDS = 60;
+const DEFAULT_WEBHOOK_ENDPOINT = "http://localhost:8765/kanbun/webhook";
 
 const DEFAULT_SETTINGS = {
   dashboardPollSeconds: 4,
@@ -121,7 +122,7 @@ type ProjectDraft = {
   name: string;
   color: string;
 };
-type AgentPresetId = "mock_demo" | "codex_process" | "claude_code" | "custom";
+type AgentPresetId = "mock_demo" | "codex_process" | "claude_code" | "http_webhook" | "custom";
 
 const DEFAULT_WORKSPACE_NAME = "Default Workspace";
 
@@ -136,6 +137,8 @@ type AgentDraft = {
   sessionPrefix: string;
   claudeCommand: string;
   processCommand: string;
+  webhookEndpoint: string;
+  webhookAuthHeader: string;
   preset: AgentPresetId;
   cliPermissions: string;
 };
@@ -143,6 +146,8 @@ type QuickWorkstreamDraft = {
   name: string;
   workingDirectory: string;
   preset: AgentPresetId;
+  webhookEndpoint: string;
+  webhookAuthHeader: string;
   permissions: string;
 };
 type ContextDocDraft = {
@@ -166,6 +171,8 @@ const DEFAULT_AGENT_DRAFT: AgentDraft = {
   sessionPrefix: "kanbun",
   claudeCommand: "claude",
   processCommand: "",
+  webhookEndpoint: DEFAULT_WEBHOOK_ENDPOINT,
+  webhookAuthHeader: "",
   preset: "mock_demo",
   cliPermissions: "",
 };
@@ -173,6 +180,8 @@ const DEFAULT_QUICK_WORKSTREAM_DRAFT: QuickWorkstreamDraft = {
   name: "",
   workingDirectory: "",
   preset: "mock_demo",
+  webhookEndpoint: DEFAULT_WEBHOOK_ENDPOINT,
+  webhookAuthHeader: "",
   permissions: "",
 };
 
@@ -191,6 +200,11 @@ const AGENT_PRESETS: { id: AgentPresetId; label: string; description: string }[]
     id: "claude_code",
     label: "Claude Code",
     description: "Runs Claude Code inside a tmux-backed workstream session.",
+  },
+  {
+    id: "http_webhook",
+    label: "HTTP Webhook",
+    description: "Posts workstream instructions to an HTTP endpoint (optional AUTH_HEADER).",
   },
   {
     id: "custom",
@@ -785,6 +799,11 @@ export default function Dashboard() {
     return normalized ? { KANBUN_CLI_PERMISSIONS: normalized } : null;
   }, []);
 
+  const buildWebhookEnv = useCallback((authHeader: string) => {
+    const normalized = authHeader.trim();
+    return normalized ? { AUTH_HEADER: normalized } : null;
+  }, []);
+
   const buildAdapterConfig = useCallback((draft: AgentDraft, workingDirectory: string, cliPermissions = "") => {
     return draft.adapterType === "claude_code"
       ? ({
@@ -793,6 +812,14 @@ export default function Dashboard() {
           endpoint: draft.claudeCommand.trim() || "claude",
           command: workingDirectory || null,
           env: buildAdapterEnv(cliPermissions),
+        } as const)
+      : draft.adapterType === "http_webhook"
+      ? ({
+          adapter_type: "http_webhook" as const,
+          session_name: null,
+          endpoint: draft.webhookEndpoint.trim() || DEFAULT_WEBHOOK_ENDPOINT,
+          command: null,
+          env: buildWebhookEnv(draft.webhookAuthHeader),
         } as const)
       : draft.adapterType === "process"
       ? ({
@@ -809,10 +836,16 @@ export default function Dashboard() {
           command: null,
           env: buildAdapterEnv(cliPermissions),
         } as const);
-  }, [buildAdapterEnv]);
+  }, [buildAdapterEnv, buildWebhookEnv]);
 
   const buildQuickAgentConfig = useCallback(
-    (preset: AgentPresetId, workingDirectory: string, cliPermissions: string): AdapterConfig => {
+    (
+      preset: AgentPresetId,
+      workingDirectory: string,
+      cliPermissions: string,
+      webhookEndpoint = DEFAULT_WEBHOOK_ENDPOINT,
+      webhookAuthHeader = ""
+    ): AdapterConfig => {
       if (preset === "codex_process") {
         return {
           adapter_type: "process" as const,
@@ -831,6 +864,15 @@ export default function Dashboard() {
           env: buildAdapterEnv(cliPermissions),
         };
       }
+      if (preset === "http_webhook") {
+        return {
+          adapter_type: "http_webhook" as const,
+          session_name: null,
+          endpoint: webhookEndpoint.trim() || DEFAULT_WEBHOOK_ENDPOINT,
+          command: null,
+          env: buildWebhookEnv(webhookAuthHeader),
+        };
+      }
       return {
         adapter_type: "mock" as const,
         session_name: null,
@@ -839,7 +881,7 @@ export default function Dashboard() {
         env: buildAdapterEnv(cliPermissions),
       };
     },
-    [buildAdapterEnv]
+    [buildAdapterEnv, buildWebhookEnv]
   );
 
   const handlePickQuickWorkingDirectory = useCallback(async () => {
@@ -868,6 +910,10 @@ export default function Dashboard() {
     const workingDirectory = quickWorkstreamDraft.workingDirectory.trim();
     if (!workingDirectory) {
       setQuickWorkstreamError("Select a workspace folder first.");
+      return;
+    }
+    if (quickWorkstreamDraft.preset === "http_webhook" && !quickWorkstreamDraft.webhookEndpoint.trim()) {
+      setQuickWorkstreamError("Webhook endpoint is required.");
       return;
     }
 
@@ -903,7 +949,9 @@ export default function Dashboard() {
         buildQuickAgentConfig(
           normalizedPreset,
           workingDirectory,
-          quickWorkstreamDraft.permissions
+          quickWorkstreamDraft.permissions,
+          quickWorkstreamDraft.webhookEndpoint,
+          quickWorkstreamDraft.webhookAuthHeader
         )
       );
       await Promise.all([refreshDashboard(), refreshConversation(created.id)]);
@@ -929,6 +977,8 @@ export default function Dashboard() {
     quickWorkstreamDraft.permissions,
     quickWorkstreamDraft.preset,
     quickWorkstreamDraft.workingDirectory,
+    quickWorkstreamDraft.webhookAuthHeader,
+    quickWorkstreamDraft.webhookEndpoint,
     refreshConversation,
     refreshDashboard,
   ]);
@@ -960,6 +1010,13 @@ export default function Dashboard() {
             kind: "terminal",
             sessionPrefix: prev.sessionPrefix.trim() ? prev.sessionPrefix : "kanbun",
             claudeCommand: prev.claudeCommand.trim() ? prev.claudeCommand : "claude",
+          };
+        case "http_webhook":
+          return {
+            ...next,
+            adapterType: "http_webhook",
+            kind: "terminal",
+            webhookEndpoint: prev.webhookEndpoint.trim() || DEFAULT_WEBHOOK_ENDPOINT,
           };
         case "custom":
         default:
@@ -1113,6 +1170,10 @@ export default function Dashboard() {
     }
     if (agentDraft.adapterType === "process" && !agentDraft.processCommand.trim()) {
       setAgentError("Process command is required for process adapter.");
+      return;
+    }
+    if (agentDraft.adapterType === "http_webhook" && !agentDraft.webhookEndpoint.trim()) {
+      setAgentError("Webhook endpoint is required.");
       return;
     }
 
@@ -1644,9 +1705,9 @@ export default function Dashboard() {
                       </div>
                     </label>
 
-                    <label className="mn" style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 4 }}>
-                      <span style={{ color: "var(--dim)" }}>2) Agent</span>
-                      <select
+                          <label className="mn" style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 4 }}>
+                          <span style={{ color: "var(--dim)" }}>2) Agent</span>
+                          <select
                         value={quickWorkstreamDraft.preset}
                         onChange={(event) =>
                           handleQuickWorkstreamDraftChange({ preset: event.currentTarget.value as AgentPresetId })
@@ -1667,10 +1728,55 @@ export default function Dashboard() {
                           </option>
                         ))}
                       </select>
-                      <span className="mn" style={{ fontSize: 10, color: "var(--dim)" }}>
-                        {quickPresetHelp}
-                      </span>
-                    </label>
+                          <span className="mn" style={{ fontSize: 10, color: "var(--dim)" }}>
+                            {quickPresetHelp}
+                          </span>
+                        </label>
+
+                        {quickWorkstreamDraft.preset === "http_webhook" && (
+                          <>
+                            <label className="mn" style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 6 }}>
+                              <span style={{ color: "var(--dim)" }}>2b) Webhook endpoint (required)</span>
+                              <input
+                                type="text"
+                                value={quickWorkstreamDraft.webhookEndpoint}
+                                onChange={(event) =>
+                                  handleQuickWorkstreamDraftChange({ webhookEndpoint: event.currentTarget.value })
+                                }
+                                placeholder={DEFAULT_WEBHOOK_ENDPOINT}
+                                style={{
+                                  border: "1px solid var(--border)",
+                                  background: "var(--bg-card)",
+                                  color: "var(--main)",
+                                  padding: "6px 8px",
+                                  fontFamily: "var(--font-mono)",
+                                  fontSize: 12,
+                                }}
+                                disabled={!isTauri || quickWorkstreamBusy}
+                              />
+                            </label>
+                            <label className="mn" style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 6 }}>
+                              <span style={{ color: "var(--dim)" }}>Optional Authorization header</span>
+                              <input
+                                type="text"
+                                value={quickWorkstreamDraft.webhookAuthHeader}
+                                onChange={(event) =>
+                                  handleQuickWorkstreamDraftChange({ webhookAuthHeader: event.currentTarget.value })
+                                }
+                                placeholder='Authorization: "Bearer TOKEN"'
+                                style={{
+                                  border: "1px solid var(--border)",
+                                  background: "var(--bg-card)",
+                                  color: "var(--main)",
+                                  padding: "6px 8px",
+                                  fontFamily: "var(--font-mono)",
+                                  fontSize: 12,
+                                }}
+                                disabled={!isTauri || quickWorkstreamBusy}
+                              />
+                            </label>
+                          </>
+                        )}
 
                     <label className="mn" style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 4 }}>
                       <span style={{ color: "var(--dim)" }}>3) Workstream name (optional)</span>
@@ -2063,6 +2169,7 @@ export default function Dashboard() {
                             <option value="mock">mock</option>
                             <option value="claude_code">claude_code</option>
                             <option value="process">process</option>
+                            <option value="http_webhook">http_webhook</option>
                           </select>
                         </label>
                         {agentDraft.adapterType === "claude_code" && (
@@ -2139,6 +2246,50 @@ export default function Dashboard() {
                               disabled={!isTauri || agentBusy}
                             />
                           </label>
+                        )}
+                        {agentDraft.adapterType === "http_webhook" && (
+                          <>
+                            <label className="mn" style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 6 }}>
+                              Webhook endpoint (required)
+                              <input
+                                type="text"
+                                value={agentDraft.webhookEndpoint}
+                                onChange={(event) =>
+                                  handleAgentDraftChange({ webhookEndpoint: event.currentTarget.value })
+                                }
+                                placeholder={DEFAULT_WEBHOOK_ENDPOINT}
+                                style={{
+                                  border: "1px solid var(--border)",
+                                  background: "var(--bg-card)",
+                                  color: "var(--main)",
+                                  padding: "6px 8px",
+                                  fontFamily: "var(--font-mono)",
+                                  fontSize: 12,
+                                }}
+                                disabled={!isTauri || agentBusy}
+                              />
+                            </label>
+                            <label className="mn" style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 6 }}>
+                              Authorization header (optional)
+                              <input
+                                type="text"
+                                value={agentDraft.webhookAuthHeader}
+                                onChange={(event) =>
+                                  handleAgentDraftChange({ webhookAuthHeader: event.currentTarget.value })
+                                }
+                                placeholder='Authorization: "Bearer TOKEN"'
+                                style={{
+                                  border: "1px solid var(--border)",
+                                  background: "var(--bg-card)",
+                                  color: "var(--main)",
+                                  padding: "6px 8px",
+                                  fontFamily: "var(--font-mono)",
+                                  fontSize: 12,
+                                }}
+                                disabled={!isTauri || agentBusy}
+                              />
+                            </label>
+                          </>
                         )}
                       </div>
                       <div className="flex items-center gap-2" style={{ marginTop: 10 }}>
