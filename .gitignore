@@ -1,0 +1,28 @@
+# Node / Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/.cargo/
+
+# Local env / secrets
+.env
+.env.local
+.env.*.local
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Runtime / local app data artifacts in repo (if copied during debugging)
+*.db
+*.db-wal
+*.db-shm
+
