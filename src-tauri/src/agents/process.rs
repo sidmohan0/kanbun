@@ -135,6 +135,13 @@ fn process_state(session: &Arc<ProcessSession>) -> Result<ProcessState, AdapterE
     }
 }
 
+fn is_process_like_adapter_type(adapter_type: AdapterType) -> bool {
+    matches!(
+        adapter_type,
+        AdapterType::Process | AdapterType::Codex
+    )
+}
+
 fn terminate_session(session: &Arc<ProcessSession>) -> Result<(), AdapterError> {
     let mut child = session
         .child
@@ -446,7 +453,13 @@ impl Adapter for ProcessAdapter {
 
         thread::spawn(move || loop {
             match db.get_adapter_config(&agent_id) {
-                Ok(Some(config)) if config.adapter_type == AdapterType::Process => {}
+                Ok(Some(config)) => {
+                    if is_process_like_adapter_type(config.adapter_type) {
+                        ()
+                    } else {
+                        break;
+                    }
+                }
                 Ok(_) => break,
                 Err(_) => break,
             }

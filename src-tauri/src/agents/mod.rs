@@ -69,13 +69,18 @@ pub struct AdapterHealth {
 /// Create the appropriate adapter for a given config
 pub fn create_adapter(config: &AdapterConfig) -> Box<dyn Adapter> {
     match config.adapter_type {
+        AdapterType::Codex => {
+            let mut codex_config = config.clone();
+            if codex_config.command.as_ref().is_none_or(String::is_empty) {
+                codex_config.command = Some("codex".to_string());
+            }
+            Box::new(process::ProcessAdapter::new(&codex_config))
+        }
         AdapterType::ClaudeCode => Box::new(claude_code::ClaudeCodeAdapter::new(config)),
         AdapterType::Process => Box::new(process::ProcessAdapter::new(config)),
         AdapterType::Mock => Box::new(mock::MockAdapter::new()),
         // Future adapters:
-        // AdapterType::Codex => Box::new(codex::CodexAdapter::new(config)),
         // AdapterType::HttpWebhook => Box::new(webhook::WebhookAdapter::new(config)),
-        // AdapterType::Process => Box::new(process::ProcessAdapter::new(config)),
         _ => {
             log::warn!(
                 "No adapter implemented for {:?}, falling back to mock",

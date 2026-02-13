@@ -31,7 +31,7 @@ Kanbun is a Tauri desktop app for managing multiple AI workstreams from one plac
 
 ### Partially built / pending
 
-- Additional adapters (`codex`, `http_webhook`) are scaffolded but not implemented.
+- Additional adapters are partially implemented: `codex` now uses `process` execution with configurable command, while `http_webhook` is still planned.
 - Cross-workstream orchestration and agent-to-agent messaging are not implemented yet.
 - Global command palette, approval workflows, and scheduled runs are not implemented yet.
 - Additional connectors (Notion/Linear/GitHub Issues) are planned but not implemented.
