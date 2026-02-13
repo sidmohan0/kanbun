@@ -114,6 +114,158 @@ body {
     background: var(--accent-soft);
 }
 
+.workstream-card {
+    background: linear-gradient(155deg, color-mix(in srgb, var(--bg-card) 92%, var(--accent) 8%), var(--bg-card));
+    border-color: color-mix(in srgb, var(--border) 82%, transparent);
+    box-shadow: 0 6px 18px -14px var(--shadow);
+}
+
+.app-brand-icon {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+    border-radius: 4px;
+    display: block;
+}
+
+.project-board-shell {
+    position: relative;
+    min-height: 280px;
+    contain: paint;
+}
+
+.project-board {
+    width: max-content;
+    min-height: max-content;
+    min-width: max-content;
+    position: relative;
+    transform-style: preserve-3d;
+}
+
+.project-frame {
+    width: min(360px, 100%);
+    border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+    background: color-mix(in srgb, var(--bg-card) 90%, transparent);
+    padding: 10px;
+    min-height: 170px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-shadow: 0 8px 24px -20px var(--shadow);
+}
+
+.project-frame-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.project-workstream-grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: 1fr;
+}
+
+.workstream-empty {
+    min-height: 84px;
+    border: 1px dashed color-mix(in srgb, var(--border) 72%, transparent);
+    background: color-mix(in srgb, var(--bg-panel) 86%, transparent);
+    padding: 8px;
+    color: var(--dim);
+    font-size: 10px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.board-pan-hint {
+    position: absolute;
+    z-index: 2;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-card) 84%, transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.board-quick-menu {
+    position: absolute;
+    z-index: 4;
+    width: 200px;
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+    background: color-mix(in srgb, var(--bg-card) 92%, transparent);
+    box-shadow: 0 10px 28px -18px var(--shadow);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.board-quick-menu::before {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    border: 1px dashed var(--accent);
+    opacity: 0.16;
+    pointer-events: none;
+}
+
+.board-minimap {
+    position: absolute;
+    z-index: 3;
+    right: 12px;
+    bottom: 12px;
+    width: 186px;
+    height: 108px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-panel) 90%, transparent);
+    padding: 4px;
+    user-select: none;
+    cursor: grab;
+}
+
+.board-minimap:active {
+    cursor: grabbing;
+}
+
+.board-minimap-frame {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background:
+        linear-gradient(90deg, transparent 0 8px, rgba(0, 0, 0, 0.02) 8px 16px, transparent 16px 24px),
+        linear-gradient(rgba(0, 0, 0, 0.02) 0 8px, transparent 8px 16px, rgba(0, 0, 0, 0.02) 16px 24px),
+        color-mix(in srgb, var(--bg-card) 90%, transparent);
+    background-size: 24px 24px;
+    overflow: hidden;
+}
+
+.board-minimap-viewport {
+    position: absolute;
+    border: 1px solid color-mix(in srgb, var(--accent) 85%, transparent);
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
+    pointer-events: auto;
+}
+
+.board-onboarding {
+    position: absolute;
+    left: 18px;
+    top: 18px;
+    width: min(340px, 46%);
+    z-index: 5;
+    border: 1px solid color-mix(in srgb, var(--accent) 72%, transparent);
+    background: color-mix(in srgb, var(--bg-card) 90%, transparent);
+    padding: 10px;
+    display: grid;
+    gap: 8px;
+    box-shadow: 0 14px 30px -22px var(--shadow);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
 .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .dot-running { background: var(--accent); box-shadow: 0 0 5px var(--accent-glow); }
 .dot-idle { background: transparent; border: 1px solid var(--dim); }
