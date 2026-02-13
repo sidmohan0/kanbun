@@ -54,7 +54,7 @@ There is no hard-coded cap for "14 workstreams x 10 tasks"; practical limits are
 - Node.js 18+
 - Rust toolchain (`rustup`)
 - Tauri CLI v2 (`cargo install tauri-cli --version "^2"`)
-- `tmux` (required for `claude_code` adapter)
+- `tmux` (optional for `claude_code`; if unavailable, `claude_code` transparently falls back to process mode)
 - `claude` CLI in `PATH` (only if using `claude_code`)
 
 ### Install

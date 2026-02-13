@@ -1,5 +1,7 @@
 use crate::db::Database;
 use crate::models::*;
+use std::io::ErrorKind;
+use std::process::Command;
 use std::sync::Arc;
 
 pub mod claude_code;
@@ -67,6 +69,14 @@ pub struct AdapterHealth {
     pub suppress_auto_restart: Option<bool>,
 }
 
+fn can_use_tmux() -> bool {
+    match Command::new("tmux").arg("-V").output() {
+        Ok(output) => output.status.success(),
+        Err(error) if error.kind() == ErrorKind::NotFound => false,
+        Err(_) => false,
+    }
+}
+
 /// Create the appropriate adapter for a given config
 pub fn create_adapter(config: &AdapterConfig) -> Box<dyn Adapter> {
     match config.adapter_type {
@@ -77,7 +87,22 @@ pub fn create_adapter(config: &AdapterConfig) -> Box<dyn Adapter> {
             }
             Box::new(process::ProcessAdapter::new(&codex_config))
         }
-        AdapterType::ClaudeCode => Box::new(claude_code::ClaudeCodeAdapter::new(config)),
+        AdapterType::ClaudeCode => {
+            if can_use_tmux() {
+                Box::new(claude_code::ClaudeCodeAdapter::new(config))
+            } else {
+                log::warn!(
+                    "tmux unavailable; running claude_code workstream as process-backed session"
+                );
+                let fallback_command = config.endpoint.clone().unwrap_or_else(|| "claude".to_string());
+                let mut process_config = config.clone();
+                process_config.adapter_type = AdapterType::Process;
+                process_config.endpoint = None;
+                process_config.command = Some(fallback_command);
+                process_config.session_name = None;
+                Box::new(process::ProcessAdapter::new(&process_config))
+            }
+        }
         AdapterType::Process => Box::new(process::ProcessAdapter::new(config)),
         AdapterType::Mock => Box::new(mock::MockAdapter::new()),
         AdapterType::HttpWebhook => Box::new(webhook::WebhookAdapter::new(config)),
