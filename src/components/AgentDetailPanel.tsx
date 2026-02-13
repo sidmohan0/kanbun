@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   AdapterConfig,
   AdapterHealth,
@@ -35,6 +35,41 @@ function formatDate(dateStr: string): string {
   });
 }
 
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return "Unknown error";
+}
+
+function formatEnvDraft(env: Record<string, string> | null): string {
+  if (!env || Object.keys(env).length === 0) return "{}";
+  return JSON.stringify(env, null, 2);
+}
+
+function parseEnvDraft(raw: string): Record<string, string> | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    throw new Error("Environment must be valid JSON.");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Environment must be a JSON object.");
+  }
+
+  const normalized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (!key.trim()) continue;
+    if (typeof value === "string") normalized[key] = value;
+    else if (value === null || value === undefined) normalized[key] = "";
+    else normalized[key] = String(value);
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
 type TabId = "chat" | "overview";
 
 export function AgentDetailPanel({
@@ -51,6 +86,7 @@ export function AgentDetailPanel({
   onSendMessage,
   onRefreshAdapterHealth,
   onRestartAdapter,
+  onSaveAdapterConfig,
 }: {
   summary: AgentSummary;
   runs: Run[];
@@ -65,9 +101,15 @@ export function AgentDetailPanel({
   onSendMessage: (agentId: string, kind: MessageKind, content: string) => void;
   onRefreshAdapterHealth: () => void;
   onRestartAdapter: () => void;
+  onSaveAdapterConfig: (agentId: string, config: AdapterConfig) => Promise<void>;
 }) {
   const { agent, recent_run } = summary;
   const [activeTab, setActiveTab] = useState<TabId>("chat");
+  const [adapterCommandDraft, setAdapterCommandDraft] = useState<string>(adapterConfig?.command ?? "");
+  const [adapterEnvDraft, setAdapterEnvDraft] = useState<string>(formatEnvDraft(adapterConfig?.env ?? null));
+  const [adapterConfigSaving, setAdapterConfigSaving] = useState(false);
+  const [adapterConfigMessage, setAdapterConfigMessage] = useState<string | null>(null);
+  const [adapterConfigError, setAdapterConfigError] = useState<string | null>(null);
   const latestRun = runs[0] ?? recent_run;
   const completedRuns = runs.filter((run) => run.status === "completed").length;
   const terminalRuns = runs.filter((run) => run.status !== "in_progress").length;
@@ -76,6 +118,55 @@ export function AgentDetailPanel({
   const adapterConfigured = Boolean(adapterConfig);
   const adapterHealthy = adapterHealth ? adapterHealth.connected || adapterHealth.session_active : false;
   const showAdapterWarning = !adapterConfigured || (adapterHealth !== null && !adapterHealthy);
+  const adapterSignature = `${agent.id}|${adapterConfig?.adapter_type ?? ""}|${adapterConfig?.session_name ?? ""}|${
+    adapterConfig?.endpoint ?? ""
+  }|${adapterConfig?.command ?? ""}|${JSON.stringify(adapterConfig?.env ?? null)}`;
+
+  useEffect(() => {
+    setAdapterCommandDraft(adapterConfig?.command ?? "");
+    setAdapterEnvDraft(formatEnvDraft(adapterConfig?.env ?? null));
+    setAdapterConfigMessage(null);
+    setAdapterConfigError(null);
+    setAdapterConfigSaving(false);
+  }, [adapterSignature]);
+
+  const handleSaveAdapterConfig = async () => {
+    if (!adapterConfig) {
+      setAdapterConfigError("No adapter configuration available for this workstream.");
+      return;
+    }
+
+    if (adapterConfig.adapter_type === "process" && !adapterCommandDraft.trim()) {
+      setAdapterConfigError("Process command is required.");
+      return;
+    }
+
+    let parsedEnv: Record<string, string> | null = null;
+    try {
+      parsedEnv = parseEnvDraft(adapterEnvDraft);
+    } catch (error) {
+      setAdapterConfigError(toErrorMessage(error));
+      return;
+    }
+
+    const nextConfig: AdapterConfig = {
+      ...adapterConfig,
+      command: adapterCommandDraft.trim() ? adapterCommandDraft.trim() : null,
+      env: parsedEnv,
+    };
+
+    setAdapterConfigSaving(true);
+    setAdapterConfigMessage(null);
+    setAdapterConfigError(null);
+    try {
+      await onSaveAdapterConfig(agent.id, nextConfig);
+      setAdapterConfigMessage("Adapter configuration saved.");
+    } catch (error) {
+      setAdapterConfigError(`Save failed: ${toErrorMessage(error)}`);
+    } finally {
+      setAdapterConfigSaving(false);
+    }
+  };
 
   return (
     <aside
@@ -182,6 +273,91 @@ export function AgentDetailPanel({
               {adapterConfig?.session_name && <ConfigRow label="Session" value={adapterConfig.session_name} mono />}
               {adapterConfig?.endpoint && <ConfigRow label="Endpoint" value={adapterConfig.endpoint} mono />}
               {adapterConfig?.command && <ConfigRow label="Command/CWD" value={adapterConfig.command} mono />}
+            </div>
+
+            <SectionTitle>Adapter Config</SectionTitle>
+            <div
+              style={{
+                marginBottom: 16,
+                padding: 8,
+                border: "1px solid var(--border)",
+                background: "var(--bg-panel)",
+              }}
+            >
+              {!adapterConfig ? (
+                <p className="mn" style={{ fontSize: 10, color: "var(--dim)" }}>
+                  Adapter is not configured yet.
+                </p>
+              ) : (
+                <>
+                  <label className="mn" style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 6 }}>
+                    {adapterConfig.adapter_type === "process" ? "Process command" : "Command"}
+                    <input
+                      type="text"
+                      value={adapterCommandDraft}
+                      onChange={(event) => {
+                        setAdapterCommandDraft(event.currentTarget.value);
+                        setAdapterConfigMessage(null);
+                        setAdapterConfigError(null);
+                      }}
+                      placeholder={adapterConfig.adapter_type === "process" ? "codex --ask" : "Optional command"}
+                      style={{
+                        border: "1px solid var(--border)",
+                        background: "var(--bg-card)",
+                        color: "var(--main)",
+                        padding: "6px 8px",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 11,
+                      }}
+                      disabled={adapterConfigSaving}
+                    />
+                  </label>
+                  <label
+                    className="mn"
+                    style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 6, marginTop: 8 }}
+                  >
+                    Environment (JSON object)
+                    <textarea
+                      value={adapterEnvDraft}
+                      onChange={(event) => {
+                        setAdapterEnvDraft(event.currentTarget.value);
+                        setAdapterConfigMessage(null);
+                        setAdapterConfigError(null);
+                      }}
+                      placeholder={'{\n  "MY_VAR": "value"\n}'}
+                      style={{
+                        border: "1px solid var(--border)",
+                        background: "var(--bg-card)",
+                        color: "var(--main)",
+                        padding: "8px 10px",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 10,
+                        minHeight: 86,
+                        resize: "vertical",
+                      }}
+                      disabled={adapterConfigSaving}
+                    />
+                  </label>
+                  <div className="flex items-center gap-2" style={{ marginTop: 8 }}>
+                    <ActionBtn
+                      label={adapterConfigSaving ? "Saving..." : "Save Config"}
+                      fill
+                      onClick={() => void handleSaveAdapterConfig()}
+                      disabled={adapterConfigSaving}
+                    />
+                    {adapterConfigMessage && (
+                      <span className="mn" style={{ fontSize: 10, color: "var(--accent)" }}>
+                        {adapterConfigMessage}
+                      </span>
+                    )}
+                  </div>
+                  {adapterConfigError && (
+                    <p className="mn" style={{ fontSize: 10, color: "var(--err)", marginTop: 6 }}>
+                      {adapterConfigError}
+                    </p>
+                  )}
+                </>
+              )}
             </div>
 
             <SectionTitle>Adapter Health</SectionTitle>

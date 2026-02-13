@@ -16,6 +16,7 @@ Kanbun is a Tauri desktop app for managing multiple AI workstreams from one plac
 - Run history and run output tracking in the detail panel.
 - Adapter config persistence, adapter health checks, and adapter restart action.
 - Cross-platform `process` adapter (spawns a real child process, streams stdout/stderr, and supports restart).
+- Process output safety guards (line truncation + bounded recent-output buffer for status/health views).
 - Connector panel with config + sync flows for:
   - Todoist (API token),
   - Obsidian (local vault path).

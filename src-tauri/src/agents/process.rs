@@ -2,19 +2,68 @@ use super::{Adapter, AdapterError, AdapterHealth};
 use crate::db::Database;
 use crate::models::*;
 use chrono::Utc;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
+const OUTPUT_RING_MAX_LINES: usize = 240;
+const STATUS_TAIL_LINES: usize = 8;
+const MAX_CAPTURE_CHARS: usize = 2000;
+
+#[derive(Debug)]
+struct OutputRingBuffer {
+    lines: VecDeque<String>,
+    dropped_lines: usize,
+}
+
+impl OutputRingBuffer {
+    fn new() -> Self {
+        Self {
+            lines: VecDeque::with_capacity(OUTPUT_RING_MAX_LINES),
+            dropped_lines: 0,
+        }
+    }
+
+    fn push(&mut self, line: String) {
+        if self.lines.len() >= OUTPUT_RING_MAX_LINES {
+            let _ = self.lines.pop_front();
+            self.dropped_lines = self.dropped_lines.saturating_add(1);
+        }
+        self.lines.push_back(line);
+    }
+
+    fn snapshot_tail(&self, tail_count: usize) -> Option<String> {
+        if self.lines.is_empty() && self.dropped_lines == 0 {
+            return None;
+        }
+
+        let mut rendered = String::new();
+        if self.dropped_lines > 0 {
+            rendered.push_str(&format!(
+                "... [{} earlier lines truncated]\n",
+                self.dropped_lines
+            ));
+        }
+
+        let skip = self.lines.len().saturating_sub(tail_count);
+        for line in self.lines.iter().skip(skip) {
+            rendered.push_str(line);
+            rendered.push('\n');
+        }
+
+        Some(rendered.trim_end().to_string())
+    }
+}
+
 #[derive(Debug)]
 struct ProcessSession {
     command: String,
     child: Mutex<Child>,
     stdin: Mutex<ChildStdin>,
-    last_output: Mutex<Option<String>>,
+    output_ring: Mutex<OutputRingBuffer>,
     last_heartbeat: Mutex<Option<String>>,
 }
 
@@ -119,6 +168,19 @@ fn resolve_agent_working_directory(db: &Arc<Database>, agent_id: &str) -> Option
         .filter(|path| !path.trim().is_empty())
 }
 
+fn truncate_output(input: &str) -> String {
+    let length = input.chars().count();
+    if length <= MAX_CAPTURE_CHARS {
+        return input.to_string();
+    }
+    let clipped: String = input.chars().take(MAX_CAPTURE_CHARS).collect();
+    format!(
+        "{} ... [line truncated: {} chars omitted]",
+        clipped,
+        length.saturating_sub(MAX_CAPTURE_CHARS)
+    )
+}
+
 fn stream_output(
     db: Arc<Database>,
     agent_id: String,
@@ -140,9 +202,10 @@ fn stream_output(
         } else {
             text.to_string()
         };
+        let rendered = truncate_output(&rendered);
 
-        if let Ok(mut last_output) = session.last_output.lock() {
-            *last_output = Some(rendered.clone());
+        if let Ok(mut output_ring) = session.output_ring.lock() {
+            output_ring.push(rendered.clone());
         }
         if let Ok(mut last_heartbeat) = session.last_heartbeat.lock() {
             *last_heartbeat = Some(Utc::now().to_rfc3339());
@@ -277,7 +340,7 @@ impl ProcessAdapter {
             command: self.command.clone(),
             child: Mutex::new(child),
             stdin: Mutex::new(stdin),
-            last_output: Mutex::new(None),
+            output_ring: Mutex::new(OutputRingBuffer::new()),
             last_heartbeat: Mutex::new(Some(Utc::now().to_rfc3339())),
         });
 
@@ -418,10 +481,10 @@ impl Adapter for ProcessAdapter {
                         }
                         MessageKind::StatusRequest => {
                             let last_output = session
-                                .last_output
+                                .output_ring
                                 .lock()
                                 .ok()
-                                .and_then(|value| value.clone())
+                                .and_then(|ring| ring.snapshot_tail(STATUS_TAIL_LINES))
                                 .unwrap_or_else(|| "No output captured yet.".to_string());
                             let details = format!(
                                 "Process command `{}` is running.\nLast output: {}",
@@ -472,10 +535,10 @@ impl Adapter for ProcessAdapter {
         }
 
         let last_output = session
-            .last_output
+            .output_ring
             .lock()
             .ok()
-            .and_then(|value| value.clone())
+            .and_then(|ring| ring.snapshot_tail(STATUS_TAIL_LINES))
             .unwrap_or_else(|| "No output captured yet.".to_string());
         let heartbeat = session
             .last_heartbeat

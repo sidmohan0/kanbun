@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type {
+  AdapterConfig,
   AdapterHealth,
   AdapterType,
   AgentDetail,
@@ -1144,6 +1145,23 @@ export default function Dashboard() {
     [isTauri, refreshAgentDetail, refreshConversation, refreshDashboard]
   );
 
+  const handleSaveAdapterConfig = useCallback(
+    async (agentId: string, config: AdapterConfig) => {
+      if (!isTauri) {
+        throw new Error("Adapter config save is available only in desktop runtime.");
+      }
+
+      await setAdapterConfig(agentId, config);
+      await Promise.all([
+        refreshAgentDetail(agentId),
+        refreshAdapterHealth(agentId),
+        refreshConversation(agentId),
+        refreshDashboard(),
+      ]);
+    },
+    [isTauri, refreshAgentDetail, refreshAdapterHealth, refreshConversation, refreshDashboard]
+  );
+
   const showObscuredPane = !isTauri || (!loadingDashboard && dashboard.projects.length === 0);
   const selectedConnectorItems = connectorItemsByType[selectedConnectorId] ?? [];
   const selectedConnectorBusy = connectorBusyByType[selectedConnectorId] ?? "idle";
@@ -2152,6 +2170,7 @@ export default function Dashboard() {
             onSendMessage={handleSendMessage}
             onRefreshAdapterHealth={() => void refreshAdapterHealth(selectedAgent.agent.id)}
             onRestartAdapter={() => void handleRestartAdapter(selectedAgent.agent.id)}
+            onSaveAdapterConfig={handleSaveAdapterConfig}
           />
         )}
       </div>
