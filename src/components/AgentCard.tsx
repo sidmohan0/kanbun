@@ -14,18 +14,15 @@ export function AgentCard({
   summary,
   selected,
   onClick,
-  variant = "standard",
 }: {
   summary: AgentSummary;
   selected?: boolean;
   onClick: () => void;
-  variant?: "standard" | "sticky";
 }) {
   const { agent, recent_run } = summary;
   const isActive = agent.status === "running";
   const isErr = agent.status === "errored";
   const isBlk = agent.status === "blocked";
-  const isSticky = variant === "sticky";
 
   const statusColor = isErr
     ? "var(--err)"
@@ -38,24 +35,15 @@ export function AgentCard({
   return (
     <button
       onClick={onClick}
-      className={`agent-card ${isSticky ? "workstream-card" : ""} w-full text-left ${selected ? "selected" : ""}`}
+      className={`agent-card w-full text-left ${selected ? "selected" : ""}`}
       style={
-        isSticky
-          ? {
-              padding: 9,
-              minHeight: 108,
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
-              background: "var(--accent-soft)",
-            }
-          : {
-              padding: 10,
-              height: 105,
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
-            }
+        {
+          padding: 10,
+          height: 105,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+        }
       }
     >
       <div className="flex justify-between items-start">
