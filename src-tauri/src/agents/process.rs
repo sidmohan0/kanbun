@@ -136,10 +136,7 @@ fn process_state(session: &Arc<ProcessSession>) -> Result<ProcessState, AdapterE
 }
 
 fn is_process_like_adapter_type(adapter_type: AdapterType) -> bool {
-    matches!(
-        adapter_type,
-        AdapterType::Process | AdapterType::Codex
-    )
+    matches!(adapter_type, AdapterType::Process | AdapterType::Codex)
 }
 
 fn terminate_session(session: &Arc<ProcessSession>) -> Result<(), AdapterError> {

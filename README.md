@@ -10,7 +10,7 @@ Kanbun is a Tauri desktop app for managing multiple AI workstreams from one plac
 - Workstream creation with:
   - project assignment,
   - agent preset selector (`Mock`, `Codex CLI`, `Claude Code`, `Custom`),
-  - adapter selection (`mock`, `process`, or `claude_code`),
+  - adapter selection (`mock`, `process`, `claude_code`, or `http_webhook`),
   - local folder picker (desktop runtime),
   - optional initial instruction (immediately persisted to conversation history).
 - Conversation thread persistence (SQLite-backed).
@@ -28,10 +28,11 @@ Kanbun is a Tauri desktop app for managing multiple AI workstreams from one plac
 - File watcher integration for workstream folders (records file-change activity).
 - Database export/import from Settings for local backup and restore.
 - Clean browser preview empty-state (obscured/blurred pane, no fake dashboard content).
+- `http_webhook` adapter implementation for external webhook-based agents.
 
 ### Partially built / pending
 
-- Additional adapters are partially implemented: `codex` now uses `process` execution with configurable command, while `http_webhook` is still planned.
+- `codex` uses `process` execution with configurable command and default `codex` launcher fallback.
 - Cross-workstream orchestration and agent-to-agent messaging are not implemented yet.
 - Global command palette, approval workflows, and scheduled runs are not implemented yet.
 - Additional connectors (Notion/Linear/GitHub Issues) are planned but not implemented.
@@ -109,7 +110,7 @@ kanbun/
 ## Open-Source Plan (next milestones)
 
 1. Harden adapter lifecycle and error recovery for long-running daily usage.
-2. Complete at least one more real adapter (`codex` or `http_webhook`).
-3. Add cross-workstream command and context propagation.
+2. Add cross-workstream command and context propagation.
+3. Add approval workflows and scheduled run modes for production usage.
 4. Add CI (lint/test/build) and contributor docs.
 5. Publish first tagged release with install docs.

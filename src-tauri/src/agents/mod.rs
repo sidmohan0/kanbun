@@ -5,6 +5,7 @@ use std::sync::Arc;
 pub mod claude_code;
 pub mod mock;
 pub mod process;
+pub mod webhook;
 
 /// The adapter trait. Each agent kind gets an implementation that translates
 /// between Kanbun's message protocol and the agent's native interface.
@@ -79,8 +80,7 @@ pub fn create_adapter(config: &AdapterConfig) -> Box<dyn Adapter> {
         AdapterType::ClaudeCode => Box::new(claude_code::ClaudeCodeAdapter::new(config)),
         AdapterType::Process => Box::new(process::ProcessAdapter::new(config)),
         AdapterType::Mock => Box::new(mock::MockAdapter::new()),
-        // Future adapters:
-        // AdapterType::HttpWebhook => Box::new(webhook::WebhookAdapter::new(config)),
+        AdapterType::HttpWebhook => Box::new(webhook::WebhookAdapter::new(config)),
         _ => {
             log::warn!(
                 "No adapter implemented for {:?}, falling back to mock",
