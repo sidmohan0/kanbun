@@ -91,9 +91,10 @@ export async function sendMessage(
 
 export async function getConversation(
   agentId: string,
-  limit?: number
+  limit?: number,
+  beforeCreatedAt?: string
 ): Promise<ConversationThread> {
-  return invoke("get_conversation", { agentId, limit });
+  return invoke("get_conversation", { agentId, limit, beforeCreatedAt });
 }
 
 export async function receiveMessage(

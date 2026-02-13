@@ -515,13 +515,18 @@ pub fn get_conversation(
     db: State<'_, Arc<Database>>,
     agent_id: String,
     limit: Option<usize>,
+    before_created_at: Option<String>,
 ) -> Result<ConversationThread, String> {
-    let limit = limit.unwrap_or(50);
+    let limit = limit.unwrap_or(50).clamp(1, 500);
+    let query_limit = limit.saturating_add(1);
     let mut messages = db
-        .get_messages_for_agent(&agent_id, limit)
+        .get_messages_for_agent_before(&agent_id, query_limit, before_created_at.as_deref())
         .map_err(|e| e.to_string())?;
 
-    let has_more = messages.len() == limit;
+    let has_more = messages.len() > limit;
+    if has_more {
+        messages.truncate(limit);
+    }
 
     // Reverse so oldest first for display
     messages.reverse();

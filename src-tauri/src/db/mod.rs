@@ -151,6 +151,49 @@ mod tests {
         let _ = std::fs::remove_file(backup_path.with_extension("db-wal"));
         let _ = std::fs::remove_file(backup_path.with_extension("db-shm"));
     }
+
+    #[test]
+    fn get_messages_for_agent_before_paginates_history() {
+        let (db, agent_id) = setup_db_with_agent();
+        let base = chrono::Utc::now();
+
+        for i in 0..5 {
+            let created_at = base + chrono::Duration::milliseconds(i);
+            let message = Message {
+                id: Uuid::new_v4().to_string(),
+                agent_id: agent_id.clone(),
+                direction: MessageDirection::FromAgent,
+                kind: MessageKind::Output,
+                content: format!("msg-{}", i),
+                metadata: None,
+                reply_to: None,
+                created_at,
+                delivered_at: Some(created_at),
+                acknowledged_at: None,
+            };
+            db.insert_message(&message).expect("message should insert");
+        }
+
+        let page_one = db
+            .get_messages_for_agent_before(&agent_id, 3, None)
+            .expect("first page should load");
+        assert_eq!(page_one.len(), 3);
+        assert_eq!(page_one[0].content, "msg-4");
+        assert_eq!(page_one[1].content, "msg-3");
+        assert_eq!(page_one[2].content, "msg-2");
+
+        let cursor = page_one
+            .last()
+            .expect("page should contain cursor message")
+            .created_at
+            .to_rfc3339();
+        let page_two = db
+            .get_messages_for_agent_before(&agent_id, 3, Some(&cursor))
+            .expect("second page should load");
+        assert_eq!(page_two.len(), 2);
+        assert_eq!(page_two[0].content, "msg-1");
+        assert_eq!(page_two[1].content, "msg-0");
+    }
 }
 
 impl Database {
@@ -825,14 +868,43 @@ impl Database {
 
     /// Get conversation thread for an agent (most recent messages first)
     pub fn get_messages_for_agent(&self, agent_id: &str, limit: usize) -> Result<Vec<Message>> {
+        self.get_messages_for_agent_before(agent_id, limit, None)
+    }
+
+    /// Get conversation thread page for an agent (most recent first),
+    /// optionally constrained to messages created before a timestamp cursor.
+    pub fn get_messages_for_agent_before(
+        &self,
+        agent_id: &str,
+        limit: usize,
+        before_created_at: Option<&str>,
+    ) -> Result<Vec<Message>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT id, agent_id, direction, kind, content, metadata, reply_to, created_at, delivered_at, acknowledged_at
-             FROM messages WHERE agent_id = ?1 ORDER BY created_at DESC LIMIT ?2"
-        )?;
-        let messages = stmt
-            .query_map(params![agent_id, limit], Self::row_to_message)?
-            .collect::<Result<Vec<_>>>()?;
+
+        let messages = if let Some(before) =
+            before_created_at.filter(|value| !value.trim().is_empty())
+        {
+            let mut stmt = conn.prepare(
+                "SELECT id, agent_id, direction, kind, content, metadata, reply_to, created_at, delivered_at, acknowledged_at
+                 FROM messages
+                 WHERE agent_id = ?1 AND created_at < ?2
+                 ORDER BY created_at DESC
+                 LIMIT ?3"
+            )?;
+            let rows = stmt.query_map(params![agent_id, before, limit], Self::row_to_message)?;
+            rows.collect::<Result<Vec<_>>>()?
+        } else {
+            let mut stmt = conn.prepare(
+                "SELECT id, agent_id, direction, kind, content, metadata, reply_to, created_at, delivered_at, acknowledged_at
+                 FROM messages
+                 WHERE agent_id = ?1
+                 ORDER BY created_at DESC
+                 LIMIT ?2"
+            )?;
+            let rows = stmt.query_map(params![agent_id, limit], Self::row_to_message)?;
+            rows.collect::<Result<Vec<_>>>()?
+        };
+
         Ok(messages)
     }
 

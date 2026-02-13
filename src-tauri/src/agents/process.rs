@@ -641,3 +641,100 @@ impl Adapter for ProcessAdapter {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn process_config_with_env(env: Option<serde_json::Value>) -> AdapterConfig {
+        AdapterConfig {
+            adapter_type: AdapterType::Process,
+            session_name: None,
+            endpoint: None,
+            command: Some("echo test".to_string()),
+            env,
+        }
+    }
+
+    #[test]
+    fn restart_policy_defaults_to_on_failure() {
+        let config = process_config_with_env(None);
+        assert!(matches!(
+            parse_restart_policy(&config),
+            RestartPolicy::OnFailure
+        ));
+    }
+
+    #[test]
+    fn restart_policy_parses_supported_values() {
+        let cases = [
+            ("never", RestartPolicy::Never),
+            ("on_failure", RestartPolicy::OnFailure),
+            ("always", RestartPolicy::Always),
+            ("ALWAYS", RestartPolicy::Always),
+            ("  never  ", RestartPolicy::Never),
+        ];
+
+        for (raw, expected) in cases {
+            let config = process_config_with_env(Some(json!({
+                RESTART_POLICY_ENV_KEY: raw
+            })));
+            assert_eq!(parse_restart_policy(&config).as_str(), expected.as_str());
+        }
+    }
+
+    #[test]
+    fn restart_policy_falls_back_to_on_failure_for_unknown_values() {
+        let config = process_config_with_env(Some(json!({
+            RESTART_POLICY_ENV_KEY: "sometimes"
+        })));
+        assert!(matches!(
+            parse_restart_policy(&config),
+            RestartPolicy::OnFailure
+        ));
+    }
+
+    #[test]
+    fn suppress_auto_restart_matrix_matches_policy() {
+        assert!(should_suppress_auto_restart(RestartPolicy::Never, Some(0)));
+        assert!(should_suppress_auto_restart(RestartPolicy::Never, Some(1)));
+        assert!(should_suppress_auto_restart(RestartPolicy::Never, None));
+
+        assert!(should_suppress_auto_restart(
+            RestartPolicy::OnFailure,
+            Some(0)
+        ));
+        assert!(!should_suppress_auto_restart(
+            RestartPolicy::OnFailure,
+            Some(2)
+        ));
+        assert!(should_suppress_auto_restart(RestartPolicy::OnFailure, None));
+
+        assert!(!should_suppress_auto_restart(
+            RestartPolicy::Always,
+            Some(0)
+        ));
+        assert!(!should_suppress_auto_restart(
+            RestartPolicy::Always,
+            Some(2)
+        ));
+        assert!(!should_suppress_auto_restart(RestartPolicy::Always, None));
+    }
+
+    #[test]
+    fn parse_env_strips_internal_control_keys() {
+        let config = process_config_with_env(Some(json!({
+            "USER_VISIBLE": "value",
+            "__kanbun_internal": "secret",
+            "__kanbun_restart_policy": "always",
+            "NUMERIC": 42
+        })));
+
+        let parsed = parse_env(&config);
+        assert_eq!(parsed.len(), 2);
+        assert!(parsed.contains(&("USER_VISIBLE".to_string(), "value".to_string())));
+        assert!(parsed.contains(&("NUMERIC".to_string(), "42".to_string())));
+        assert!(!parsed.iter().any(|(key, _)| key.starts_with("__kanbun_")));
+    }
+}

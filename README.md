@@ -13,6 +13,7 @@ Kanbun is a Tauri desktop app for managing multiple AI workstreams from one plac
   - local folder picker (desktop runtime),
   - optional initial instruction (immediately persisted to conversation history).
 - Conversation thread persistence (SQLite-backed).
+- Conversation history pagination ("Load older") so long-running workstreams retain accessible history.
 - Run history and run output tracking in the detail panel.
 - Adapter config persistence, adapter health checks, and adapter restart action.
 - Cross-platform `process` adapter (spawns a real child process, streams stdout/stderr, and supports restart).

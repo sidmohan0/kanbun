@@ -208,11 +208,30 @@ function mergeConnectorInfo(
   return merged;
 }
 
+function mergeConversationMessages(existing: Message[], incoming: Message[]): Message[] {
+  const byId = new Map<string, Message>();
+  for (const message of existing) {
+    byId.set(message.id, message);
+  }
+  for (const message of incoming) {
+    byId.set(message.id, message);
+  }
+  return Array.from(byId.values()).sort((a, b) => {
+    const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    if (timeDiff !== 0) return timeDiff;
+    return a.id.localeCompare(b.id);
+  });
+}
+
 export default function Dashboard() {
   const [dashboard, setDashboard] = useState<DashboardView>(EMPTY_DASHBOARD);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
   const [messagesByAgent, setMessagesByAgent] = useState<Record<string, Message[]>>({});
+  const [conversationHasMoreByAgent, setConversationHasMoreByAgent] = useState<Record<string, boolean>>({});
+  const [conversationLoadingOlderByAgent, setConversationLoadingOlderByAgent] = useState<
+    Record<string, boolean>
+  >({});
   const [agentDetailsById, setAgentDetailsById] = useState<Record<string, AgentDetail>>({});
   const [adapterHealthByAgent, setAdapterHealthByAgent] = useState<Record<string, AdapterHealth | null>>({});
   const [adapterHealthLoadingByAgent, setAdapterHealthLoadingByAgent] = useState<Record<string, boolean>>({});
@@ -282,12 +301,49 @@ export default function Dashboard() {
       const thread = await getConversation(agentId, 100);
       setMessagesByAgent((prev) => ({
         ...prev,
-        [agentId]: thread.messages,
+        [agentId]: mergeConversationMessages(prev[agentId] ?? [], thread.messages),
+      }));
+      setConversationHasMoreByAgent((prev) => ({
+        ...prev,
+        [agentId]: thread.has_more,
       }));
     } catch (error) {
       console.error("Failed to load conversation:", error);
     }
   }, []);
+
+  const loadOlderConversation = useCallback(
+    async (agentId: string) => {
+      if (!isTauri) return;
+      const existingMessages = messagesByAgent[agentId] ?? [];
+      const beforeCreatedAt = existingMessages[0]?.created_at;
+      if (!beforeCreatedAt) return;
+
+      setConversationLoadingOlderByAgent((prev) => ({
+        ...prev,
+        [agentId]: true,
+      }));
+      try {
+        const thread = await getConversation(agentId, 100, beforeCreatedAt);
+        setMessagesByAgent((prev) => ({
+          ...prev,
+          [agentId]: mergeConversationMessages(thread.messages, prev[agentId] ?? []),
+        }));
+        setConversationHasMoreByAgent((prev) => ({
+          ...prev,
+          [agentId]: thread.has_more,
+        }));
+      } catch (error) {
+        setDashboardError(`Failed to load older conversation: ${toErrorMessage(error)}`);
+      } finally {
+        setConversationLoadingOlderByAgent((prev) => ({
+          ...prev,
+          [agentId]: false,
+        }));
+      }
+    },
+    [isTauri, messagesByAgent]
+  );
 
   const refreshAgentDetail = useCallback(
     async (agentId: string) => {
@@ -466,16 +522,12 @@ export default function Dashboard() {
     let cancelled = false;
     const syncConversation = async () => {
       try {
-        const [thread, detail, health] = await Promise.all([
-          getConversation(selectedAgentId, 100),
+        const [, detail, health] = await Promise.all([
+          refreshConversation(selectedAgentId),
           getAgentDetail(selectedAgentId),
           getAdapterHealth(selectedAgentId),
         ]);
         if (cancelled) return;
-        setMessagesByAgent((prev) => ({
-          ...prev,
-          [selectedAgentId]: thread.messages,
-        }));
         setAgentDetailsById((prev) => ({
           ...prev,
           [selectedAgentId]: detail,
@@ -498,7 +550,7 @@ export default function Dashboard() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [isTauri, selectedAgentId, conversationPollMs]);
+  }, [isTauri, selectedAgentId, conversationPollMs, refreshConversation]);
 
   useEffect(() => {
     if (!isTauri || !selectedAgentId) return;
@@ -560,6 +612,12 @@ export default function Dashboard() {
   const selectedAdapterHealth = selectedAgentId ? (adapterHealthByAgent[selectedAgentId] ?? null) : null;
   const selectedAdapterHealthLoading = selectedAgentId ? Boolean(adapterHealthLoadingByAgent[selectedAgentId]) : false;
   const selectedAdapterRestartBusy = selectedAgentId ? Boolean(adapterRestartBusyByAgent[selectedAgentId]) : false;
+  const selectedConversationHasMore = selectedAgentId
+    ? Boolean(conversationHasMoreByAgent[selectedAgentId])
+    : false;
+  const selectedConversationLoadingOlder = selectedAgentId
+    ? Boolean(conversationLoadingOlderByAgent[selectedAgentId])
+    : false;
 
   const handleSendMessage = useCallback(
     (agentId: string, kind: MessageKind, content: string) => {
@@ -1009,6 +1067,8 @@ export default function Dashboard() {
       const result: DatabaseSnapshotResult = await importDatabaseSnapshot(sourcePath);
       setSelectedAgentId(null);
       setMessagesByAgent({});
+      setConversationHasMoreByAgent({});
+      setConversationLoadingOlderByAgent({});
       setAgentDetailsById({});
       setAdapterHealthByAgent({});
       setAdapterHealthLoadingByAgent({});
@@ -2166,8 +2226,11 @@ export default function Dashboard() {
             projectName={selectedProject.project.name}
             projectColor={selectedProject.project.color}
             messages={messagesByAgent[selectedAgent.agent.id] ?? selectedAgentDetail?.messages ?? []}
+            conversationHasMore={selectedConversationHasMore}
+            conversationLoadingOlder={selectedConversationLoadingOlder}
             onClose={() => setSelectedAgentId(null)}
             onSendMessage={handleSendMessage}
+            onLoadOlderConversation={loadOlderConversation}
             onRefreshAdapterHealth={() => void refreshAdapterHealth(selectedAgent.agent.id)}
             onRestartAdapter={() => void handleRestartAdapter(selectedAgent.agent.id)}
             onSaveAdapterConfig={handleSaveAdapterConfig}

@@ -95,8 +95,11 @@ export function AgentDetailPanel({
   projectName,
   projectColor,
   messages,
+  conversationHasMore,
+  conversationLoadingOlder,
   onClose,
   onSendMessage,
+  onLoadOlderConversation,
   onRefreshAdapterHealth,
   onRestartAdapter,
   onSaveAdapterConfig,
@@ -110,8 +113,11 @@ export function AgentDetailPanel({
   projectName: string;
   projectColor: string;
   messages: Message[];
+  conversationHasMore: boolean;
+  conversationLoadingOlder: boolean;
   onClose: () => void;
   onSendMessage: (agentId: string, kind: MessageKind, content: string) => void;
+  onLoadOlderConversation: (agentId: string) => void;
   onRefreshAdapterHealth: () => void;
   onRestartAdapter: () => void;
   onSaveAdapterConfig: (agentId: string, config: AdapterConfig) => Promise<void>;
@@ -283,6 +289,9 @@ export function AgentDetailPanel({
           <ConversationThread
             agentId={agent.id}
             messages={messages}
+            hasMore={conversationHasMore}
+            loadingOlder={conversationLoadingOlder}
+            onLoadOlder={() => onLoadOlderConversation(agent.id)}
             onSendMessage={(kind, content) => onSendMessage(agent.id, kind, content)}
           />
         ) : (
