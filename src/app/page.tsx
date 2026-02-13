@@ -116,6 +116,7 @@ type ProjectDraft = {
   name: string;
   color: string;
 };
+type AgentPresetId = "mock_demo" | "codex_process" | "claude_code" | "custom";
 type AgentDraft = {
   name: string;
   projectId: string;
@@ -127,6 +128,7 @@ type AgentDraft = {
   sessionPrefix: string;
   claudeCommand: string;
   processCommand: string;
+  preset: AgentPresetId;
 };
 type ContextDocDraft = {
   title: string;
@@ -149,7 +151,31 @@ const DEFAULT_AGENT_DRAFT: AgentDraft = {
   sessionPrefix: "kanbun",
   claudeCommand: "claude",
   processCommand: "",
+  preset: "mock_demo",
 };
+
+const AGENT_PRESETS: { id: AgentPresetId; label: string; description: string }[] = [
+  {
+    id: "mock_demo",
+    label: "Mock (Demo)",
+    description: "Fast local demo preset with mock adapter (no external CLI required).",
+  },
+  {
+    id: "codex_process",
+    label: "Codex CLI",
+    description: "Runs a process adapter using `codex` in the selected workstream folder.",
+  },
+  {
+    id: "claude_code",
+    label: "Claude Code",
+    description: "Runs Claude Code inside a tmux-backed workstream session.",
+  },
+  {
+    id: "custom",
+    label: "Custom",
+    description: "Manual setup for adapter and command fields.",
+  },
+];
 
 const EMPTY_CONTEXT_DOC_DRAFT: ContextDocDraft = {
   title: "",
@@ -712,6 +738,44 @@ export default function Dashboard() {
 
   const handleAgentDraftChange = useCallback((patch: Partial<AgentDraft>) => {
     setAgentDraft((prev) => ({ ...prev, ...patch }));
+    setAgentMessage(null);
+    setAgentError(null);
+  }, []);
+
+  const handleApplyAgentPreset = useCallback((preset: AgentPresetId) => {
+    setAgentDraft((prev) => {
+      const next: AgentDraft = {
+        ...prev,
+        preset,
+      };
+
+      switch (preset) {
+        case "mock_demo":
+          return {
+            ...next,
+            adapterType: "mock",
+            kind: "terminal",
+          };
+        case "codex_process":
+          return {
+            ...next,
+            adapterType: "process",
+            kind: "terminal",
+            processCommand: prev.processCommand.trim() ? prev.processCommand : "codex",
+          };
+        case "claude_code":
+          return {
+            ...next,
+            adapterType: "claude_code",
+            kind: "terminal",
+            sessionPrefix: prev.sessionPrefix.trim() ? prev.sessionPrefix : "kanbun",
+            claudeCommand: prev.claudeCommand.trim() ? prev.claudeCommand : "claude",
+          };
+        case "custom":
+        default:
+          return next;
+      }
+    });
     setAgentMessage(null);
     setAgentError(null);
   }, []);
@@ -1743,12 +1807,41 @@ export default function Dashboard() {
                           />
                         </label>
                         <label className="mn" style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 6 }}>
+                          Agent preset
+                          <select
+                            value={agentDraft.preset}
+                            onChange={(event) => handleApplyAgentPreset(event.currentTarget.value as AgentPresetId)}
+                            style={{
+                              border: "1px solid var(--border)",
+                              background: "var(--bg-card)",
+                              color: "var(--main)",
+                              padding: "6px 8px",
+                              fontFamily: "var(--font-mono)",
+                              fontSize: 12,
+                            }}
+                            disabled={!isTauri || agentBusy}
+                          >
+                            {AGENT_PRESETS.map((preset) => (
+                              <option key={preset.id} value={preset.id}>
+                                {preset.label}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="mn" style={{ fontSize: 9, color: "var(--dim)" }}>
+                            {
+                              AGENT_PRESETS.find((preset) => preset.id === agentDraft.preset)?.description ??
+                              AGENT_PRESETS[0].description
+                            }
+                          </span>
+                        </label>
+                        <label className="mn" style={{ fontSize: 10, color: "var(--main)", display: "grid", gap: 6 }}>
                           Adapter
                           <select
                             value={agentDraft.adapterType}
                             onChange={(event) =>
                               handleAgentDraftChange({
                                 adapterType: event.currentTarget.value as AdapterType,
+                                preset: "custom",
                               })
                             }
                             style={{

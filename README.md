@@ -9,7 +9,8 @@ Kanbun is a Tauri desktop app for managing multiple AI workstreams from one plac
 - Multi-project dashboard with per-workstream cards and attention queue.
 - Workstream creation with:
   - project assignment,
-  - adapter selection (`mock` or `claude_code`),
+  - agent preset selector (`Mock`, `Codex CLI`, `Claude Code`, `Custom`),
+  - adapter selection (`mock`, `process`, or `claude_code`),
   - local folder picker (desktop runtime),
   - optional initial instruction (immediately persisted to conversation history).
 - Conversation thread persistence (SQLite-backed).
