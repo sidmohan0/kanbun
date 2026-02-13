@@ -1,6 +1,7 @@
 use super::{Adapter, AdapterError, AdapterHealth};
 use crate::db::Database;
 use crate::models::*;
+use std::io::ErrorKind;
 use std::process::Command;
 use std::sync::Arc;
 
@@ -54,8 +55,33 @@ impl ClaudeCodeAdapter {
             .unwrap_or(false)
     }
 
+    fn ensure_tmux_available(&self) -> Result<(), AdapterError> {
+        let output = Command::new("tmux").arg("-V").output().map_err(|error| {
+            if error.kind() == ErrorKind::NotFound {
+                AdapterError::SpawnFailed(
+                    "tmux is not installed or not on PATH. Install tmux (e.g. `brew install tmux`) "
+                    .to_string(),
+                )
+            } else {
+                AdapterError::SpawnFailed(format!("failed to run tmux: {}", error))
+            }
+        })?;
+
+        if !output.status.success() {
+            return Err(AdapterError::SpawnFailed(
+                String::from_utf8_lossy(&output.stderr)
+                    .trim()
+                    .to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Create a new tmux session with Claude Code running in it
     fn create_session(&self, session: &str) -> Result<(), AdapterError> {
+        self.ensure_tmux_available()?;
+
         let mut cmd = Command::new("tmux");
         cmd.args(["new-session", "-d", "-s", session]);
 
@@ -125,6 +151,8 @@ impl ClaudeCodeAdapter {
 
 impl Adapter for ClaudeCodeAdapter {
     fn deliver(&self, message: &Message) -> Result<(), AdapterError> {
+        self.ensure_tmux_available()?;
+
         let session = self.session_name(&message.agent_id);
 
         // Ensure session exists
@@ -348,6 +376,7 @@ impl Adapter for ClaudeCodeAdapter {
     }
 
     fn health_check(&self, agent_id: &str) -> Result<AdapterHealth, AdapterError> {
+        self.ensure_tmux_available()?;
         let session = self.session_name(agent_id);
         let active = self.session_exists(&session);
 
