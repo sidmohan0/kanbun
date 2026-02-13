@@ -1584,14 +1584,14 @@ export default function Dashboard() {
     setQuickWorkstreamMessage(null);
 
     try {
-      const selectedProject =
-        dashboard.projects.find((projectGroup) => projectGroup.project.name === DEFAULT_WORKSPACE_NAME) ??
-        dashboard.projects[0];
-      const createdProject = selectedProject
+      const selectedProject = dashboard.projects.find(
+        (projectGroup) => projectGroup.project.name === DEFAULT_WORKSPACE_NAME
+      );
+      const workspace = selectedProject
         ? null
         : await createProject(DEFAULT_WORKSPACE_NAME, DEFAULT_PROJECT_DRAFT.color);
-      const workspaceId = selectedProject?.project.id ?? (createdProject?.id || "");
-      const workspaceName = selectedProject?.project.name ?? createdProject?.name ?? DEFAULT_WORKSPACE_NAME;
+      const workspaceId = selectedProject?.project.id ?? workspace?.id ?? "";
+      const workspaceName = selectedProject?.project.name ?? workspace?.name ?? DEFAULT_WORKSPACE_NAME;
 
       const created = await createAgent({
         name: workstreamName,
