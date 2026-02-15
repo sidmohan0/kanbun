@@ -55,5 +55,26 @@ export function draftRoutes(db: Database.Database) {
     return c.json(svc.getById(id));
   });
 
+  router.post("/:id/send", async (c) => {
+    const id = Number(c.req.param("id"));
+    const draft = svc.getById(id);
+    if (!draft) return c.json({ error: "Draft not found" }, 404);
+
+    // Get contact email
+    const contact = db.prepare("SELECT email FROM contacts WHERE id = ?").get(draft.contact_id) as any;
+    if (!contact) return c.json({ error: "Contact not found" }, 404);
+
+    // Send via email service
+    const { EmailService } = await import("../../services/email.js");
+    const emailService = new EmailService(db);
+    try {
+      await emailService.send(draft.send_account_id, contact.email, draft.subject, draft.body);
+      svc.updateStatus(id, "sent");
+      return c.json({ success: true });
+    } catch (err: any) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
   return router;
 }
