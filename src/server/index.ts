@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { serveStatic } from "@hono/node-server/serve-static";
 import type Database from "better-sqlite3";
 import { projectRoutes } from "./routes/projects.js";
 import { contactRoutes } from "./routes/contacts.js";
@@ -14,6 +15,9 @@ export function createApp(db: Database.Database) {
   app.route("/api/drafts", draftRoutes(db));
   app.route("/api/templates", templateRoutes(db));
   app.route("/api/accounts", accountRoutes(db));
+
+  // Serve built Preact UI for non-API routes
+  app.use("/*", serveStatic({ root: "./dist/ui" }));
 
   return app;
 }
