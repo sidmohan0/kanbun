@@ -135,3 +135,12 @@ td.actual-future { color: #ccc; }
 .config-phase { background: #fafafa; border-radius: 6px; padding: 12px; margin-bottom: 8px; }
 .config-phase-header { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 .config-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+
+/* Service status indicator */
+.service-status { padding: 10px 12px; border-top: 1px solid #e0e0e0; display: flex; gap: 12px; }
+.service-dot-row { display: flex; align-items: center; gap: 5px; }
+.service-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.service-dot.up { background: #2e7d32; }
+.service-dot.down { background: #c62828; }
+.service-dot.checking { background: #bbb; }
+.service-label { font-size: 11px; color: #888; }
