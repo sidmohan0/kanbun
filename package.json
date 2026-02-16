@@ -34,7 +34,8 @@
     "productName": "Kanbun",
     "mac": {
       "category": "public.app-category.business",
-      "target": "dir"
+      "target": "dir",
+      "icon": "build/icon.icns"
     },
     "files": [
       "dist/**/*",
