@@ -1,10 +1,72 @@
 import { Hono } from "hono";
 import type Database from "better-sqlite3";
 import { DraftService } from "../../services/draft.js";
+import { Orchestrator } from "../../agent/orchestrator.js";
+import { TemplateService } from "../../services/template.js";
+import { ContactService } from "../../services/contact.js";
+import { ProjectService } from "../../services/project.js";
 
 export function draftRoutes(db: Database.Database) {
   const router = new Hono();
   const svc = new DraftService(db);
+
+  router.post("/generate", async (c) => {
+    const { project_id, mode, context, model, template_id } = await c.req.json();
+
+    if (mode === "agent") {
+      const orchestrator = new Orchestrator(db);
+      try {
+        const count = await orchestrator.generateDrafts({
+          projectId: project_id,
+          context,
+          model,
+        });
+        return c.json({ count });
+      } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+      }
+    }
+
+    if (mode === "template") {
+      if (!template_id) return c.json({ error: "template_id required" }, 400);
+      const templateSvc = new TemplateService(db);
+      const contactSvc = new ContactService(db);
+      const projectSvc = new ProjectService(db);
+
+      const template = templateSvc.getById(template_id);
+      if (!template) return c.json({ error: "Template not found" }, 404);
+
+      const project = projectSvc.getById(project_id);
+      if (!project) return c.json({ error: "Project not found" }, 404);
+      if (!project.default_send_account_id)
+        return c.json({ error: "Project has no default send account" }, 400);
+
+      const contacts = contactSvc.listByProject(project_id);
+      let count = 0;
+      for (const contact of contacts) {
+        if (svc.pendingForContact(contact.id, project_id)) continue;
+        const rendered = templateSvc.render(template_id, {
+          first_name: contact.first_name,
+          last_name: contact.last_name,
+          email: contact.email,
+          company: contact.company ?? "",
+          title: contact.title ?? "",
+        });
+        svc.create({
+          project_id,
+          contact_id: contact.id,
+          send_account_id: project.default_send_account_id,
+          subject: rendered.subject,
+          body: rendered.body,
+          draft_type: "template",
+        });
+        count++;
+      }
+      return c.json({ count });
+    }
+
+    return c.json({ error: "mode must be 'agent' or 'template'" }, 400);
+  });
 
   router.get("/", (c) => {
     const status = c.req.query("status");

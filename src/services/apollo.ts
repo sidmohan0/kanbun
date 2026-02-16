@@ -4,31 +4,58 @@ export class ApolloService {
   constructor(private serverUrl: string) {}
 
   async connect(): Promise<void> {
-    // Initialize MCP client connection to Apollo server
-    // Implementation depends on the MCP SDK's client API
+    const res = await fetch(`${this.serverUrl}/health`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) throw new Error("Apollo MCP server not reachable");
   }
 
   async search(
     query: string,
     limit: number = 25
   ): Promise<Array<Partial<Contact> & { apollo_id: string }>> {
-    // Call Apollo MCP search tool
-    // Normalize response to Contact-like objects
-    // Return with apollo_id set for dedup on import
-    return [];
+    const res = await fetch(`${this.serverUrl}/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, limit }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data;
   }
 
   async importList(
-    listName: string
+    listId: string
   ): Promise<Array<Partial<Contact> & { apollo_id: string }>> {
-    // Call Apollo MCP list tool
-    // Normalize response
-    return [];
+    const res = await fetch(`${this.serverUrl}/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listId }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data;
   }
 
-  async enrich(apolloId: string): Promise<Partial<Contact>> {
-    // Call Apollo MCP enrich tool
-    // Return enriched contact fields
-    return {};
+  async enrich(email: string): Promise<Partial<Contact> & { apollo_id: string } | null> {
+    const res = await fetch(`${this.serverUrl}/enrich`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data;
+  }
+
+  async enrichOrg(domain: string): Promise<Record<string, any> | null> {
+    const res = await fetch(`${this.serverUrl}/enrich-org`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ domain }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data;
   }
 }
