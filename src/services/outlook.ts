@@ -1,6 +1,12 @@
 import { Client } from "@microsoft/microsoft-graph-client";
 import { ConfidentialClientApplication } from "@azure/msal-node";
 
+interface OutlookCredentials {
+  access_token: string;
+  refresh_token?: string;
+  expires_at?: string;
+}
+
 export class OutlookService {
   private client: Client;
 
@@ -46,21 +52,48 @@ export class OutlookService {
     tenantId: string,
     redirectUri: string,
     code: string
-  ): Promise<{ accessToken: string }> {
-    const msalConfig = {
-      auth: {
-        clientId,
-        clientSecret,
-        authority: `https://login.microsoftonline.com/${tenantId}`,
-      },
-    };
-    const cca = new ConfidentialClientApplication(msalConfig);
+  ): Promise<{ accessToken: string; refreshToken: string; expiresAt: string }> {
+    const cca = OutlookService.createMsalClient(clientId, clientSecret, tenantId);
     const result = await cca.acquireTokenByCode({
       code,
-      scopes: ["Mail.Send", "Mail.Read"],
+      scopes: ["Mail.Send", "Mail.Read", "offline_access"],
       redirectUri,
     });
-    return { accessToken: result?.accessToken ?? "" };
+    const expiresAt = result?.expiresOn
+      ? result.expiresOn.toISOString()
+      : new Date(Date.now() + 3600 * 1000).toISOString();
+    return {
+      accessToken: result?.accessToken ?? "",
+      refreshToken: (result as any)?.refreshToken ?? "",
+      expiresAt,
+    };
+  }
+
+  static async refreshAccessToken(
+    clientId: string,
+    clientSecret: string,
+    tenantId: string,
+    refreshToken: string
+  ): Promise<{ accessToken: string; refreshToken: string; expiresAt: string }> {
+    const cca = OutlookService.createMsalClient(clientId, clientSecret, tenantId);
+    const result = await cca.acquireTokenByRefreshToken({
+      refreshToken,
+      scopes: ["Mail.Send", "Mail.Read"],
+    });
+    const expiresAt = result?.expiresOn
+      ? result.expiresOn.toISOString()
+      : new Date(Date.now() + 3600 * 1000).toISOString();
+    return {
+      accessToken: result?.accessToken ?? "",
+      refreshToken: (result as any)?.refreshToken ?? refreshToken,
+      expiresAt,
+    };
+  }
+
+  static isTokenExpired(creds: OutlookCredentials): boolean {
+    if (!creds.expires_at) return true;
+    // Refresh 5 minutes before expiry
+    return new Date(creds.expires_at).getTime() - 5 * 60 * 1000 < Date.now();
   }
 
   static getAuthUrl(clientId: string, tenantId: string, redirectUri: string): string {
@@ -72,5 +105,15 @@ export class OutlookService {
       response_mode: "query",
     });
     return `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${params}`;
+  }
+
+  private static createMsalClient(clientId: string, clientSecret: string, tenantId: string) {
+    return new ConfidentialClientApplication({
+      auth: {
+        clientId,
+        clientSecret,
+        authority: `https://login.microsoftonline.com/${tenantId}`,
+      },
+    });
   }
 }

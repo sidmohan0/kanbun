@@ -70,7 +70,7 @@ export function oauthRoutes(db: Database.Database) {
     const redirectUri = process.env.OUTLOOK_REDIRECT_URI!;
 
     try {
-      const { accessToken } = await OutlookService.getTokenFromCode(
+      const { accessToken, refreshToken, expiresAt } = await OutlookService.getTokenFromCode(
         clientId,
         clientSecret,
         tenantId,
@@ -89,6 +89,8 @@ export function oauthRoutes(db: Database.Database) {
 
       const account = svc.add("outlook", email, name, {
         access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_at: expiresAt,
       });
 
       return c.html(

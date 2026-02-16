@@ -71,6 +71,18 @@ export function applySchema(db: Database.Database): void {
       FOREIGN KEY (parent_draft_id) REFERENCES drafts(id)
     );
 
+    CREATE TABLE IF NOT EXISTS meetings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL,
+      contact_id INTEGER NOT NULL,
+      meeting_type TEXT NOT NULL DEFAULT 'meeting',
+      scheduled_at TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (project_id) REFERENCES projects(id),
+      FOREIGN KEY (contact_id) REFERENCES contacts(id)
+    );
+
     CREATE TABLE IF NOT EXISTS templates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL,

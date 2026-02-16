@@ -144,23 +144,20 @@ export class GtmService {
         )
         .get(projectId, weekStart, weekEnd) as { count: number };
 
-      // Replies: drafts that are follow-ups with parent_draft_id (sequence_step > 1 that were sent)
-      // This is a rough proxy for replies — contacts who progressed in the pipeline
+      // Replies: contacts moved to "Replied" stage this week
       const repliesRow = this.db
         .prepare(
-          `SELECT COUNT(DISTINCT pc.contact_id) as count FROM project_contacts pc
-           JOIN drafts d ON d.contact_id = pc.contact_id AND d.project_id = pc.project_id
-           WHERE pc.project_id = ? AND d.status = 'sent' AND d.sequence_step > 1
-           AND d.sent_at >= ? AND d.sent_at < ?`
+          `SELECT COUNT(*) as count FROM project_contacts
+           WHERE project_id = ? AND current_stage = 'Replied'
+           AND stage_updated_at >= ? AND stage_updated_at < ?`
         )
         .get(projectId, weekStart, weekEnd) as { count: number };
 
-      // Meetings: contacts who reached a "meeting" or "demo" stage this week
+      // Meetings: from the meetings table
       const meetingsRow = this.db
         .prepare(
-          `SELECT COUNT(*) as count FROM project_contacts
-           WHERE project_id = ? AND (LOWER(current_stage) LIKE '%meeting%' OR LOWER(current_stage) LIKE '%demo%')
-           AND stage_updated_at >= ? AND stage_updated_at < ?`
+          `SELECT COUNT(*) as count FROM meetings
+           WHERE project_id = ? AND created_at >= ? AND created_at < ?`
         )
         .get(projectId, weekStart, weekEnd) as { count: number };
 
