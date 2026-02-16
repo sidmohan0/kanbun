@@ -123,8 +123,9 @@ describe("contact routes", () => {
     });
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body).toHaveLength(2);
-    expect(body[0].source).toBe("csv");
+    expect(body.contacts).toHaveLength(2);
+    expect(body.summary.inserted).toBe(2);
+    expect(body.contacts[0].source).toBe("csv");
   });
 
   it("POST /api/contacts/import with project_id assigns to project", async () => {
@@ -142,6 +143,9 @@ describe("contact routes", () => {
     });
     expect(res.status).toBe(201);
     const imported = await res.json();
+
+    expect(imported.summary.inserted).toBe(1);
+    expect(imported.contacts).toHaveLength(1);
 
     // Verify they are assigned
     const listRes = await app.request(
@@ -187,5 +191,30 @@ describe("contact routes", () => {
     );
     const list = await listRes.json();
     expect(list[0].current_stage).toBe("Sent");
+  });
+
+  it("GET /api/contacts/:id/profile returns profile with related data", async () => {
+    const { body: contact } = await createContact();
+
+    // Add profile extras
+    await app.request(`/api/contacts/${contact.id}/tags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tags: ["founder", "hot"] }),
+    });
+
+    await app.request(`/api/contacts/${contact.id}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: "Connected at conference" }),
+    });
+
+    const res = await app.request(`/api/contacts/${contact.id}/profile`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.contact.id).toBe(contact.id);
+    expect(body.tags).toContain("founder");
+    expect(body.notes).toHaveLength(1);
+    expect(body.contact.first_name).toBe("Alice");
   });
 });

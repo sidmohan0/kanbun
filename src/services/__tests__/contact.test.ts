@@ -32,9 +32,21 @@ describe("ContactService", () => {
       { first_name: "A", last_name: "B", email: "a@b.com" },
       { first_name: "C", last_name: "D", email: "c@d.com" },
     ];
-    const contacts = svc.importCsv(rows);
-    expect(contacts).toHaveLength(2);
-    expect(contacts[0].source).toBe("csv");
+    const result = svc.importCsv(rows);
+    expect(result.contacts).toHaveLength(2);
+    expect(result.summary.inserted).toBe(2);
+    expect(result.contacts[0].source).toBe("csv");
+  });
+
+  it("skips duplicate email import rows", () => {
+    const rows = [
+      { first_name: "A", last_name: "B", email: "a@b.com" },
+      { first_name: "A-2", last_name: "B-2", email: "a@b.com" },
+    ];
+    const result = svc.importCsv(rows, "skip");
+    expect(result.summary.inserted).toBe(1);
+    expect(result.summary.skipped).toBe(1);
+    expect(result.contacts).toHaveLength(1);
   });
 
   it("assigns contact to project and lists by project", () => {

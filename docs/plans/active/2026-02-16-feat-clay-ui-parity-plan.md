@@ -21,9 +21,9 @@ Kanbun already has strong outreach automation (projects, draft generation, send 
 ## Progress
 
 - [x] (2026-02-16T10:11:00Z) P1 [M1] Create the plan artifact and align implementation milestones for phase gates.
-- [ ] (2026-02-16T10:11:00Z) P2 [M1] Add new data model and database migrations for people metadata, tags/labels, groups, and note timeline.
-- [ ] (2026-02-16T10:11:00Z) P3 [M1] Extend contact services and routes for search/filter/group/tags/note operations.
-- [ ] (2026-02-16T10:11:00Z) P4 [M1] Add API contract tests for new people/groups behaviors.
+- [x] (2026-02-16T10:11:00Z) P2 [M1] Add new data model and database migrations for people metadata, tags/labels, groups, and note timeline.
+- [x] (2026-02-16T10:18:00Z) P3 [M1] Extend contact services and routes for search/filter/group/tags/note operations.
+- [x] (2026-02-16T10:20:00Z) P4 [M1] Add API contract tests for new people/groups behaviors.
 - [ ] (2026-02-16T10:11:00Z) P5 [M2] Replace shell from Home-first to people-first with compatibility entry points to project/draft/gtm flows.
 - [ ] (2026-02-16T10:11:00Z) P6 [M2] Implement People list, contact profile, and inline editing for notes/tags/social links.
 - [ ] (2026-02-16T10:11:00Z) P7 [M2] Implement Groups page with CRUD and membership management.

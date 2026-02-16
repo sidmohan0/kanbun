@@ -1,5 +1,9 @@
 import type Database from "better-sqlite3";
 
+function hasColumn(cols: { name: string }[], name: string): boolean {
+  return cols.some((c) => c.name === name);
+}
+
 export function applySchema(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS projects (
@@ -27,6 +31,8 @@ export function applySchema(db: Database.Database): void {
       notes TEXT,
       apollo_id TEXT UNIQUE,
       source TEXT NOT NULL DEFAULT 'manual',
+      social_links TEXT,
+      website TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -92,16 +98,77 @@ export function applySchema(db: Database.Database): void {
       variables TEXT NOT NULL DEFAULT '[]',
       FOREIGN KEY (project_id) REFERENCES projects(id)
     );
+
+    CREATE TABLE IF NOT EXISTS groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      color TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS contact_groups (
+      contact_id INTEGER NOT NULL,
+      group_id INTEGER NOT NULL,
+      assigned_at TEXT NOT NULL,
+      PRIMARY KEY (contact_id, group_id),
+      FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS contact_tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      contact_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE (contact_id, name),
+      FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS contact_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      contact_id INTEGER NOT NULL,
+      body TEXT NOT NULL,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS contact_social_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      contact_id INTEGER NOT NULL,
+      provider TEXT NOT NULL,
+      value TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE (contact_id, provider, value),
+      FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_contact_groups_contact ON contact_groups(contact_id);
+    CREATE INDEX IF NOT EXISTS idx_contact_groups_group ON contact_groups(group_id);
+    CREATE INDEX IF NOT EXISTS idx_contact_tags_contact ON contact_tags(contact_id);
+    CREATE INDEX IF NOT EXISTS idx_contact_tags_name ON contact_tags(name);
+    CREATE INDEX IF NOT EXISTS idx_groups_name ON groups(name);
+    CREATE INDEX IF NOT EXISTS idx_contact_notes_contact ON contact_notes(contact_id);
+    CREATE INDEX IF NOT EXISTS idx_contact_social_links_contact ON contact_social_links(contact_id);
   `);
 
   // Migrations for existing databases
   const projectCols = db.pragma("table_info(projects)") as { name: string }[];
-  if (!projectCols.some(c => c.name === "gtm_config")) {
+  if (!hasColumn(projectCols, "gtm_config")) {
     db.exec("ALTER TABLE projects ADD COLUMN gtm_config TEXT");
   }
 
   const draftCols = db.pragma("table_info(drafts)") as { name: string }[];
-  if (!draftCols.some(c => c.name === "thread_id")) {
+  if (!hasColumn(draftCols, "thread_id")) {
     db.exec("ALTER TABLE drafts ADD COLUMN thread_id TEXT");
+  }
+
+  const contactCols = db.pragma("table_info(contacts)") as { name: string }[];
+  if (!hasColumn(contactCols, "social_links")) {
+    db.exec("ALTER TABLE contacts ADD COLUMN social_links TEXT");
+  }
+  if (!hasColumn(contactCols, "website")) {
+    db.exec("ALTER TABLE contacts ADD COLUMN website TEXT");
   }
 }

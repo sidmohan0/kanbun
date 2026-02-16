@@ -22,8 +22,46 @@ export interface Contact {
   notes: string | null;
   apollo_id: string | null;
   source: "manual" | "csv" | "apollo";
+  social_links: SocialLink[];
+  website: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface SocialLink {
+  provider: string;
+  value: string;
+}
+
+export interface Group {
+  id: number;
+  name: string;
+  color: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContactTag {
+  id: number;
+  contact_id: number;
+  name: string;
+  created_at: string;
+}
+
+export interface ContactNote {
+  id: number;
+  contact_id: number;
+  body: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ContactProfile {
+  contact: Contact;
+  tags: string[];
+  groups: Group[];
+  notes: ContactNote[];
+  social_links: SocialLink[];
 }
 
 export interface ProjectContact {

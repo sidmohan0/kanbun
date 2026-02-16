@@ -38,18 +38,28 @@ contactCmd
   .requiredOption("--csv <path>", "Path to CSV file")
   .option("--project <id>", "Project to assign contacts to")
   .option("--stage <stage>", "Initial pipeline stage", "Researched")
+  .option("--dedupe <mode>", "Duplicate strategy: skip|update", "skip")
   .action(async (opts) => {
     const content = fs.readFileSync(opts.csv, "utf-8");
     const rows = parse(content, { columns: true, skip_empty_lines: true });
+    const dedupeMode = opts.dedupe === "update" ? "update" : "skip";
     const result = await api("/api/contacts/import", {
       method: "POST",
       body: JSON.stringify({
         rows,
         project_id: opts.project ? Number(opts.project) : undefined,
         stage: opts.stage,
+        dedupe_mode: dedupeMode,
       }),
     });
-    const count = Array.isArray(result) ? result.length : result.count ?? 0;
+    let count = 0;
+    if (Array.isArray(result)) {
+      count = result.length;
+    } else if (result.summary) {
+      count = result.summary.inserted + result.summary.updated;
+    } else if (typeof result.count === "number") {
+      count = result.count;
+    }
     console.log(`Imported ${count} contacts.`);
   });
 
