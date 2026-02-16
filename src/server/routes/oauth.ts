@@ -25,24 +25,17 @@ export function oauthRoutes(db: Database.Database) {
         code
       );
 
-      // Get the user's email address using the new tokens
-      const gmail = new GmailService({
-        client_id: clientId,
-        client_secret: clientSecret,
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-      });
-      // Use googleapis to get profile
+      // Get the user's email address using Gmail API (no userinfo scope needed)
       const { google } = await import("googleapis");
       const auth = new google.auth.OAuth2(clientId, clientSecret);
       auth.setCredentials({
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
       });
-      const oauth2 = google.oauth2({ version: "v2", auth });
-      const profile = await oauth2.userinfo.get();
-      const email = profile.data.email ?? "unknown@gmail.com";
-      const name = profile.data.name ?? email;
+      const gmail = google.gmail({ version: "v1", auth });
+      const profile = await gmail.users.getProfile({ userId: "me" });
+      const email = profile.data.emailAddress ?? "unknown@gmail.com";
+      const name = email;
 
       const account = svc.add("gmail", email, name, {
         client_id: clientId,

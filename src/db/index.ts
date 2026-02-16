@@ -5,7 +5,7 @@ import { applySchema } from "./schema.js";
 
 export function getDb(dbPath?: string): Database.Database {
   const resolvedPath =
-    dbPath ?? path.join(process.cwd(), "data", "kanbun.db");
+    dbPath ?? process.env.KANBUN_DB_PATH ?? path.join(process.cwd(), "data", "kanbun.db");
   const dir = path.dirname(resolvedPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });

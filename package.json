@@ -3,20 +3,19 @@
   "version": "1.0.0",
   "type": "module",
   "main": "dist/electron/main.js",
-  "directories": {
-    "doc": "docs"
-  },
+  "description": "Personal CRM for founder outreach",
   "scripts": {
     "electron": "npm run build && electron .",
     "dev": "tsx src/server/start.ts",
     "cli": "tsx src/cli/index.ts",
     "test": "vitest",
-    "build": "tsc"
+    "build": "tsc",
+    "dist": "npm run build && npx vite build && electron-builder --mac"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
     "@azure/msal-node": "^5.0.4",
@@ -29,6 +28,29 @@
     "hono": "^4.11.9",
     "isomorphic-fetch": "^3.0.0",
     "preact": "^10.28.3"
+  },
+  "build": {
+    "appId": "com.kanbun.app",
+    "productName": "Kanbun",
+    "mac": {
+      "category": "public.app-category.business",
+      "target": "dir"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "data",
+        "to": "data",
+        "filter": ["**/*"]
+      }
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "asar": false
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.3",
