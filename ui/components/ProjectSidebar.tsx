@@ -3,11 +3,17 @@ interface Props {
   selectedId: number | null;
   onSelect: (id: number) => void;
   pendingDrafts: number;
+  onHome: () => void;
+  onOpenDrafts: () => void;
 }
 
-export function ProjectSidebar({ projects, selectedId, onSelect, pendingDrafts }: Props) {
+export function ProjectSidebar({ projects, selectedId, onSelect, pendingDrafts, onHome, onOpenDrafts }: Props) {
   return (
     <div class="sidebar">
+      <div class="sidebar-brand" onClick={onHome}>
+        Kanbun
+      </div>
+      <hr style="margin: 8px 0 12px; border: none; border-top: 1px solid #e0e0e0;" />
       <h2>Projects</h2>
       {projects.map(p => (
         <div
@@ -19,7 +25,7 @@ export function ProjectSidebar({ projects, selectedId, onSelect, pendingDrafts }
         </div>
       ))}
       <hr style="margin: 16px 0; border: none; border-top: 1px solid #e0e0e0;" />
-      <div class="sidebar-item" style="cursor:default">
+      <div class="sidebar-item" onClick={onOpenDrafts} style="cursor:pointer">
         <span>Drafts</span>
         {pendingDrafts > 0 && <span class="badge">{pendingDrafts}</span>}
       </div>

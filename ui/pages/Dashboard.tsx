@@ -6,9 +6,10 @@ interface Props {
   selectedProject: number | null;
   onSelectProject: (id: number) => void;
   onOpenDrafts: () => void;
+  onHome: () => void;
 }
 
-export function Dashboard({ selectedProject, onSelectProject, onOpenDrafts }: Props) {
+export function Dashboard({ selectedProject, onSelectProject, onOpenDrafts, onHome }: Props) {
   const [projects, setProjects] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [pendingDrafts, setPendingDrafts] = useState(0);
@@ -41,6 +42,8 @@ export function Dashboard({ selectedProject, onSelectProject, onOpenDrafts }: Pr
         selectedId={selectedProject}
         onSelect={onSelectProject}
         pendingDrafts={pendingDrafts}
+        onHome={onHome}
+        onOpenDrafts={onOpenDrafts}
       />
       <div class="main">
         <div class="top-bar">
