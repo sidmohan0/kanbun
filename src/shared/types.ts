@@ -56,6 +56,7 @@ export interface Draft {
   sequence_step: number;
   created_at: string;
   sent_at: string | null;
+  thread_id: string | null;
 }
 
 export interface Template {

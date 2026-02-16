@@ -130,9 +130,12 @@ export function draftRoutes(db: Database.Database) {
     const { EmailService } = await import("../../services/email.js");
     const emailService = new EmailService(db);
     try {
-      await emailService.send(draft.send_account_id, contact.email, draft.subject, draft.body);
+      const result = await emailService.send(draft.send_account_id, contact.email, draft.subject, draft.body);
       svc.updateStatus(id, "sent");
-      return c.json({ success: true });
+      if (result.threadId) {
+        svc.setThreadId(id, result.threadId);
+      }
+      return c.json({ success: true, threadId: result.threadId });
     } catch (err: any) {
       return c.json({ error: err.message }, 500);
     }

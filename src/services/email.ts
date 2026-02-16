@@ -15,7 +15,7 @@ export class EmailService {
     to: string,
     subject: string,
     body: string
-  ): Promise<string> {
+  ): Promise<{ messageId: string; threadId: string }> {
     const account = this.accountService.getById(accountId);
     if (!account) throw new Error(`Account ${accountId} not found`);
     const creds = this.accountService.getCredentials(accountId);

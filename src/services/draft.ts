@@ -67,6 +67,12 @@ export class DraftService {
       .run(subject, body, id);
   }
 
+  setThreadId(id: number, threadId: string): void {
+    this.db
+      .prepare("UPDATE drafts SET thread_id = ? WHERE id = ?")
+      .run(threadId, id);
+  }
+
   pendingForContact(contactId: number, projectId: number): Draft | undefined {
     return this.db
       .prepare(

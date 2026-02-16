@@ -21,7 +21,7 @@ export class GmailService {
     this.gmail = google.gmail({ version: "v1", auth: this.auth });
   }
 
-  async send(to: string, subject: string, body: string, from: string): Promise<string> {
+  async send(to: string, subject: string, body: string, from: string): Promise<{ messageId: string; threadId: string }> {
     const raw = Buffer.from(
       `From: ${from}\r\nTo: ${to}\r\nSubject: ${subject}\r\nContent-Type: text/html; charset=utf-8\r\n\r\n${body}`
     ).toString("base64url");
@@ -30,7 +30,10 @@ export class GmailService {
       userId: "me",
       requestBody: { raw },
     });
-    return res.data.id ?? "";
+    return {
+      messageId: res.data.id ?? "",
+      threadId: res.data.threadId ?? "",
+    };
   }
 
   async checkReplies(threadId: string): Promise<boolean> {

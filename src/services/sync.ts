@@ -13,6 +13,7 @@ interface SentDraftRow {
   subject: string;
   body: string;
   sent_at: string | null;
+  thread_id: string | null;
   email: string;
   provider: "gmail" | "outlook";
   account_id: number;
@@ -83,22 +84,16 @@ export class SyncService {
   }
 
   private async checkForReply(draft: SentDraftRow): Promise<boolean> {
-    // Check for replies via the appropriate email provider.
-    // Full implementation depends on storing thread/message IDs from send results.
-    // Once thread IDs are persisted on drafts, this will use GmailService.checkReplies()
-    // or OutlookService.checkReplies() to detect incoming replies.
+    if (!draft.thread_id) return false;
+
     const creds = this.accountService.getCredentials(draft.account_id);
 
     if (draft.provider === "gmail") {
       const gmail = new GmailService(creds as any);
-      // Requires threadId to be stored on the draft after sending
-      // return gmail.checkReplies(draft.threadId);
-      return false;
+      return gmail.checkReplies(draft.thread_id);
     } else {
       const outlook = new OutlookService(creds.access_token as string);
-      // Requires conversationId to be stored on the draft after sending
-      // return outlook.checkReplies(draft.conversationId);
-      return false;
+      return outlook.checkReplies(draft.thread_id);
     }
   }
 }

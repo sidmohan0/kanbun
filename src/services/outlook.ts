@@ -10,14 +10,27 @@ export class OutlookService {
     });
   }
 
-  async send(to: string, subject: string, body: string): Promise<string> {
+  async send(to: string, subject: string, body: string): Promise<{ messageId: string; threadId: string }> {
     const message = {
       subject,
       body: { contentType: "HTML", content: body },
       toRecipients: [{ emailAddress: { address: to } }],
     };
-    const res = await this.client.api("/me/sendMail").post({ message });
-    return res?.id ?? "";
+    await this.client.api("/me/sendMail").post({ message });
+
+    // Fetch the most recent sent message to get its conversationId
+    const sent = await this.client
+      .api("/me/mailFolders/SentItems/messages")
+      .top(1)
+      .orderby("sentDateTime desc")
+      .select("id,conversationId")
+      .get();
+
+    const msg = sent.value?.[0];
+    return {
+      messageId: msg?.id ?? "",
+      threadId: msg?.conversationId ?? "",
+    };
   }
 
   async checkReplies(conversationId: string): Promise<boolean> {

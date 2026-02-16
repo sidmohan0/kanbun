@@ -64,6 +64,7 @@ export function applySchema(db: Database.Database): void {
       sequence_step INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL,
       sent_at TEXT,
+      thread_id TEXT,
       FOREIGN KEY (project_id) REFERENCES projects(id),
       FOREIGN KEY (contact_id) REFERENCES contacts(id),
       FOREIGN KEY (send_account_id) REFERENCES email_accounts(id),
@@ -82,8 +83,13 @@ export function applySchema(db: Database.Database): void {
   `);
 
   // Migrations for existing databases
-  const cols = db.pragma("table_info(projects)") as { name: string }[];
-  if (!cols.some(c => c.name === "gtm_config")) {
+  const projectCols = db.pragma("table_info(projects)") as { name: string }[];
+  if (!projectCols.some(c => c.name === "gtm_config")) {
     db.exec("ALTER TABLE projects ADD COLUMN gtm_config TEXT");
+  }
+
+  const draftCols = db.pragma("table_info(drafts)") as { name: string }[];
+  if (!draftCols.some(c => c.name === "thread_id")) {
+    db.exec("ALTER TABLE drafts ADD COLUMN thread_id TEXT");
   }
 }

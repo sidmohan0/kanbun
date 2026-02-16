@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { api } from "../client.js";
+import { exec } from "node:child_process";
 
 export const accountCmd = new Command("account").description(
   "Manage email accounts"
@@ -13,11 +14,19 @@ accountCmd
       console.error("Provider must be 'gmail' or 'outlook'");
       process.exit(1);
     }
-    // OAuth flow will be implemented in Phase 5
-    // For now, stub with placeholder
-    console.log(
-      `OAuth flow for ${provider} — not yet implemented. Coming in Phase 5.`
-    );
+    const baseUrl = process.env.KANBUN_URL ?? "http://localhost:7890";
+    const url = `${baseUrl}/api/accounts/oauth/${provider}/start`;
+    console.log(`Opening browser for ${provider} OAuth...`);
+    console.log(url);
+
+    // Open in default browser
+    const cmd =
+      process.platform === "darwin"
+        ? "open"
+        : process.platform === "win32"
+          ? "start"
+          : "xdg-open";
+    exec(`${cmd} "${url}"`);
   });
 
 accountCmd
