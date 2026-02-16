@@ -1,0 +1,20 @@
+{
+  "name": "kanbun-apollo-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "hono": "^4.11.9",
+    "@hono/node-server": "^1.19.9"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "@types/node": "^20.11.30"
+  }
+}
