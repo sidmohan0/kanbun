@@ -5,6 +5,7 @@ export interface Project {
   pipeline_stages: string[];
   follow_up_cadence: number[];
   default_send_account_id: number | null;
+  gtm_config: GtmConfig | null;
   created_at: string;
   updated_at: string;
 }
@@ -64,4 +65,62 @@ export interface Template {
   subject: string;
   body: string;
   variables: string[];
+}
+
+// GTM Growth Model types
+
+export interface GtmChannel {
+  name: string;
+  percentage: number;
+}
+
+export interface GtmPhase {
+  name: string;
+  weeks: number;
+  weeklyGrowthRate: number;
+  conversionRate: number;
+  channels: GtmChannel[];
+  weeklyTargets: {
+    outreach: number;
+    meetings: number;
+    demos: number;
+  };
+}
+
+export interface GtmMilestone {
+  label: string;
+  value: number;
+}
+
+export interface GtmConfig {
+  phases: GtmPhase[];
+  initialUsers: number;
+  pricePerUser: number;
+  userMilestones: GtmMilestone[];
+  revenueMilestones: GtmMilestone[];
+  scenarioMultipliers: {
+    conservative: number;
+    base: number;
+    aggressive: number;
+  };
+}
+
+export type GtmScenario = "conservative" | "base" | "aggressive";
+
+export interface GtmWeeklyProjection {
+  week: number;
+  phase: string;
+  newUsers: number;
+  totalUsers: number;
+  mrr: number;
+  conversionRate: number;
+}
+
+export interface GtmActualWeek {
+  week: number;
+  weekStart: string;
+  contactsAdded: number;
+  emailsSent: number;
+  replies: number;
+  meetings: number;
 }

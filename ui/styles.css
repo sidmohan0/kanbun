@@ -62,3 +62,76 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .create-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .empty-state { grid-column: 1 / -1; text-align: center; padding: 48px 0; color: #666; }
 .empty-state p { margin-bottom: 16px; }
+
+/* GTM Dashboard */
+.gtm-page { padding: 24px 32px; max-width: 1100px; margin: 0 auto; min-height: 100vh; }
+.gtm-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.gtm-title { font-size: 22px; font-weight: 700; }
+
+.scenario-picker { display: flex; border: 1px solid #e0e0e0; border-radius: 6px; overflow: hidden; }
+.scenario-btn { padding: 6px 14px; border: none; background: #fff; cursor: pointer; font-size: 12px; text-transform: capitalize; border-right: 1px solid #e0e0e0; }
+.scenario-btn:last-child { border-right: none; }
+.scenario-btn:hover { background: #f0f0f0; }
+.scenario-btn.active { background: #1a73e8; color: white; }
+
+.gtm-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+.gtm-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; }
+.gtm-card-label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.gtm-card-value { font-size: 24px; font-weight: 700; }
+.gtm-card-sub { font-size: 12px; color: #888; margin-top: 4px; }
+
+.gtm-milestones-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.gtm-milestones-section { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; }
+.gtm-milestones-section h3 { font-size: 13px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+.milestones-list { display: flex; flex-direction: column; gap: 8px; }
+.milestone-item { display: flex; align-items: center; gap: 8px; }
+.milestone-dot { width: 8px; height: 8px; border-radius: 50%; background: #e0e0e0; flex-shrink: 0; }
+.milestone-dot.reached { background: #2e7d32; }
+.milestone-label { font-size: 13px; min-width: 80px; }
+.milestone-bar { flex: 1; height: 6px; background: #f0f0f0; border-radius: 3px; overflow: hidden; }
+.milestone-fill { height: 100%; background: #1a73e8; border-radius: 3px; transition: width 0.3s; }
+.milestone-fill.revenue { background: #2e7d32; }
+
+.gtm-section-title { font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+.gtm-phases { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+.gtm-phase-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; }
+.gtm-phase-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; cursor: pointer; }
+.gtm-phase-header:hover { background: #fafafa; }
+.gtm-phase-name { font-size: 15px; font-weight: 600; margin-right: 8px; }
+.gtm-phase-weeks { font-size: 12px; color: #888; }
+.gtm-phase-stats { display: flex; gap: 12px; font-size: 12px; color: #666; }
+
+.gtm-phase-detail { padding: 0 16px 16px; border-top: 1px solid #f0f0f0; }
+.gtm-phase-detail h4 { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin: 14px 0 8px; }
+
+.gtm-phase-channels { margin-bottom: 8px; }
+.channel-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 13px; }
+.channel-row span:first-child { min-width: 120px; }
+.channel-bar { flex: 1; height: 8px; background: #f0f0f0; border-radius: 4px; overflow: hidden; }
+.channel-fill { height: 100%; background: #1a73e8; border-radius: 4px; }
+.channel-pct { font-size: 12px; color: #888; min-width: 36px; text-align: right; }
+
+.targets-grid { display: flex; gap: 16px; }
+.target-item { text-align: center; }
+.target-value { font-size: 20px; font-weight: 600; }
+.target-label { font-size: 11px; color: #888; text-transform: uppercase; margin-top: 2px; }
+
+.gtm-weekly-table { margin-top: 8px; }
+.gtm-weekly-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.gtm-weekly-table th { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e0e0e0; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.3px; font-weight: 500; }
+.gtm-weekly-table td { padding: 6px 8px; border-bottom: 1px solid #f5f5f5; }
+.gtm-weekly-table tr:hover td { background: #fafafa; }
+td.actual-good { color: #2e7d32; font-weight: 500; }
+td.actual-zero { color: #999; }
+td.actual-future { color: #ccc; }
+
+/* GTM Config Editor */
+.gtm-config-editor { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+.gtm-config-editor h3 { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+.config-row { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.config-input { padding: 6px 10px; border: 1px solid #e0e0e0; border-radius: 4px; font-size: 14px; width: 120px; font-family: inherit; }
+.config-input-sm { width: 80px; }
+.config-input:focus { outline: none; border-color: #1a73e8; }
+.config-phase { background: #fafafa; border-radius: 6px; padding: 12px; margin-bottom: 8px; }
+.config-phase-header { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+.config-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }

@@ -1,11 +1,12 @@
 import type Database from "better-sqlite3";
-import type { Project } from "../shared/types.js";
+import type { Project, GtmConfig } from "../shared/types.js";
 
 function parseProject(row: any): Project {
   return {
     ...row,
     pipeline_stages: JSON.parse(row.pipeline_stages),
     follow_up_cadence: JSON.parse(row.follow_up_cadence),
+    gtm_config: row.gtm_config ? JSON.parse(row.gtm_config) : null,
   };
 }
 
@@ -51,5 +52,18 @@ export class ProjectService {
     this.db
       .prepare("UPDATE projects SET default_send_account_id = ?, updated_at = ? WHERE id = ?")
       .run(accountId, new Date().toISOString(), id);
+  }
+
+  getGtmConfig(id: number): GtmConfig | null {
+    const row = this.db
+      .prepare("SELECT gtm_config FROM projects WHERE id = ?")
+      .get(id) as any;
+    return row?.gtm_config ? JSON.parse(row.gtm_config) : null;
+  }
+
+  setGtmConfig(id: number, config: GtmConfig): void {
+    this.db
+      .prepare("UPDATE projects SET gtm_config = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(config), new Date().toISOString(), id);
   }
 }

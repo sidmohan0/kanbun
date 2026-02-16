@@ -3,12 +3,14 @@ import { useState } from "preact/hooks";
 import { Home } from "./pages/Home.js";
 import { Dashboard } from "./pages/Dashboard.js";
 import { DraftReview } from "./pages/DraftReview.js";
+import { GtmDashboard } from "./pages/GtmDashboard.js";
 
-type View = "home" | "project" | "drafts";
+type View = "home" | "project" | "drafts" | "gtm";
 
 function App() {
   const [view, setView] = useState<View>("home");
   const [selectedProject, setSelectedProject] = useState<number | null>(null);
+  const [selectedProjectName, setSelectedProjectName] = useState("");
 
   function goToProject(id: number) {
     setSelectedProject(id);
@@ -19,6 +21,16 @@ function App() {
     return <DraftReview onBack={() => setView(selectedProject ? "project" : "home")} />;
   }
 
+  if (view === "gtm" && selectedProject) {
+    return (
+      <GtmDashboard
+        projectId={selectedProject}
+        projectName={selectedProjectName}
+        onBack={() => setView("project")}
+      />
+    );
+  }
+
   if (view === "project" && selectedProject) {
     return (
       <Dashboard
@@ -26,6 +38,10 @@ function App() {
         onSelectProject={goToProject}
         onOpenDrafts={() => setView("drafts")}
         onHome={() => setView("home")}
+        onOpenGtm={(name: string) => {
+          setSelectedProjectName(name);
+          setView("gtm");
+        }}
       />
     );
   }

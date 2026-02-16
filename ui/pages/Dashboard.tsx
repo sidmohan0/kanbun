@@ -7,9 +7,10 @@ interface Props {
   onSelectProject: (id: number) => void;
   onOpenDrafts: () => void;
   onHome: () => void;
+  onOpenGtm: (projectName: string) => void;
 }
 
-export function Dashboard({ selectedProject, onSelectProject, onOpenDrafts, onHome }: Props) {
+export function Dashboard({ selectedProject, onSelectProject, onOpenDrafts, onHome, onOpenGtm }: Props) {
   const [projects, setProjects] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [pendingDrafts, setPendingDrafts] = useState(0);
@@ -65,6 +66,10 @@ export function Dashboard({ selectedProject, onSelectProject, onOpenDrafts, onHo
               <div class="info-card">
                 <h3>Total Contacts</h3>
                 <div class="value">{contacts.length}</div>
+              </div>
+              <div class="info-card" onClick={() => onOpenGtm(project!.name)} style="cursor:pointer">
+                <h3>Growth Model</h3>
+                <div class="value" style="font-size:14px">View Projections →</div>
               </div>
             </div>
           </>

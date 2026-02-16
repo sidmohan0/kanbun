@@ -9,6 +9,7 @@ export function applySchema(db: Database.Database): void {
       pipeline_stages TEXT NOT NULL DEFAULT '[]',
       follow_up_cadence TEXT NOT NULL DEFAULT '[]',
       default_send_account_id INTEGER,
+      gtm_config TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (default_send_account_id) REFERENCES email_accounts(id)
@@ -79,4 +80,10 @@ export function applySchema(db: Database.Database): void {
       FOREIGN KEY (project_id) REFERENCES projects(id)
     );
   `);
+
+  // Migrations for existing databases
+  const cols = db.pragma("table_info(projects)") as { name: string }[];
+  if (!cols.some(c => c.name === "gtm_config")) {
+    db.exec("ALTER TABLE projects ADD COLUMN gtm_config TEXT");
+  }
 }
