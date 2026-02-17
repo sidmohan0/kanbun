@@ -98,6 +98,8 @@ Assumptions for this Plan:
 
 ## Plan of Work
 
+## Milestones
+
 This section describes the sequence of edits and additions required to implement Settings in a safe, incremental way.
 
 ### 1. Backend: `GET /api/system/info`

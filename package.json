@@ -25,6 +25,7 @@
     "csv-parse": "^6.1.0",
     "googleapis": "^171.4.0",
     "hono": "^4.11.9",
+    "dotenv": "^16.4.7",
     "isomorphic-fetch": "^3.0.0",
     "preact": "^10.28.3",
     "zustand": "^5.0.11"

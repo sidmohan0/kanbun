@@ -162,6 +162,8 @@ At milestone completion:
 
 ## Plan of Work
 
+## Milestones
+
 ### Data model and backend API
 
 1. Update `src/db/schema.ts`:

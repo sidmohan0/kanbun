@@ -80,6 +80,8 @@ We will:
 
 This Plan does **not** touch backend logic or API contracts.
 
+## Milestones
+
 ## Plan of Work
 
 ### 1. Design the UI store shape and section/view mapping
