@@ -6,11 +6,13 @@ import { ProjectService } from "../../services/project.js";
 import { ContactService } from "../../services/contact.js";
 import { buildChatSystemPrompt } from "../../agent/chat-prompt.js";
 import type { ChatContext } from "../../agent/chat-prompt.js";
+import { runKanbunAgent, type ChatMessageInput } from "../../agent/pi-agent-session.js";
 
 interface ChatRequest {
-  messages: { role: "user" | "assistant"; content: string }[];
+  messages: ChatMessageInput[];
   projectId?: number | null;
   contactId?: number | null;
+  agent?: "pi" | "legacy";
 }
 
 export function chatRoutes(db: Database.Database) {
@@ -18,13 +20,50 @@ export function chatRoutes(db: Database.Database) {
 
   router.post("/", async (c) => {
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      return c.json({ error: "ANTHROPIC_API_KEY is not configured" }, 500);
-    }
-
     const body = (await c.req.json()) as ChatRequest;
+
     if (!body.messages || !Array.isArray(body.messages) || body.messages.length === 0) {
       return c.json({ error: "messages array is required" }, 400);
+    }
+
+    if (body.agent === "pi") {
+      return streamSSE(c, async (stream) => {
+        if (!apiKey) {
+          await stream.writeSSE({
+            data: JSON.stringify({ type: "error", message: "ANTHROPIC_API_KEY is not configured" }),
+          });
+          return;
+        }
+
+        await runKanbunAgent(
+          body.messages,
+          body.projectId ?? null,
+          body.contactId ?? null,
+          async (event) => {
+            if (event.type === "done") {
+              await stream.writeSSE({
+                data: JSON.stringify({ type: "done" }),
+              });
+              return;
+            }
+
+            if (event.type === "error") {
+              await stream.writeSSE({
+                data: JSON.stringify({ type: "error", message: event.text }),
+              });
+              return;
+            }
+
+            await stream.writeSSE({
+              data: JSON.stringify({ type: "delta", text: event.text }),
+            });
+          },
+        );
+      });
+    }
+
+    if (!apiKey) {
+      return c.json({ error: "ANTHROPIC_API_KEY is not configured" }, 500);
     }
 
     const context: ChatContext = {};

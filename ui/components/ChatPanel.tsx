@@ -54,6 +54,7 @@ export function ChatPanel() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          agent: "pi",
           messages: allMessages,
           projectId: selectedProjectId,
           contactId: selectedContactId,
