@@ -26,3 +26,14 @@ The system of record is `docs/`. Keep durable knowledge (specs, plans, logs, dec
 intake -> spike (optional) -> plan -> implement -> review -> verify-release -> learn
 
 If this file grows beyond a compact index, move detailed guidance into `docs/` and keep links here.
+
+<!-- he-bootstrap:start -->
+## Harness Workflow Entry Points
+
+- Workflow contract: `docs/PLANS.md`
+- Specs: `docs/specs/`
+- Plans: `docs/plans/`
+- Runbooks: `docs/runbooks/`
+
+Workflow phases: intake -> spike (optional) -> plan -> implement -> review -> verify-release -> learn
+<!-- he-bootstrap:end -->
