@@ -8,9 +8,10 @@ interface Props {
   onOpenDrafts: () => void;
   onHome: () => void;
   onOpenGtm: (projectName: string) => void;
+  onOpenSettings: () => void;
 }
 
-export function Dashboard({ selectedProject, onSelectProject, onOpenDrafts, onHome, onOpenGtm }: Props) {
+export function Dashboard({ selectedProject, onSelectProject, onOpenDrafts, onHome, onOpenGtm, onOpenSettings }: Props) {
   const [projects, setProjects] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [pendingDrafts, setPendingDrafts] = useState(0);
@@ -60,6 +61,7 @@ export function Dashboard({ selectedProject, onSelectProject, onOpenDrafts, onHo
   }
 
   function handleAddAccount(provider: "gmail" | "outlook") {
+    // Prefer using Settings for troubleshooting, but keep direct connect for convenience
     window.open(`/api/accounts/oauth/${provider}/start`, "_blank");
   }
 
@@ -72,6 +74,7 @@ export function Dashboard({ selectedProject, onSelectProject, onOpenDrafts, onHo
         pendingDrafts={pendingDrafts}
         onHome={onHome}
         onOpenDrafts={onOpenDrafts}
+        onOpenSettings={onOpenSettings}
       />
       <div class="main">
         <div class="top-bar">
@@ -85,6 +88,13 @@ export function Dashboard({ selectedProject, onSelectProject, onOpenDrafts, onHo
             </button>
             <button class="btn" onClick={() => handleAddAccount("outlook")} style="font-size:12px;padding:4px 8px">
               + Outlook
+            </button>
+            <button
+              class="btn"
+              onClick={onOpenSettings}
+              style="font-size:12px;padding:4px 8px;"
+            >
+              Settings
             </button>
           </div>
         </div>

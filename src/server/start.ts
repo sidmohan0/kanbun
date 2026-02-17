@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { serve } from "@hono/node-server";
 import type Database from "better-sqlite3";
 import type { Hono } from "hono";

@@ -30,6 +30,10 @@ export class EmailAccountService {
       .all() as EmailAccount[];
   }
 
+  remove(id: number): void {
+    this.db.prepare("DELETE FROM email_accounts WHERE id = ?").run(id);
+  }
+
   getCredentials(id: number): Record<string, unknown> {
     const row = this.db
       .prepare("SELECT credentials FROM email_accounts WHERE id = ?")

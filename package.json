@@ -15,7 +15,6 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
     "@azure/msal-node": "^5.0.4",
@@ -27,7 +26,8 @@
     "googleapis": "^171.4.0",
     "hono": "^4.11.9",
     "isomorphic-fetch": "^3.0.0",
-    "preact": "^10.28.3"
+    "preact": "^10.28.3",
+    "zustand": "^5.0.11"
   },
   "build": {
     "appId": "com.kanbun.app",
@@ -45,7 +45,9 @@
       {
         "from": "data",
         "to": "data",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "directories": {

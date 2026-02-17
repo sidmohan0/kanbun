@@ -24,15 +24,22 @@ Kanbun already has strong outreach automation (projects, draft generation, send 
 - [x] (2026-02-16T10:11:00Z) P2 [M1] Add new data model and database migrations for people metadata, tags/labels, groups, and note timeline.
 - [x] (2026-02-16T10:18:00Z) P3 [M1] Extend contact services and routes for search/filter/group/tags/note operations.
 - [x] (2026-02-16T10:20:00Z) P4 [M1] Add API contract tests for new people/groups behaviors.
-- [ ] (2026-02-16T10:11:00Z) P5 [M2] Replace shell from Home-first to people-first with compatibility entry points to project/draft/gtm flows.
-- [ ] (2026-02-16T10:11:00Z) P6 [M2] Implement People list, contact profile, and inline editing for notes/tags/social links.
-- [ ] (2026-02-16T10:11:00Z) P7 [M2] Implement Groups page with CRUD and membership management.
-- [ ] (2026-02-16T10:11:00Z) P8 [M3] Replace CSV import with preview + row-level summary + deterministic dedupe behavior.
-- [ ] (2026-02-16T10:11:00Z) P9 [M4] Run full regression checks and finalize parity acceptance against existing project/draft/GTM flows.
+- [x] (2026-02-16T10:25:00Z) P5 [M2] Replace shell from Home-first to people-first with compatibility entry points to project/draft/gtm flows.
+- [x] (2026-02-16T10:25:00Z) P6 [M2] Implement People list, contact profile, and inline editing for notes/tags/social links.
+- [x] (2026-02-16T10:25:00Z) P7 [M2] Implement Groups page with CRUD and membership management.
+- [x] (2026-02-16T10:25:00Z) P8 [M3] Replace CSV import with preview + row-level summary + deterministic dedupe behavior.
+- [ ] (2026-02-16T10:50:00Z) P9 [M4] Run full regression checks and finalize parity acceptance against existing project/draft/GTM flows (automated tests passing; manual scenario partially exercised, see Outcomes).
 
 ## Surprises & Discoveries
 
-- No surprises yet.
+- Observation: `serveStatic` logs warnings in tests when `dist/ui` is missing, but does not affect API behavior.
+  Evidence: `npm test` passes with repeated `serveStatic: root path './dist/ui' is not found` warnings while all 76 tests are green after the Clay + Settings changes.
+
+- Observation: A simple line-based CSV parser (split on commas, no quoted-field handling) is sufficient for initial import UX.
+  Evidence: Test CSVs with unquoted fields import correctly with deterministic email dedupe; quoted commas are not yet supported and are documented implicitly by the placeholder text on the People import card.
+
+- Observation: Merging legacy `contacts.social_links` JSON with the new `contact_social_links` table keeps older installs compatible without complex migration.
+  Evidence: `ContactService.getProfile` returns a combined `social_links` array, and existing tests for contacts still pass while new profile tests verify the merged view.
 
 ## Decision Log
 
@@ -48,9 +55,36 @@ Kanbun already has strong outreach automation (projects, draft generation, send 
   Rationale: allows filtering/search efficiently, avoids fragile updates and enables future extension (e.g., membership metadata).
   Date/Author: 2026-02-16T10:02:00Z, sid
 
+- Decision: Keep CSV parsing in the browser simple for the first iteration.
+  Rationale: splitting on commas with a required `email` header covers the common case and keeps the UI implementation straightforward; more complex parsing (quoted fields, custom delimiters) can be added later if needed.
+  Date/Author: 2026-02-16T10:45:00Z, sid
+
+- Decision: Expose project/pipeline context primarily via existing Dashboard rather than duplicating stage editing in the People list.
+  Rationale: keeps this iteration focused on discovery and profile enrichment, while leaving pipeline manipulation in the mature project view to minimize regression surface.
+  Date/Author: 2026-02-16T10:45:00Z, sid
+
 ## Outcomes & Retrospective
 
-- Not started.
+- Outcome: People-first shell and CRM surfaces implemented and wired to existing outreach flows.
+  Evidence:
+  - `ui/app.tsx` now defaults to the People view and provides navigation to Projects, Drafts, GTM, Groups, and Settings.
+  - People list supports search by name/email/company and filter by tag/group, backed by `ContactService.searchContacts`.
+  - Contact profile exposes editable fields (company, title, phone, website, LinkedIn, notes), tag management, group membership, and notes timeline, all persisted via the new tables.
+  - Groups page provides CRUD and membership display, backed by `GroupService` and `/api/groups` routes.
+
+- Outcome: Import UX improved with preview and deterministic dedupe.
+  Evidence:
+  - People page includes an "Import from CSV" card that previews the first 10 rows, allows choosing a dedupe mode (skip/update), and shows a summary (`inserted`, `updated`, `skipped`, `errors`) from `ContactService.importCsv`.
+  - `POST /api/contacts/import` preserves backward compatibility via a `legacy_response` flag while enabling the new summary shape for the People view.
+
+- Outcome: Automated regression coverage remains green after the Clay changes.
+  Evidence:
+  - `npm test` from `/Users/sidmohan/Projects/kanbun/kanbun` reports all 76 tests passing across services and server routes, including new contact/group/system/account tests.
+
+- Gaps / Follow-ups:
+  - Full manual end-to-end scenario (People → Profile → Groups → Projects → Drafts → send) should be documented with screenshots or notes in this Plan once exercised in a real user environment.
+  - People list could surface stage badges and quick assign/move-stage actions in a future iteration to reduce the need to jump into the project Dashboard for pipeline edits.
+  - CSV parser does not yet handle quoted commas; if users encounter complex CSVs, we may need to either switch to a dedicated parser on the client or reuse the server-side CSV parsing library.
 
 ## Context and Orientation
 
@@ -355,3 +389,5 @@ Commands:
 ## Revision Notes
 
 - 2026-02-16T10:11:00Z: Initialized lean implementation plan from the committed intake spec. Removed non-essential parity targets and formalized milestone sequence for low-risk migration.
+- 2026-02-16T10:25:00Z: Implemented people-first shell, People/Profile/Groups pages, and inline CSV import with preview and dedupe mode selection. Updated progress and recorded test evidence (`npm test` all green).
+- 2026-02-16T10:50:00Z: Updated Surprises, Decision Log, and Outcomes to reflect implemented behavior and automated regression coverage. Left P9 (M4) open pending a fully documented manual end-to-end scenario in a real-user environment.

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "preact/hooks";
+import { useUiStore } from "../state/useUiStore.js";
 
 interface Props {
   projectId: number;
@@ -44,7 +45,11 @@ interface GtmConfig {
 
 export function GtmDashboard({ projectId, projectName, onBack }: Props) {
   const [config, setConfig] = useState<GtmConfig | null>(null);
-  const [scenario, setScenario] = useState<Scenario>("base");
+  const { gtmScenario, setGtmScenario } = useUiStore((state) => ({
+    gtmScenario: state.gtmScenario,
+    setGtmScenario: state.setGtmScenario,
+  }));
+  const scenario: Scenario = gtmScenario;
   const [projections, setProjections] = useState<Projection[]>([]);
   const [actuals, setActuals] = useState<Actual[]>([]);
   const [expandedPhase, setExpandedPhase] = useState<number | null>(null);
@@ -122,6 +127,9 @@ export function GtmDashboard({ projectId, projectName, onBack }: Props) {
             ← Back
           </button>
           <span class="gtm-title">{projectName} — Growth Model</span>
+          <span style="font-size:12px;color:#666;margin-left:8px;">
+            Scenario: {scenario.charAt(0).toUpperCase() + scenario.slice(1)}
+          </span>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <div class="scenario-picker">
@@ -130,7 +138,7 @@ export function GtmDashboard({ projectId, projectName, onBack }: Props) {
                 <button
                   key={s}
                   class={`scenario-btn ${scenario === s ? "active" : ""}`}
-                  onClick={() => setScenario(s)}
+                  onClick={() => setGtmScenario(s)}
                 >
                   {s.charAt(0).toUpperCase() + s.slice(1)}
                 </button>

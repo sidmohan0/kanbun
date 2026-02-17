@@ -7,9 +7,10 @@ interface Props {
   pendingDrafts: number;
   onHome: () => void;
   onOpenDrafts: () => void;
+  onOpenSettings?: () => void;
 }
 
-export function ProjectSidebar({ projects, selectedId, onSelect, pendingDrafts, onHome, onOpenDrafts }: Props) {
+export function ProjectSidebar({ projects, selectedId, onSelect, pendingDrafts, onHome, onOpenDrafts, onOpenSettings }: Props) {
   return (
     <div class="sidebar" style="display:flex;flex-direction:column;">
       <div style="flex:1;overflow-y:auto;">
@@ -32,6 +33,11 @@ export function ProjectSidebar({ projects, selectedId, onSelect, pendingDrafts, 
           <span>Drafts</span>
           {pendingDrafts > 0 && <span class="badge">{pendingDrafts}</span>}
         </div>
+        {onOpenSettings && (
+          <div class="sidebar-item" onClick={onOpenSettings} style="cursor:pointer;margin-top:4px;">
+            <span>Settings</span>
+          </div>
+        )}
       </div>
       <ServiceStatus />
     </div>

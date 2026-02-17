@@ -25,6 +25,16 @@ export function accountRoutes(db: Database.Database) {
     return c.json(account, 201);
   });
 
+  router.delete("/:id", (c) => {
+    const id = Number(c.req.param("id"));
+    const existing = svc.getById(id);
+    if (!existing) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    svc.remove(id);
+    return c.json({ ok: true });
+  });
+
   // OAuth: initiate
   router.get("/oauth/:provider/start", (c) => {
     const provider = c.req.param("provider");
