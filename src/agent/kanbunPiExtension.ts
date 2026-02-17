@@ -275,6 +275,147 @@ async function waitForApolloHealthy(timeoutMs: number): Promise<boolean> {
   return false;
 }
 
+function sequencePerformanceSummary(db: any, projectId?: number) {
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        d.id,
+        d.project_id,
+        p.name AS project_name,
+        d.contact_id,
+        d.sequence_step,
+        d.status
+      FROM drafts d
+      JOIN projects p ON p.id = d.project_id
+      WHERE (?1 IS NULL OR d.project_id = ?1)
+      ORDER BY d.project_id, d.contact_id, d.sequence_step, d.id
+      `
+    )
+    .all(projectId ?? null) as {
+      id: number;
+      project_id: number;
+      project_name: string;
+      contact_id: number;
+      sequence_step: number;
+      status: string;
+    }[];
+
+  const byProject = new Map<
+    number,
+    {
+      project_name: string;
+      totalDrafts: number;
+      totalContacts: Set<number>;
+      sentDrafts: number;
+      pendingDrafts: number;
+      approvedDrafts: number;
+      skippedDrafts: number;
+      latestByContact: Map<
+        number,
+        {
+          latestStep: number;
+          latestStatus: string;
+          latestDraftId: number;
+          hasSent: boolean;
+        }
+      >;
+      byStep: Map<number, number>;
+    }
+  >();
+
+  for (const row of rows) {
+    let entry = byProject.get(row.project_id);
+    if (!entry) {
+      entry = {
+        project_name: row.project_name,
+        totalDrafts: 0,
+        totalContacts: new Set(),
+        sentDrafts: 0,
+        pendingDrafts: 0,
+        approvedDrafts: 0,
+        skippedDrafts: 0,
+        latestByContact: new Map(),
+        byStep: new Map(),
+      };
+      byProject.set(row.project_id, entry);
+    }
+
+    entry.totalDrafts += 1;
+    entry.totalContacts.add(row.contact_id);
+    entry.byStep.set(row.sequence_step, (entry.byStep.get(row.sequence_step) ?? 0) + 1);
+
+    if (row.status === "sent") entry.sentDrafts += 1;
+    else if (row.status === "pending_review") entry.pendingDrafts += 1;
+    else if (row.status === "approved") entry.approvedDrafts += 1;
+    else if (row.status === "skipped") entry.skippedDrafts += 1;
+
+    const prior = entry.latestByContact.get(row.contact_id);
+    if (!prior || row.sequence_step > prior.latestStep || row.id > prior.latestDraftId) {
+      entry.latestByContact.set(row.contact_id, {
+        latestStep: row.sequence_step,
+        latestStatus: row.status,
+        latestDraftId: row.id,
+        hasSent: prior?.hasSent || row.status === "sent",
+      });
+    } else if (prior) {
+      prior.hasSent = prior.hasSent || row.status === "sent";
+    }
+  }
+
+  const summary = [...byProject.entries()].map(([projectId, entry]) => {
+    const draftCountsByStep: Record<number, number> = {};
+    const latestContactsByStep: Record<number, number> = {};
+    let anyStepSent = 0;
+
+    for (const contactSummary of entry.latestByContact.values()) {
+      latestContactsByStep[contactSummary.latestStep] = (latestContactsByStep[contactSummary.latestStep] ?? 0) + 1;
+      if (contactSummary.hasSent) anyStepSent += 1;
+    }
+
+    for (const [step, count] of entry.byStep.entries()) {
+      draftCountsByStep[step] = count;
+    }
+
+    const contactsByCurrentStep = Object.entries(latestContactsByStep)
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([step, count]) => ({ step: Number(step), contacts: count }));
+
+    const totalContacts = entry.totalContacts.size;
+
+    return {
+      project_id: projectId,
+      project_name: entry.project_name,
+      total_drafts: entry.totalDrafts,
+      distinct_contacts: totalContacts,
+      drafts_by_step: draftCountsByStep,
+      contacts_by_current_step: contactsByCurrentStep,
+      drafts_status_breakdown: {
+        sent: entry.sentDrafts,
+        pending_review: entry.pendingDrafts,
+        approved: entry.approvedDrafts,
+        skipped: entry.skippedDrafts,
+      },
+      contacts_with_any_sent_drafts: anyStepSent,
+      contacts_with_no_sent_drafts: Math.max(totalContacts - anyStepSent, 0),
+      apollo_integration_note: "Apollo MCP currently exposes search/enrich only; sequence stats here are derived from Kanbun draft data.",
+    };
+  });
+
+  if (summary.length === 0) {
+    return {
+      scope: projectId ? `project_id=${projectId}` : "all projects",
+      message: "No draft activity found for the requested scope.",
+      summary: [],
+    };
+  }
+
+  return {
+    scope: projectId ? `project_id=${projectId}` : "all projects",
+    summary,
+  };
+}
+
 export default function (pi: ExtensionAPI) {
   // We lazy-init services so the extension loads even if the DB
   // doesn't exist yet (first run, etc.)
@@ -409,6 +550,17 @@ export default function (pi: ExtensionAPI) {
         msg += `\n\n**Recent logs:**\n\`\`\`\n${lastLines}\n\`\`\``;
       }
       ctx.ui.notify(msg, "info");
+    },
+  });
+
+  // Command to see sequence metrics currently tracked in Kanbun
+  pi.registerCommand("apollo_sequences", {
+    description: "Show sequence-step stats from local Kanbun draft history",
+    handler: async (args, ctx) => {
+      const projectId = args?.trim() ? Number.parseInt(args.trim(), 10) : undefined;
+      const safeProjectId = Number.isFinite(projectId) && projectId > 0 ? projectId : undefined;
+      const report = sequencePerformanceSummary(svc().db, safeProjectId);
+      ctx.ui.notify(`**Apollo Sequence Report**\n\n${JSON.stringify(report, null, 2)}`, "info");
     },
   });
 
@@ -1036,6 +1188,24 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  pi.registerTool({
+    name: "apollo_sequence_report",
+    label: "Apollo Sequence Report",
+    description: "Summarize sequence-step and draft-stage performance from local Kanbun data.",
+    parameters: Type.Object({
+      project_id: Type.Optional(Type.Number({ description: "Project ID to scope the report" })),
+    }),
+    async execute(_id, params) {
+      const report = sequencePerformanceSummary(svc().db, params.project_id);
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(report, null, 2),
+        }],
+      };
+    },
+  });
+
   // ================================================================
   // TOOLS — Email Accounts
   // ================================================================
@@ -1154,7 +1324,8 @@ You are Sid's personal CRM manager. Your job is to manage his go-to-market outre
 2. **Draft management** — Generate, review, edit, and help approve outreach emails
 3. **Pipeline management** — Track contacts through stages, identify stalled leads
 4. **Apollo research** — Enrich contacts and find new prospects (be mindful of API credits)
-5. **Reporting** — Provide GTM metrics and weekly summaries
+5. **Sequence performance** — Provide outreach sequence performance using local Kanbun draft history; only use Apollo sequence data if the MCP exposes it.
+6. **Reporting** — Provide GTM metrics and weekly summaries
 
 ### Rules
 - **NEVER send an email without explicit user approval** — the permission gate and Cronsnap receipt system enforce this, and you should always ask.
@@ -1163,6 +1334,8 @@ You are Sid's personal CRM manager. Your job is to manage his go-to-market outre
 - **Be concise in summaries** — use tables and bullet points
 - **Flag anomalies** — if reply rates drop, follow-ups are overdue, or pipeline is stalled, say so
 - **Protect Apollo credits** — prefer enriching specific contacts over broad searches
+- **If sequence metrics are requested, run \`apollo_sequence_report\` first.**
+- **If Apollo MCP reports no sequence endpoint, clearly state that results are from Kanbun CRM local data only.**
 - **One email account per project** — don't mix accounts
 
 ### Daily Routine Flow
