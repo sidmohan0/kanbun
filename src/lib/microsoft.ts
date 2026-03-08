@@ -57,7 +57,7 @@ function microsoftTenantAuthority() {
 }
 
 function microsoftRedirectUri() {
-  return `${env.APP_URL}/api/auth/microsoft/callback`;
+  return `${env.KANBUN_URL}/api/auth/microsoft/callback`;
 }
 
 function buildStateCookieValue() {

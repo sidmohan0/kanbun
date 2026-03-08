@@ -38,7 +38,7 @@ type TodoistTaskListResponse =
     };
 
 function todoistRedirectUri() {
-  return `${env.APP_URL}/api/auth/todoist/callback`;
+  return `${env.KANBUN_URL}/api/auth/todoist/callback`;
 }
 
 function buildStateCookieValue() {
@@ -193,7 +193,7 @@ function buildTaskDescription(params: {
     lines.push(`Contact: ${params.contactName}`);
   }
 
-  lines.push(`Open in Kanbun: ${env.APP_URL}/tasks`);
+  lines.push(`Open in Kanbun: ${env.KANBUN_URL}/tasks`);
 
   return lines.join("\n");
 }

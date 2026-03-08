@@ -47,14 +47,15 @@ pnpm dev
 pnpm worker
 ```
 
-Open `http://localhost:3000`.
+Open `http://localhost:7890`.
 PostgreSQL is exposed on `localhost:5433` by default to avoid collisions with an existing local database.
 If `OWNER_MODE_ENABLED=true`, sign in with the `OWNER_EMAIL` and `OWNER_PASSWORD` values from `.env.local`.
 If `OWNER_MODE_ENABLED=false`, the app bypasses sign-in for local development.
 Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to enable the Gmail/People integration.
 Set `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, and optionally `MICROSOFT_TENANT_ID` to enable the Microsoft Graph integration.
 Set `TODOIST_CLIENT_ID` and `TODOIST_CLIENT_SECRET` to enable Todoist task mirroring.
-Make sure `APP_URL` matches the OAuth redirect origin you register with both providers.
+The app runs on port `7890` by default.
+Make sure `KANBUN_URL` matches the OAuth redirect origin you register with the providers.
 
 ## Core commands
 

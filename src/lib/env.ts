@@ -6,7 +6,8 @@ dotenv.config({ quiet: true });
 
 const envSchema = z.object({
   DATABASE_URL: z.url(),
-  APP_URL: z.url().default("http://localhost:3000"),
+  KANBUN_PORT: z.number().int().positive().default(7890),
+  KANBUN_URL: z.url().default("http://localhost:7890"),
   NEXT_PUBLIC_APP_NAME: z.string().default("Kanbun"),
   OWNER_MODE_ENABLED: z.boolean().default(true),
   IMPORT_WORKER_POLL_INTERVAL_MS: z.number().int().positive().default(2000),
@@ -23,7 +24,10 @@ const envSchema = z.object({
 
 const parsed = envSchema.safeParse({
   DATABASE_URL: process.env.DATABASE_URL,
-  APP_URL: process.env.APP_URL ?? "http://localhost:3000",
+  KANBUN_PORT: Number(process.env.KANBUN_PORT ?? "7890"),
+  KANBUN_URL:
+    process.env.KANBUN_URL ??
+    `http://localhost:${process.env.KANBUN_PORT ?? "7890"}`,
   NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME ?? "Kanbun",
   OWNER_MODE_ENABLED:
     process.env.OWNER_MODE_ENABLED === undefined

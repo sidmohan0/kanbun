@@ -47,7 +47,7 @@ type GoogleConnectionsResponse = {
 };
 
 function googleRedirectUri() {
-  return `${env.APP_URL}/api/auth/google/callback`;
+  return `${env.KANBUN_URL}/api/auth/google/callback`;
 }
 
 function buildStateCookieValue() {

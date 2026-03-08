@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 7890",
     "build": "next build",
-    "start": "next start",
+    "start": "next start --port 7890",
     "lint": "eslint .",
     "typecheck": "rm -f .next/cache/.tsbuildinfo tsconfig.tsbuildinfo && next typegen && mkdir -p .next/types && touch .next/types/cache-life.d.ts && tsc --noEmit --incremental false",
     "format": "prettier --check .",
