@@ -38,6 +38,7 @@ Planning is complete and the repository bootstrap is underway. The current app i
 ```bash
 pnpm install
 cp .env.example .env.local
+# fill in the placeholder values in .env.local
 pnpm db:up
 pnpm db:migrate
 pnpm db:seed-owner

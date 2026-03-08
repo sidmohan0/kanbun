@@ -37,7 +37,7 @@ const parsed = envSchema.safeParse({
   ),
   APP_ENCRYPTION_KEY:
     process.env.APP_ENCRYPTION_KEY ??
-    "kanbun-local-development-encryption-key-change-me",
+    "replace-with-32-plus-char-random-string",
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || undefined,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || undefined,
   MICROSOFT_CLIENT_ID: process.env.MICROSOFT_CLIENT_ID || undefined,
