@@ -2,13 +2,11 @@ import type { Metadata } from "next";
 import {
   disconnectGoogleAccountAction,
   disconnectMicrosoftAccountAction,
-  disconnectTodoistAccountAction,
   requestGoogleSyncAction,
   requestMicrosoftSyncAction,
   requestTodoistSyncAction,
   startGoogleConnectAction,
   startMicrosoftConnectAction,
-  startTodoistConnectAction,
 } from "@/app/actions/integrations";
 import { IntegrationCard } from "@/components/app/settings/integration-card";
 import { OperatorPanel } from "@/components/app/settings/operator-panel";
@@ -18,7 +16,10 @@ import { getPersistentOwnerUserId, requireUser } from "@/lib/auth";
 import { listConnectedAccountsForUser } from "@/lib/connected-accounts";
 import { isGoogleOAuthConfigured } from "@/lib/google";
 import { isMicrosoftOAuthConfigured } from "@/lib/microsoft";
-import { isTodoistOAuthConfigured } from "@/lib/todoist";
+import {
+  getTodoistManagedAccountForUser,
+  isTodoistApiTokenConfigured,
+} from "@/lib/todoist";
 
 export const metadata: Metadata = {
   title: "Settings | Kanbun",
@@ -45,16 +46,17 @@ export default async function SettingsPage({
     requireUser(),
     getPersistentOwnerUserId(),
   ]);
-  const accounts = await listConnectedAccountsForUser(persistentOwnerUserId);
+  const [accounts, todoistAccount] = await Promise.all([
+    listConnectedAccountsForUser(persistentOwnerUserId),
+    getTodoistManagedAccountForUser(persistentOwnerUserId),
+  ]);
   const googleAccount =
     accounts.find((account) => account.provider === "google") ?? null;
   const microsoftAccount =
     accounts.find((account) => account.provider === "microsoft") ?? null;
-  const todoistAccount =
-    accounts.find((account) => account.provider === "todoist") ?? null;
   const googleConfigured = isGoogleOAuthConfigured();
   const microsoftConfigured = isMicrosoftOAuthConfigured();
-  const todoistConfigured = isTodoistOAuthConfigured();
+  const todoistConfigured = isTodoistApiTokenConfigured();
   const connected =
     typeof params.connected === "string" ? params.connected : undefined;
   const disconnected =
@@ -110,14 +112,13 @@ export default async function SettingsPage({
           <IntegrationCard
             account={todoistAccount}
             configured={todoistConfigured}
-            connectAction={startTodoistConnectAction}
-            connectDescription="Connect Todoist to mirror Kanbun follow-ups into your daily task flow."
-            connectLabel="Connect Todoist"
-            disconnectAction={disconnectTodoistAccountAction}
-            disconnectLabel="Disconnect Todoist"
+            connectAction={requestTodoistSyncAction}
+            connectDescription="Configure TODOIST_API_TOKEN to mirror Kanbun follow-ups into your daily task flow."
+            connectLabel="Initialize Todoist"
             metricLabel="Mirrored tasks"
             metricValue={todoistMirrorCount(todoistAccount?.metadata)}
             name="Todoist"
+            notConfiguredLabel="token not configured"
             syncAction={requestTodoistSyncAction}
             syncLabel="Run Todoist reconcile"
           />

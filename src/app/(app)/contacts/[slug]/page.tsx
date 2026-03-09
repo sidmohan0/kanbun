@@ -6,9 +6,8 @@ import { createFollowUpTaskAction } from "@/app/actions/workflows";
 import { DashboardPanel, SectionHeading } from "@/components/app/ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getPersistentOwnerUserId } from "@/lib/auth";
-import { listConnectedAccountsForUser } from "@/lib/connected-accounts";
 import { getContactBySlug } from "@/lib/contacts";
+import { isTodoistApiTokenConfigured } from "@/lib/todoist";
 
 export const metadata: Metadata = {
   title: "Contact Workspace | Kanbun",
@@ -36,19 +35,13 @@ export default async function ContactDetailPage({
   const { slug } = await params;
   const query = await searchParams;
   const followUpCreated = query.followup === "created";
-  const [contact, ownerUserId] = await Promise.all([
-    getContactBySlug(slug),
-    getPersistentOwnerUserId(),
-  ]);
+  const contact = await getContactBySlug(slug);
 
   if (!contact) {
     notFound();
   }
 
-  const accounts = await listConnectedAccountsForUser(ownerUserId);
-  const todoistConnected = accounts.some(
-    (account) => account.provider === "todoist" && account.status === "connected",
-  );
+  const todoistConnected = isTodoistApiTokenConfigured();
 
   return (
     <div className="space-y-6">

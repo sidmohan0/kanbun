@@ -4,9 +4,8 @@ import { mirrorTaskToTodoistAction } from "@/app/actions/integrations";
 import { DashboardPanel, SectionHeading } from "@/components/app/ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getPersistentOwnerUserId } from "@/lib/auth";
-import { listConnectedAccountsForUser } from "@/lib/connected-accounts";
 import { listOpenTasks } from "@/lib/contacts";
+import { isTodoistApiTokenConfigured } from "@/lib/todoist";
 
 export const metadata: Metadata = {
   title: "Tasks | Kanbun",
@@ -28,7 +27,9 @@ function dueLabel(value: Date | null) {
   return value.getTime() < Date.now() ? `Overdue · ${formatted}` : formatted;
 }
 
-function todoistStatusBadge(task: Awaited<ReturnType<typeof listOpenTasks>>[number]) {
+function todoistStatusBadge(
+  task: Awaited<ReturnType<typeof listOpenTasks>>[number],
+) {
   if (task.todoistSyncStatus === "synced") {
     return <Badge variant="outline">Todoist mirrored</Badge>;
   }
@@ -49,15 +50,8 @@ export default async function TasksPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [params, openTasks, ownerUserId] = await Promise.all([
-    searchParams,
-    listOpenTasks(),
-    getPersistentOwnerUserId(),
-  ]);
-  const accounts = await listConnectedAccountsForUser(ownerUserId);
-  const todoistConnected = accounts.some(
-    (account) => account.provider === "todoist" && account.status === "connected",
-  );
+  const [params, openTasks] = await Promise.all([searchParams, listOpenTasks()]);
+  const todoistConnected = isTodoistApiTokenConfigured();
   const mirrored = params.mirrored === "queued";
   const error =
     typeof params.error === "string" ? decodeURIComponent(params.error) : null;

@@ -18,8 +18,7 @@ const envSchema = z.object({
   MICROSOFT_CLIENT_ID: z.string().min(1).optional(),
   MICROSOFT_CLIENT_SECRET: z.string().min(1).optional(),
   MICROSOFT_TENANT_ID: z.string().min(1).default("common"),
-  TODOIST_CLIENT_ID: z.string().min(1).optional(),
-  TODOIST_CLIENT_SECRET: z.string().min(1).optional(),
+  TODOIST_API_TOKEN: z.string().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse({
@@ -47,8 +46,7 @@ const parsed = envSchema.safeParse({
   MICROSOFT_CLIENT_ID: process.env.MICROSOFT_CLIENT_ID || undefined,
   MICROSOFT_CLIENT_SECRET: process.env.MICROSOFT_CLIENT_SECRET || undefined,
   MICROSOFT_TENANT_ID: process.env.MICROSOFT_TENANT_ID || "common",
-  TODOIST_CLIENT_ID: process.env.TODOIST_CLIENT_ID || undefined,
-  TODOIST_CLIENT_SECRET: process.env.TODOIST_CLIENT_SECRET || undefined,
+  TODOIST_API_TOKEN: process.env.TODOIST_API_TOKEN || undefined,
 });
 
 if (!parsed.success) {

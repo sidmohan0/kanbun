@@ -11,14 +11,15 @@ type ConnectedAccountLike = {
 type IntegrationCardProps = {
   account: ConnectedAccountLike | null;
   configured: boolean;
-  connectAction: () => Promise<void>;
+  connectAction?: () => Promise<void>;
   connectDescription: string;
-  connectLabel: string;
-  disconnectAction: () => Promise<void>;
-  disconnectLabel: string;
+  connectLabel?: string;
+  disconnectAction?: () => Promise<void>;
+  disconnectLabel?: string;
   metricLabel: string;
   metricValue: string | number;
   name: string;
+  notConfiguredLabel?: string;
   syncAction: () => Promise<void>;
   syncLabel: string;
 };
@@ -57,6 +58,7 @@ export function IntegrationCard({
   metricLabel,
   metricValue,
   name,
+  notConfiguredLabel,
   syncAction,
   syncLabel,
 }: IntegrationCardProps) {
@@ -75,7 +77,7 @@ export function IntegrationCard({
           )}
         >
           {!configured
-            ? "oauth not configured"
+            ? (notConfiguredLabel ?? "not configured")
             : (account?.status ?? "disconnected").replaceAll("_", " ")}
         </Badge>
       </div>
@@ -111,19 +113,21 @@ export function IntegrationCard({
             <form action={syncAction}>
               <Button type="submit">{syncLabel}</Button>
             </form>
-            <form action={disconnectAction}>
-              <Button type="submit" variant="outline">
-                {disconnectLabel}
-              </Button>
-            </form>
+            {disconnectAction && disconnectLabel ? (
+              <form action={disconnectAction}>
+                <Button type="submit" variant="outline">
+                  {disconnectLabel}
+                </Button>
+              </form>
+            ) : null}
           </>
-        ) : (
+        ) : connectAction && connectLabel ? (
           <form action={connectAction}>
             <Button type="submit" disabled={!configured}>
               {connectLabel}
             </Button>
           </form>
-        )}
+        ) : null}
       </div>
     </div>
   );

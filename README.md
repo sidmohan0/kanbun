@@ -53,7 +53,7 @@ If `OWNER_MODE_ENABLED=true`, sign in with the `OWNER_EMAIL` and `OWNER_PASSWORD
 If `OWNER_MODE_ENABLED=false`, the app bypasses sign-in for local development.
 Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to enable the Gmail/People integration.
 Set `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, and optionally `MICROSOFT_TENANT_ID` to enable the Microsoft Graph integration.
-Set `TODOIST_CLIENT_ID` and `TODOIST_CLIENT_SECRET` to enable Todoist task mirroring.
+Set `TODOIST_API_TOKEN` to enable Todoist task mirroring.
 The app runs on port `7890` by default.
 Make sure `KANBUN_URL` matches the OAuth redirect origin you register with the providers.
 

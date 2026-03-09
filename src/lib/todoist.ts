@@ -1,24 +1,11 @@
 import crypto from "node:crypto";
-import { cookies } from "next/headers";
 import { and, asc, eq, isNotNull, ne, or } from "drizzle-orm";
 import { db } from "@/db/client";
-import { auditEvents, connectedAccounts, contacts, tasks } from "@/db/schema";
+import { auditEvents, connectedAccounts, contacts, tasks, users } from "@/db/schema";
 import { env } from "@/lib/env";
-import { decryptSecret, encryptSecret } from "@/lib/secrets";
 
-const TODOIST_OAUTH_STATE_COOKIE = "kanbun_todoist_oauth_state";
-const TODOIST_SCOPES = ["data:read_write"];
-
-type TodoistTokenResponse = {
-  access_token: string;
-  token_type?: string;
-};
-
-type TodoistUser = {
-  email?: string | null;
-  full_name?: string | null;
-  id: string | number;
-};
+const TODOIST_MANAGED_PROVIDER_ACCOUNT_ID = "env-token-managed";
+const TODOIST_SCOPES = ["api_token"];
 
 type TodoistTask = {
   content?: string | null;
@@ -30,25 +17,23 @@ type TodoistTask = {
   id: string | number;
 };
 
-type TodoistTaskListResponse =
-  | TodoistTask[]
-  | {
-      next_cursor?: string | null;
-      results?: TodoistTask[];
-    };
-
-function todoistRedirectUri() {
-  return `${env.KANBUN_URL}/api/auth/todoist/callback`;
-}
-
-function buildStateCookieValue() {
-  return crypto.randomBytes(24).toString("hex");
-}
+type TodoistTaskListResponse = {
+  next_cursor?: string | null;
+  results?: TodoistTask[];
+};
 
 function ensureTodoistConfigured() {
-  if (!env.TODOIST_CLIENT_ID || !env.TODOIST_CLIENT_SECRET) {
-    throw new Error("Todoist OAuth is not configured.");
+  if (!env.TODOIST_API_TOKEN) {
+    throw new Error("Todoist API token is not configured.");
   }
+}
+
+function todoistAuthHeaders() {
+  ensureTodoistConfigured();
+
+  return {
+    Authorization: `Bearer ${env.TODOIST_API_TOKEN}`,
+  };
 }
 
 function normalizeTaskTitle(value: string) {
@@ -65,7 +50,7 @@ function buildDuePayload(dueAt: Date | null) {
   };
 }
 
-function parseTaskListResponse(payload: TodoistTaskListResponse) {
+function parseTaskListResponse(payload: TodoistTaskListResponse | TodoistTask[]) {
   if (Array.isArray(payload)) {
     return {
       nextCursor: null,
@@ -98,6 +83,127 @@ async function todoistFetch<T>(
   return (await response.json()) as T;
 }
 
+async function recordAuditEvent(params: {
+  entityId: string;
+  entityType: string;
+  eventName: string;
+  metadata?: Record<string, unknown>;
+}) {
+  await db.insert(auditEvents).values({
+    entityId: params.entityId,
+    entityType: params.entityType,
+    eventName: params.eventName,
+    metadata: params.metadata ?? {},
+  });
+}
+
+function buildTaskDescription(params: {
+  contactName?: string | null;
+  taskId: string;
+}) {
+  const lines = [`Managed by Kanbun`, `Task ID: ${params.taskId}`];
+
+  if (params.contactName) {
+    lines.push(`Contact: ${params.contactName}`);
+  }
+
+  lines.push(`Open in Kanbun: ${env.KANBUN_URL}/tasks`);
+
+  return lines.join("\n");
+}
+
+async function getDefaultTodoistUserId() {
+  const existing = await db.query.connectedAccounts.findFirst({
+    where: eq(connectedAccounts.provider, "todoist"),
+    columns: {
+      userId: true,
+    },
+    orderBy: [asc(connectedAccounts.createdAt)],
+  });
+
+  if (existing?.userId) {
+    return existing.userId;
+  }
+
+  const owner = await db.query.users.findFirst({
+    where: and(eq(users.role, "owner"), eq(users.status, "active")),
+    columns: {
+      id: true,
+    },
+  });
+
+  if (!owner) {
+    throw new Error(
+      "No persistent owner user exists. Run pnpm db:seed-owner before enabling Todoist.",
+    );
+  }
+
+  return owner.id;
+}
+
+async function getTodoistManagedAccount(userId?: string) {
+  ensureTodoistConfigured();
+
+  const resolvedUserId = userId ?? (await getDefaultTodoistUserId());
+  const existing = await db.query.connectedAccounts.findFirst({
+    where: and(
+      eq(connectedAccounts.userId, resolvedUserId),
+      eq(connectedAccounts.provider, "todoist"),
+    ),
+  });
+  const metadataBase =
+    typeof existing?.metadata === "object" && existing.metadata
+      ? existing.metadata
+      : {};
+  const metadata = {
+    ...metadataBase,
+    authMode: "api_token",
+    tokenFingerprint: crypto
+      .createHash("sha256")
+      .update(env.TODOIST_API_TOKEN!)
+      .digest("hex")
+      .slice(0, 12),
+  };
+
+  if (existing) {
+    const [account] = await db
+      .update(connectedAccounts)
+      .set({
+        displayName: "Managed via TODOIST_API_TOKEN",
+        email: existing.email,
+        encryptedAccessToken: null,
+        encryptedRefreshToken: null,
+        grantedScopes: TODOIST_SCOPES,
+        metadata,
+        providerAccountId: TODOIST_MANAGED_PROVIDER_ACCOUNT_ID,
+        status: "connected",
+        updatedAt: new Date(),
+      })
+      .where(eq(connectedAccounts.id, existing.id))
+      .returning();
+
+    return account;
+  }
+
+  const [account] = await db
+    .insert(connectedAccounts)
+    .values({
+      displayName: "Managed via TODOIST_API_TOKEN",
+      email: null,
+      encryptedAccessToken: null,
+      encryptedRefreshToken: null,
+      grantedScopes: TODOIST_SCOPES,
+      metadata,
+      provider: "todoist",
+      providerAccountId: TODOIST_MANAGED_PROVIDER_ACCOUNT_ID,
+      status: "connected",
+      userId: resolvedUserId,
+    })
+    .returning();
+
+  return account;
+}
+
 async function getTodoistAccessToken(accountId: string) {
   const account = await db.query.connectedAccounts.findFirst({
     where: and(
@@ -110,20 +216,16 @@ async function getTodoistAccessToken(accountId: string) {
     throw new Error("Connected Todoist account not found.");
   }
 
-  const accessToken = decryptSecret(account.encryptedAccessToken);
-
-  if (!accessToken) {
-    throw new Error("Todoist access token is missing.");
-  }
+  ensureTodoistConfigured();
 
   return {
-    accessToken,
+    accessToken: env.TODOIST_API_TOKEN!,
     account,
   };
 }
 
 async function getActiveTodoistAccount() {
-  return db.query.connectedAccounts.findFirst({
+  const existing = await db.query.connectedAccounts.findFirst({
     where: and(
       eq(connectedAccounts.provider, "todoist"),
       or(
@@ -131,10 +233,15 @@ async function getActiveTodoistAccount() {
         eq(connectedAccounts.status, "degraded"),
         eq(connectedAccounts.status, "reconnect_required"),
       ),
-      isNotNull(connectedAccounts.encryptedAccessToken),
     ),
     orderBy: [asc(connectedAccounts.createdAt)],
   });
+
+  if (existing) {
+    return getTodoistManagedAccount(existing.userId);
+  }
+
+  return getTodoistManagedAccount();
 }
 
 async function updateTodoistAccountHealth(params: {
@@ -169,202 +276,26 @@ async function updateTodoistAccountHealth(params: {
     .where(eq(connectedAccounts.id, params.accountId));
 }
 
-async function recordAuditEvent(params: {
-  entityId: string;
-  entityType: string;
-  eventName: string;
-  metadata?: Record<string, unknown>;
-}) {
-  await db.insert(auditEvents).values({
-    entityId: params.entityId,
-    entityType: params.entityType,
-    eventName: params.eventName,
-    metadata: params.metadata ?? {},
-  });
+export function isTodoistApiTokenConfigured() {
+  return Boolean(env.TODOIST_API_TOKEN);
 }
 
-function buildTaskDescription(params: {
-  contactName?: string | null;
-  taskId: string;
-}) {
-  const lines = [`Managed by Kanbun`, `Task ID: ${params.taskId}`];
-
-  if (params.contactName) {
-    lines.push(`Contact: ${params.contactName}`);
-  }
-
-  lines.push(`Open in Kanbun: ${env.KANBUN_URL}/tasks`);
-
-  return lines.join("\n");
-}
-
-export function isTodoistOAuthConfigured() {
-  return Boolean(env.TODOIST_CLIENT_ID && env.TODOIST_CLIENT_SECRET);
-}
-
-export async function createTodoistOAuthUrl() {
-  ensureTodoistConfigured();
-
-  const state = buildStateCookieValue();
-  const cookieStore = await cookies();
-  cookieStore.set(TODOIST_OAUTH_STATE_COOKIE, state, {
-    httpOnly: true,
-    maxAge: 60 * 10,
-    path: "/",
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-  });
-
-  const params = new URLSearchParams({
-    client_id: env.TODOIST_CLIENT_ID!,
-    redirect_uri: todoistRedirectUri(),
-    scope: TODOIST_SCOPES.join(","),
-    state,
-  });
-
-  return `https://todoist.com/oauth/authorize?${params.toString()}`;
-}
-
-export async function consumeTodoistOAuthCallback(input: {
-  code: string;
-  state: string;
-  userId: string;
-}) {
-  ensureTodoistConfigured();
-
-  const cookieStore = await cookies();
-  const expectedState = cookieStore.get(TODOIST_OAUTH_STATE_COOKIE)?.value;
-  cookieStore.delete(TODOIST_OAUTH_STATE_COOKIE);
-
-  if (!expectedState || input.state !== expectedState) {
-    throw new Error("Todoist OAuth state validation failed.");
-  }
-
-  const token = await todoistFetch<TodoistTokenResponse>(
-    "https://todoist.com/oauth/access_token",
-    {
-      body: new URLSearchParams({
-        client_id: env.TODOIST_CLIENT_ID!,
-        client_secret: env.TODOIST_CLIENT_SECRET!,
-        code: input.code,
-        redirect_uri: todoistRedirectUri(),
-      }),
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    },
-    "Unable to exchange Todoist authorization code",
-  );
-
-  const profile = await todoistFetch<TodoistUser>(
-    "https://api.todoist.com/api/v1/user/",
-    {
-      headers: {
-        Authorization: `Bearer ${token.access_token}`,
-      },
-    },
-    "Unable to fetch Todoist profile",
-  );
-
-  const providerAccountId = String(profile.id);
-  const existing = await db.query.connectedAccounts.findFirst({
-    where: and(
-      eq(connectedAccounts.provider, "todoist"),
-      eq(connectedAccounts.providerAccountId, providerAccountId),
-    ),
-  });
-
-  const metadata = {
-    oauthConnectedAt: new Date().toISOString(),
-    todoistSyncMode: "tasks",
-  };
-
-  if (existing) {
-    await db
-      .update(connectedAccounts)
-      .set({
-        displayName: profile.full_name ?? existing.displayName,
-        email: profile.email ?? existing.email,
-        encryptedAccessToken: encryptSecret(token.access_token),
-        encryptedRefreshToken: null,
-        grantedScopes: TODOIST_SCOPES,
-        lastError: null,
-        metadata,
-        status: "connected",
-        syncRequestedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(connectedAccounts.id, existing.id));
-
-    return existing.id;
-  }
-
-  const [account] = await db
-    .insert(connectedAccounts)
-    .values({
-      displayName: profile.full_name ?? null,
-      email: profile.email ?? null,
-      encryptedAccessToken: encryptSecret(token.access_token),
-      encryptedRefreshToken: null,
-      grantedScopes: TODOIST_SCOPES,
-      metadata,
-      provider: "todoist",
-      providerAccountId,
-      status: "connected",
-      syncRequestedAt: new Date(),
-      userId: input.userId,
-    })
-    .returning();
-
-  return account.id;
-}
-
-export async function requestTodoistAccountSync(userId: string) {
-  const account = await db.query.connectedAccounts.findFirst({
-    where: and(
-      eq(connectedAccounts.userId, userId),
-      eq(connectedAccounts.provider, "todoist"),
-    ),
-  });
-
-  if (!account) {
-    throw new Error("Todoist account is not connected.");
-  }
-
-  await db
-    .update(connectedAccounts)
-    .set({
-      lastError: null,
-      syncRequestedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(connectedAccounts.id, account.id));
-
-  return account.id;
-}
-
-export async function disconnectTodoistAccount(userId: string) {
-  const account = await db.query.connectedAccounts.findFirst({
-    where: and(
-      eq(connectedAccounts.userId, userId),
-      eq(connectedAccounts.provider, "todoist"),
-    ),
-  });
-
-  if (!account) {
+export async function getTodoistManagedAccountForUser(userId: string) {
+  if (!isTodoistApiTokenConfigured()) {
     return null;
   }
 
+  return getTodoistManagedAccount(userId);
+}
+
+export async function requestTodoistAccountSync(userId: string) {
+  const account = await getTodoistManagedAccount(userId);
+
   await db
     .update(connectedAccounts)
     .set({
-      encryptedAccessToken: null,
-      encryptedRefreshToken: null,
-      grantedScopes: [],
       lastError: null,
-      status: "disconnected",
-      syncRequestedAt: null,
+      syncRequestedAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(connectedAccounts.id, account.id));
@@ -373,6 +304,10 @@ export async function disconnectTodoistAccount(userId: string) {
 }
 
 export async function hasConnectedTodoistAccount(userId: string) {
+  if (!isTodoistApiTokenConfigured()) {
+    return false;
+  }
+
   const account = await db.query.connectedAccounts.findFirst({
     where: and(
       eq(connectedAccounts.userId, userId),
@@ -396,11 +331,7 @@ export async function queueTaskTodoistSync(taskId: string) {
     throw new Error("Task not found.");
   }
 
-  const account = await getActiveTodoistAccount();
-
-  if (!account) {
-    throw new Error("Todoist account is not connected.");
-  }
+  await getActiveTodoistAccount();
 
   await db
     .update(tasks)
@@ -425,11 +356,6 @@ export async function syncTodoistTaskForTaskId(taskId: string) {
   }
 
   const account = await getActiveTodoistAccount();
-
-  if (!account) {
-    throw new Error("Todoist account is not connected.");
-  }
-
   const { accessToken } = await getTodoistAccessToken(account.id);
   const linkedContact = task.contactId
     ? await db.query.contacts.findFirst({
@@ -446,6 +372,7 @@ export async function syncTodoistTaskForTaskId(taskId: string) {
         `https://api.todoist.com/api/v1/tasks/${task.todoistItemId}/close`,
         {
           headers: {
+            ...todoistAuthHeaders(),
             Authorization: `Bearer ${accessToken}`,
           },
           method: "POST",
@@ -479,7 +406,7 @@ export async function syncTodoistTaskForTaskId(taskId: string) {
     }),
     ...buildDuePayload(task.dueAt),
   };
-
+  const requestId = crypto.randomUUID();
   let remoteTask: TodoistTask;
 
   if (task.todoistItemId) {
@@ -491,6 +418,7 @@ export async function syncTodoistTaskForTaskId(taskId: string) {
           headers: {
             Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",
+            "X-Request-Id": requestId,
           },
           method: "POST",
         },
@@ -510,6 +438,7 @@ export async function syncTodoistTaskForTaskId(taskId: string) {
           headers: {
             Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",
+            "X-Request-Id": requestId,
           },
           method: "POST",
         },
@@ -524,6 +453,7 @@ export async function syncTodoistTaskForTaskId(taskId: string) {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
+          "X-Request-Id": requestId,
         },
         method: "POST",
       },
@@ -562,7 +492,7 @@ export async function syncTodoistTaskForTaskId(taskId: string) {
   });
 
   return {
-    mode: task.todoistItemId ? "updated" as const : "created" as const,
+    mode: task.todoistItemId ? ("updated" as const) : ("created" as const),
     taskId: task.id,
     todoistItemId: String(remoteTask.id),
   };
@@ -570,18 +500,17 @@ export async function syncTodoistTaskForTaskId(taskId: string) {
 
 export async function reconcileTodoistAccount(accountId: string) {
   const { accessToken, account } = await getTodoistAccessToken(accountId);
-  let nextCursor: string | null = null;
   const activeTaskIds = new Set<string>();
-  let mirroredCount = 0;
+  let cursor: string | null = null;
 
   do {
     const url = new URL("https://api.todoist.com/api/v1/tasks");
 
-    if (nextCursor) {
-      url.searchParams.set("cursor", nextCursor);
+    if (cursor) {
+      url.searchParams.set("cursor", cursor);
     }
 
-    const response = await todoistFetch<TodoistTaskListResponse>(
+    const response = await todoistFetch<TodoistTaskListResponse | TodoistTask[]>(
       url.toString(),
       {
         headers: {
@@ -596,8 +525,10 @@ export async function reconcileTodoistAccount(accountId: string) {
       activeTaskIds.add(String(item.id));
     }
 
-    nextCursor = parsed.nextCursor;
-  } while (nextCursor);
+    cursor = parsed.nextCursor;
+  } while (cursor);
+
+  let mirroredCount = 0;
 
   const mirroredTasks = await db.query.tasks.findMany({
     where: and(

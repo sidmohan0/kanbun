@@ -14,8 +14,6 @@ import {
   requestMicrosoftAccountSync,
 } from "@/lib/microsoft";
 import {
-  createTodoistOAuthUrl,
-  disconnectTodoistAccount,
   queueTaskTodoistSync,
   requestTodoistAccountSync,
 } from "@/lib/todoist";
@@ -27,22 +25,26 @@ async function getCurrentOperatorId() {
 export async function startGoogleConnectAction() {
   await requireUser();
 
+  let url: string;
+
   try {
-    const url = await createGoogleOAuthUrl();
-    redirect(url);
+    url = await createGoogleOAuthUrl();
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unable to start Google connect.";
     redirect(`/settings?error=${encodeURIComponent(message)}`);
   }
+
+  redirect(url);
 }
 
 export async function startMicrosoftConnectAction() {
   await requireUser();
 
+  let url: string;
+
   try {
-    const url = await createMicrosoftOAuthUrl();
-    redirect(url);
+    url = await createMicrosoftOAuthUrl();
   } catch (error) {
     const message =
       error instanceof Error
@@ -50,6 +52,8 @@ export async function startMicrosoftConnectAction() {
         : "Unable to start Microsoft connect.";
     redirect(`/settings?error=${encodeURIComponent(message)}`);
   }
+
+  redirect(url);
 }
 
 export async function requestGoogleSyncAction() {
@@ -110,47 +114,21 @@ export async function disconnectMicrosoftAccountAction() {
   redirect("/settings?disconnected=microsoft");
 }
 
-export async function startTodoistConnectAction() {
+export async function requestTodoistSyncAction() {
   await requireUser();
 
-  try {
-    const url = await createTodoistOAuthUrl();
-    redirect(url);
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Unable to start Todoist connect.";
-    redirect(`/settings?error=${encodeURIComponent(message)}`);
-  }
-}
-
-export async function requestTodoistSyncAction() {
   try {
     await requestTodoistAccountSync(await getCurrentOperatorId());
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Unable to queue Todoist sync.";
+      error instanceof Error
+        ? error.message
+        : "Unable to queue Todoist reconciliation.";
     redirect(`/settings?error=${encodeURIComponent(message)}`);
   }
 
   revalidatePath("/settings");
   redirect("/settings?synced=todoist");
-}
-
-export async function disconnectTodoistAccountAction() {
-  try {
-    await disconnectTodoistAccount(await getCurrentOperatorId());
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Unable to disconnect Todoist account.";
-    redirect(`/settings?error=${encodeURIComponent(message)}`);
-  }
-
-  revalidatePath("/settings");
-  redirect("/settings?disconnected=todoist");
 }
 
 export async function mirrorTaskToTodoistAction(formData: FormData) {
