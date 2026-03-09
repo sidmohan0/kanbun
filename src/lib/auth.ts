@@ -4,7 +4,7 @@ import { and, eq, gt } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
-import { sessions, users } from "@/db/schema";
+import { connectedAccounts, sessions, users } from "@/db/schema";
 import { env } from "@/lib/env";
 
 const SESSION_COOKIE_NAME = "kanbun_session";
@@ -108,6 +108,7 @@ export async function getCurrentUser() {
 export async function resolveOrCreateOwnerFromGoogleProfile(input: {
   email: string | undefined;
   name: string | undefined;
+  providerAccountId?: string | undefined;
 }) {
   const normalizedEmail = input.email?.trim().toLowerCase();
 
@@ -115,7 +116,7 @@ export async function resolveOrCreateOwnerFromGoogleProfile(input: {
     throw new Error("Google did not return an email address for sign-in.");
   }
 
-  const [existingUser, existingOwner] = await Promise.all([
+  const [existingUser, existingOwner, existingGoogleAccount] = await Promise.all([
     db.query.users.findFirst({
       where: eq(users.email, normalizedEmail),
     }),
@@ -126,7 +127,48 @@ export async function resolveOrCreateOwnerFromGoogleProfile(input: {
         id: true,
       },
     }),
+    input.providerAccountId
+      ? db.query.connectedAccounts.findFirst({
+          where: and(
+            eq(connectedAccounts.provider, "google"),
+            eq(connectedAccounts.providerAccountId, input.providerAccountId),
+            eq(connectedAccounts.status, "connected"),
+          ),
+          columns: {
+            userId: true,
+          },
+        })
+      : Promise.resolve(null),
   ]);
+
+  if (existingGoogleAccount?.userId) {
+    const linkedUser = await db.query.users.findFirst({
+      where: and(
+        eq(users.id, existingGoogleAccount.userId),
+        eq(users.role, "owner"),
+        eq(users.status, "active"),
+      ),
+    });
+
+    if (!linkedUser) {
+      throw new Error("The Google account is linked to a non-owner or inactive user.");
+    }
+
+    await db
+      .update(users)
+      .set({
+        email: normalizedEmail,
+        name: input.name?.trim() || linkedUser.name,
+        passwordHash:
+          linkedUser.passwordHash || buildUnusablePasswordHash(normalizedEmail),
+        role: "owner",
+        status: "active",
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, linkedUser.id));
+
+    return linkedUser.id;
+  }
 
   if (existingOwner && existingOwner.email !== normalizedEmail && !existingUser) {
     throw new Error("This Google account is not authorized for the Kanbun owner workspace.");

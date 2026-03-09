@@ -49,6 +49,7 @@ export async function GET(request: Request) {
       const userId = await resolveOrCreateOwnerFromGoogleProfile({
         email: result.profile.email,
         name: result.profile.name,
+        providerAccountId: result.profile.sub,
       });
       await createSessionForUserId(userId);
     } catch (error) {
