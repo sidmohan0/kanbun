@@ -7,6 +7,7 @@ import { buildUniqueSlug, mergeContactFields } from "@/lib/contacts";
 import { normalizeEmail } from "@/lib/csv";
 import { env } from "@/lib/env";
 import { upsertMergeReview } from "@/lib/merge-reviews";
+import { GOOGLE_CONTACTS_SCOPE, GOOGLE_SEND_SCOPE } from "@/lib/provider-scopes";
 import { decryptSecret, encryptSecret } from "@/lib/secrets";
 
 const GOOGLE_OAUTH_STATE_COOKIE = "kanbun_google_oauth_state";
@@ -14,7 +15,8 @@ const GOOGLE_SCOPES = [
   "openid",
   "email",
   "profile",
-  "https://www.googleapis.com/auth/contacts.readonly",
+  GOOGLE_CONTACTS_SCOPE,
+  GOOGLE_SEND_SCOPE,
 ];
 
 type GoogleTokenResponse = {
@@ -46,6 +48,11 @@ type GoogleConnectionsResponse = {
   nextSyncToken?: string;
 };
 
+type GmailSendResponse = {
+  id?: string;
+  threadId?: string;
+};
+
 function googleRedirectUri() {
   return `${env.KANBUN_URL}/api/auth/google/callback`;
 }
@@ -74,6 +81,25 @@ async function googleFetch<T>(
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`${errorMessage} (${response.status}): ${body}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+async function googleFetchWithOptionalJson<T>(
+  url: string,
+  init: RequestInit,
+  errorMessage: string,
+) {
+  const response = await fetch(url, init);
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`${errorMessage} (${response.status}): ${body}`);
+  }
+
+  if (response.status === 204) {
+    return null as T;
   }
 
   return (await response.json()) as T;
@@ -625,5 +651,50 @@ export async function syncGoogleContactsForAccount(accountId: string) {
 
   return {
     syncedCount,
+  };
+}
+
+function toBase64Url(value: string) {
+  return Buffer.from(value)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+export async function sendGoogleMessage(input: {
+  accountId: string;
+  bodyText: string;
+  subject: string;
+  to: string;
+}) {
+  const accessToken = await getGoogleAccessToken(input.accountId);
+  const rawMessage = [
+    `To: ${input.to}`,
+    `Subject: ${input.subject}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "MIME-Version: 1.0",
+    "",
+    input.bodyText,
+  ].join("\r\n");
+
+  const response = await googleFetchWithOptionalJson<GmailSendResponse>(
+    "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+    {
+      body: JSON.stringify({
+        raw: toBase64Url(rawMessage),
+      }),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+    "Unable to send Gmail message",
+  );
+
+  return {
+    providerMessageId: response?.id ?? null,
+    providerThreadId: response?.threadId ?? null,
   };
 }

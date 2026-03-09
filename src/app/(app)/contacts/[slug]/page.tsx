@@ -3,10 +3,15 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ArrowRight, GitMerge } from "lucide-react";
 import { createFollowUpTaskAction } from "@/app/actions/workflows";
+import { enrollContactInSequenceAction } from "@/app/actions/sequences";
 import { DashboardPanel, SectionHeading } from "@/components/app/ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getContactBySlug } from "@/lib/contacts";
+import {
+  listActiveSequencesForContact,
+  listContactSequenceEnrollments,
+} from "@/lib/sequences";
 import { isTodoistApiTokenConfigured } from "@/lib/todoist";
 
 export const metadata: Metadata = {
@@ -35,6 +40,9 @@ export default async function ContactDetailPage({
   const { slug } = await params;
   const query = await searchParams;
   const followUpCreated = query.followup === "created";
+  const sequenceEnrolled = query.sequence === "enrolled";
+  const error =
+    typeof query.error === "string" ? decodeURIComponent(query.error) : null;
   const contact = await getContactBySlug(slug);
 
   if (!contact) {
@@ -42,6 +50,10 @@ export default async function ContactDetailPage({
   }
 
   const todoistConnected = isTodoistApiTokenConfigured();
+  const [availableSequences, enrollments] = await Promise.all([
+    listActiveSequencesForContact(contact.id),
+    listContactSequenceEnrollments(contact.id),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -81,9 +93,40 @@ export default async function ContactDetailPage({
                 </Button>
               </form>
             ) : null}
-            <Button variant="outline" disabled>
-              Enroll in sequence
-            </Button>
+            <form action={enrollContactInSequenceAction} className="flex gap-3">
+              <input type="hidden" name="contactId" value={contact.id} />
+              <select
+                name="sequenceId"
+                className="border-border/80 bg-background rounded-2xl border px-3 py-2 text-sm outline-none"
+                defaultValue=""
+                disabled={availableSequences.length === 0}
+                required
+              >
+                <option value="" disabled>
+                  {availableSequences.length === 0
+                    ? "No active sequences"
+                    : "Choose sequence"}
+                </option>
+                {availableSequences
+                  .filter((sequence) => sequence.enrollmentStatus !== "active")
+                  .map((sequence) => (
+                    <option key={sequence.id} value={sequence.id}>
+                      {sequence.name}
+                    </option>
+                  ))}
+              </select>
+              <Button
+                type="submit"
+                variant="outline"
+                disabled={
+                  availableSequences.filter(
+                    (sequence) => sequence.enrollmentStatus !== "active",
+                  ).length === 0
+                }
+              >
+                Enroll in sequence
+              </Button>
+            </form>
           </div>
         </div>
       </DashboardPanel>
@@ -91,6 +134,19 @@ export default async function ContactDetailPage({
       {followUpCreated ? (
         <div className="border-border/80 bg-primary/8 text-foreground rounded-2xl border px-4 py-3 text-sm">
           Follow-up created and added to the Kanbun task queue.
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="rounded-2xl border border-destructive/20 bg-destructive/8 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+
+      {sequenceEnrolled ? (
+        <div className="border-border/80 bg-primary/8 text-foreground rounded-2xl border px-4 py-3 text-sm">
+          Contact enrolled in sequence. The worker will generate the first draft
+          when it becomes due.
         </div>
       ) : null}
 
@@ -153,6 +209,59 @@ export default async function ContactDetailPage({
                   {contact.mergeReviews.length}
                 </span>
               </div>
+              <div className="bg-secondary/70 flex items-center justify-between rounded-xl px-3 py-3">
+                <span>Sequence enrollments</span>
+                <span className="text-foreground font-medium">
+                  {enrollments.length}
+                </span>
+              </div>
+            </div>
+          </DashboardPanel>
+
+          <DashboardPanel>
+            <SectionHeading
+              eyebrow="Sequences"
+              title="Enrollment state"
+              description="Sequence progress is now durable and moves through the worker-driven draft/send pipeline."
+            />
+            <div className="space-y-3">
+              {enrollments.length === 0 ? (
+                <p className="text-muted-foreground text-sm leading-7">
+                  This contact is not enrolled in any sequence yet.
+                </p>
+              ) : (
+                enrollments.map((enrollment) => (
+                  <div
+                    key={enrollment.id}
+                    className="border-border/85 bg-background/75 rounded-2xl border px-4 py-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground">
+                        {enrollment.sequence?.name ?? "Sequence"}
+                      </p>
+                      <Badge
+                        variant={
+                          enrollment.status === "active"
+                            ? "secondary"
+                            : enrollment.status === "completed"
+                              ? "outline"
+                              : "destructive"
+                        }
+                      >
+                        {enrollment.status}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Next due {formatDueAt(enrollment.nextDueAt)}
+                    </p>
+                    {enrollment.stopReason ? (
+                      <p className="mt-2 text-sm text-destructive">
+                        {enrollment.stopReason}
+                      </p>
+                    ) : null}
+                  </div>
+                ))
+              )}
             </div>
           </DashboardPanel>
 

@@ -64,6 +64,13 @@
       "when": 1773012393320,
       "tag": "0008_dashing_boomerang",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1773071543523,
+      "tag": "0009_exotic_wolfpack",
+      "breakpoints": true
     }
   ]
 }

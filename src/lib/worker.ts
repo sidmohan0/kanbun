@@ -3,6 +3,10 @@ import { processNextGoogleSync } from "@/lib/google-worker";
 import { processNextImportBatch } from "@/lib/import-worker";
 import { processNextMicrosoftSync } from "@/lib/microsoft-worker";
 import {
+  processNextOutboundSend,
+  processNextSequenceDraft,
+} from "@/lib/sequence-worker";
+import {
   processNextTodoistAccountSync,
   processNextTodoistTaskSync,
 } from "@/lib/todoist-worker";
@@ -35,6 +39,8 @@ export async function runWorker(options?: {
         processedGoogle,
         processedImport,
         processedMicrosoft,
+        processedOutboundSend,
+        processedSequenceDraft,
         processedTodoistAccount,
         processedTodoistTask,
       ] =
@@ -42,6 +48,8 @@ export async function runWorker(options?: {
           processNextGoogleSync(logger),
           processNextImportBatch(importBatchSize),
           processNextMicrosoftSync(logger),
+          processNextOutboundSend(logger),
+          processNextSequenceDraft(logger),
           processNextTodoistAccountSync(logger),
           processNextTodoistTaskSync(logger),
         ]);
@@ -54,6 +62,8 @@ export async function runWorker(options?: {
         !processedGoogle &&
         !processedImport &&
         !processedMicrosoft &&
+        !processedOutboundSend &&
+        !processedSequenceDraft &&
         !processedTodoistAccount &&
         !processedTodoistTask
       ) {

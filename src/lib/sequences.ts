@@ -1,0 +1,898 @@
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  lte,
+  or,
+} from "drizzle-orm";
+import { db } from "@/db/client";
+import {
+  auditEvents,
+  connectedAccounts,
+  contacts,
+  outboundMessages,
+  sequenceEnrollments,
+  sequences,
+  sequenceSteps,
+} from "@/db/schema";
+import { sendGoogleMessage } from "@/lib/google";
+import { sendMicrosoftMessage } from "@/lib/microsoft";
+import {
+  GOOGLE_SEND_SCOPE,
+  MICROSOFT_SEND_SCOPE,
+} from "@/lib/provider-scopes";
+
+function addDays(base: Date, days: number) {
+  const next = new Date(base);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function extractFirstName(displayName: string) {
+  return displayName.trim().split(/\s+/)[0] ?? displayName;
+}
+
+function getSendScope(provider: "google" | "microsoft") {
+  return provider === "google" ? GOOGLE_SEND_SCOPE : MICROSOFT_SEND_SCOPE;
+}
+
+function isSendCapableAccount(
+  account: typeof connectedAccounts.$inferSelect | null | undefined,
+): account is typeof connectedAccounts.$inferSelect {
+  if (!account) {
+    return false;
+  }
+
+  if (account.status !== "connected") {
+    return false;
+  }
+
+  if (account.provider !== "google" && account.provider !== "microsoft") {
+    return false;
+  }
+
+  return account.grantedScopes.includes(getSendScope(account.provider));
+}
+
+async function recordAuditEvent(input: {
+  actorUserId?: string | null;
+  entityId: string;
+  entityType: string;
+  eventName: string;
+  metadata?: Record<string, unknown>;
+}) {
+  await db.insert(auditEvents).values({
+    actorUserId: input.actorUserId ?? null,
+    entityId: input.entityId,
+    entityType: input.entityType,
+    eventName: input.eventName,
+    metadata: input.metadata ?? {},
+  });
+}
+
+function renderTemplate(
+  template: string,
+  variables: Record<string, string>,
+) {
+  const missing = new Set<string>();
+  const unknown = new Set<string>();
+
+  const rendered = template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+    if (!(key in variables)) {
+      unknown.add(key);
+      return "";
+    }
+
+    const value = variables[key]?.trim();
+
+    if (!value) {
+      missing.add(key);
+      return "";
+    }
+
+    return value;
+  });
+
+  return {
+    rendered: rendered.trim(),
+    missing: Array.from(missing),
+    unknown: Array.from(unknown),
+  };
+}
+
+function buildTemplateVariables(input: {
+  contact: typeof contacts.$inferSelect;
+  sequence: typeof sequences.$inferSelect;
+}) {
+  return {
+    company: input.contact.company ?? "",
+    first_name: extractFirstName(input.contact.displayName),
+    full_name: input.contact.displayName,
+    primary_email: input.contact.primaryEmail ?? "",
+    sequence_name: input.sequence.name,
+    title: input.contact.title ?? "",
+  };
+}
+
+async function getConnectedSendAccountsForUser(userId: string) {
+  const accounts = await db.query.connectedAccounts.findMany({
+    where: and(
+      eq(connectedAccounts.userId, userId),
+      or(
+        eq(connectedAccounts.provider, "google"),
+        eq(connectedAccounts.provider, "microsoft"),
+      ),
+    ),
+    orderBy: [asc(connectedAccounts.provider), desc(connectedAccounts.updatedAt)],
+  });
+
+  return accounts.filter(isSendCapableAccount);
+}
+
+async function getConnectedSendAccountById(accountId: string) {
+  const account = await db.query.connectedAccounts.findFirst({
+    where: eq(connectedAccounts.id, accountId),
+  });
+
+  return isSendCapableAccount(account) ? account : null;
+}
+
+async function pickDefaultSendAccountForUser(userId: string) {
+  const accounts = await getConnectedSendAccountsForUser(userId);
+  return accounts[0] ?? null;
+}
+
+async function getStepForEnrollment(
+  enrollment: typeof sequenceEnrollments.$inferSelect,
+) {
+  return db.query.sequenceSteps.findFirst({
+    where: and(
+      eq(sequenceSteps.sequenceId, enrollment.sequenceId),
+      eq(sequenceSteps.position, enrollment.currentStepPosition),
+    ),
+  });
+}
+
+export async function listSequencesOverview() {
+  const [sequenceRows, enrollmentRows, draftRows, sentRows] = await Promise.all([
+    db.query.sequences.findMany({
+      orderBy: [desc(sequences.updatedAt)],
+    }),
+    db.query.sequenceEnrollments.findMany(),
+    db.query.outboundMessages.findMany({
+      where: eq(outboundMessages.status, "draft"),
+      columns: {
+        dueAt: true,
+        sequenceId: true,
+      },
+    }),
+    db.query.outboundMessages.findMany({
+      where: eq(outboundMessages.status, "sent"),
+      columns: {
+        sequenceId: true,
+      },
+    }),
+  ]);
+
+  return sequenceRows.map((sequence) => {
+    const enrollments = enrollmentRows.filter(
+      (enrollment) => enrollment.sequenceId === sequence.id,
+    );
+    const drafts = draftRows.filter((draft) => draft.sequenceId === sequence.id);
+    const nextDueAt = enrollments
+      .map((enrollment) => enrollment.nextDueAt)
+      .filter((value): value is Date => Boolean(value))
+      .sort((left, right) => left.getTime() - right.getTime())[0] ?? null;
+
+    return {
+      ...sequence,
+      activeEnrollmentCount: enrollments.filter(
+        (enrollment) => enrollment.status === "active",
+      ).length,
+      pausedEnrollmentCount: enrollments.filter(
+        (enrollment) => enrollment.status === "paused",
+      ).length,
+      pendingApprovalCount: drafts.length,
+      sentCount: sentRows.filter((message) => message.sequenceId === sequence.id)
+        .length,
+      nextDueAt,
+    };
+  });
+}
+
+export async function listPendingOutboundApprovals() {
+  const drafts = await db.query.outboundMessages.findMany({
+    where: or(
+      eq(outboundMessages.status, "draft"),
+      eq(outboundMessages.status, "failed"),
+    ),
+    orderBy: [asc(outboundMessages.dueAt), desc(outboundMessages.createdAt)],
+  });
+
+  const contactIds = Array.from(new Set(drafts.map((draft) => draft.contactId)));
+  const sequenceIds = Array.from(
+    new Set(
+      drafts
+        .map((draft) => draft.sequenceId)
+        .filter((sequenceId): sequenceId is string => Boolean(sequenceId)),
+    ),
+  );
+  const connectedAccountIds = Array.from(
+    new Set(
+      drafts
+        .map((draft) => draft.connectedAccountId)
+        .filter((accountId): accountId is string => Boolean(accountId)),
+    ),
+  );
+
+  const [contactRows, sequenceRows, accountRows] = await Promise.all([
+    contactIds.length
+      ? db.query.contacts.findMany({
+          where: inArray(contacts.id, contactIds),
+          columns: {
+            displayName: true,
+            id: true,
+            primaryEmail: true,
+            slug: true,
+          },
+        })
+      : [],
+    sequenceIds.length
+      ? db.query.sequences.findMany({
+          where: inArray(sequences.id, sequenceIds),
+          columns: {
+            id: true,
+            name: true,
+          },
+        })
+      : [],
+    connectedAccountIds.length
+      ? db.query.connectedAccounts.findMany({
+          where: inArray(connectedAccounts.id, connectedAccountIds),
+          columns: {
+            email: true,
+            id: true,
+            provider: true,
+            status: true,
+          },
+        })
+      : [],
+  ]);
+
+  const contactMap = new Map(contactRows.map((contact) => [contact.id, contact]));
+  const sequenceMap = new Map(
+    sequenceRows.map((sequence) => [sequence.id, sequence]),
+  );
+  const accountMap = new Map(accountRows.map((account) => [account.id, account]));
+
+  return drafts.map((draft) => ({
+    ...draft,
+    connectedAccount: draft.connectedAccountId
+      ? (accountMap.get(draft.connectedAccountId) ?? null)
+      : null,
+    contact: contactMap.get(draft.contactId) ?? null,
+    sequence: draft.sequenceId ? (sequenceMap.get(draft.sequenceId) ?? null) : null,
+  }));
+}
+
+export async function listActiveSequencesForContact(contactId: string) {
+  const [sequenceRows, enrollmentRows] = await Promise.all([
+    db.query.sequences.findMany({
+      where: eq(sequences.status, "active"),
+      orderBy: [asc(sequences.name)],
+    }),
+    db.query.sequenceEnrollments.findMany({
+      where: eq(sequenceEnrollments.contactId, contactId),
+      columns: {
+        sequenceId: true,
+        status: true,
+      },
+    }),
+  ]);
+
+  const enrollmentMap = new Map(
+    enrollmentRows.map((enrollment) => [enrollment.sequenceId, enrollment.status]),
+  );
+
+  return sequenceRows.map((sequence) => ({
+    ...sequence,
+    enrollmentStatus: enrollmentMap.get(sequence.id) ?? null,
+  }));
+}
+
+export async function listContactSequenceEnrollments(contactId: string) {
+  const enrollments = await db.query.sequenceEnrollments.findMany({
+    where: eq(sequenceEnrollments.contactId, contactId),
+    orderBy: [desc(sequenceEnrollments.updatedAt)],
+  });
+
+  const sequenceIds = Array.from(
+    new Set(enrollments.map((enrollment) => enrollment.sequenceId)),
+  );
+
+  const sequenceRows = sequenceIds.length
+    ? await db.query.sequences.findMany({
+        where: inArray(sequences.id, sequenceIds),
+      })
+    : [];
+
+  const sequenceMap = new Map(
+    sequenceRows.map((sequence) => [sequence.id, sequence]),
+  );
+
+  return enrollments.map((enrollment) => ({
+    ...enrollment,
+    sequence: sequenceMap.get(enrollment.sequenceId) ?? null,
+  }));
+}
+
+export async function createSequence(input: {
+  actorUserId?: string | null;
+  bodyTemplate: string;
+  delayDays?: number;
+  description?: string | null;
+  name: string;
+  subjectTemplate: string;
+}) {
+  const name = input.name.trim();
+  const subjectTemplate = input.subjectTemplate.trim();
+  const bodyTemplate = input.bodyTemplate.trim();
+  const delayDays = Math.max(0, input.delayDays ?? 0);
+
+  if (!name) {
+    throw new Error("Sequence name is required.");
+  }
+
+  if (!subjectTemplate || !bodyTemplate) {
+    throw new Error("The first sequence step needs both subject and body.");
+  }
+
+  const [sequence] = await db
+    .insert(sequences)
+    .values({
+      description: input.description?.trim() || null,
+      name,
+      status: "active",
+    })
+    .returning();
+
+  await db.insert(sequenceSteps).values({
+    bodyTemplate,
+    delayDays,
+    position: 1,
+    sequenceId: sequence.id,
+    subjectTemplate,
+    title: "Initial email",
+  });
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: sequence.id,
+    entityType: "sequence",
+    eventName: "sequence.created",
+    metadata: {
+      delayDays,
+      name,
+    },
+  });
+
+  return sequence.id;
+}
+
+export async function enrollContactInSequence(input: {
+  actorUserId?: string | null;
+  contactId: string;
+  sequenceId: string;
+  userId: string;
+}) {
+  const [contact, sequence, existingEnrollment, firstStep, sendAccount] =
+    await Promise.all([
+      db.query.contacts.findFirst({
+        where: eq(contacts.id, input.contactId),
+      }),
+      db.query.sequences.findFirst({
+        where: eq(sequences.id, input.sequenceId),
+      }),
+      db.query.sequenceEnrollments.findFirst({
+        where: and(
+          eq(sequenceEnrollments.contactId, input.contactId),
+          eq(sequenceEnrollments.sequenceId, input.sequenceId),
+          or(
+            eq(sequenceEnrollments.status, "active"),
+            eq(sequenceEnrollments.status, "paused"),
+          ),
+        ),
+      }),
+      db.query.sequenceSteps.findFirst({
+        where: eq(sequenceSteps.sequenceId, input.sequenceId),
+        orderBy: [asc(sequenceSteps.position)],
+      }),
+      pickDefaultSendAccountForUser(input.userId),
+    ]);
+
+  if (!contact) {
+    throw new Error("Contact not found.");
+  }
+
+  if (!sequence) {
+    throw new Error("Sequence not found.");
+  }
+
+  if (existingEnrollment) {
+    throw new Error("This contact is already enrolled in the selected sequence.");
+  }
+
+  if (!firstStep) {
+    throw new Error("Add at least one sequence step before enrolling contacts.");
+  }
+
+  if (!sendAccount) {
+    throw new Error(
+      "Reconnect Gmail or Microsoft with send permissions before enrolling a sequence.",
+    );
+  }
+
+  const dueAt = addDays(new Date(), firstStep.delayDays);
+
+  const [enrollment] = await db
+    .insert(sequenceEnrollments)
+    .values({
+      connectedAccountId: sendAccount.id,
+      contactId: input.contactId,
+      currentStepPosition: firstStep.position,
+      nextDueAt: dueAt,
+      sequenceId: input.sequenceId,
+      status: "active",
+    })
+    .returning();
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: enrollment.id,
+    entityType: "sequence_enrollment",
+    eventName: "sequence.enrolled",
+    metadata: {
+      connectedAccountId: sendAccount.id,
+      contactId: input.contactId,
+      dueAt: dueAt.toISOString(),
+      sequenceId: input.sequenceId,
+    },
+  });
+
+  return {
+    contactSlug: contact.slug,
+    sequenceName: sequence.name,
+  };
+}
+
+export async function generateDraftForEnrollment(
+  enrollmentId: string,
+  actorUserId?: string | null,
+) {
+  const enrollment = await db.query.sequenceEnrollments.findFirst({
+    where: eq(sequenceEnrollments.id, enrollmentId),
+  });
+
+  if (!enrollment || enrollment.status !== "active") {
+    return null;
+  }
+
+  const [contact, sequence, step, existingDraft] = await Promise.all([
+    db.query.contacts.findFirst({
+      where: eq(contacts.id, enrollment.contactId),
+    }),
+    db.query.sequences.findFirst({
+      where: eq(sequences.id, enrollment.sequenceId),
+    }),
+    getStepForEnrollment(enrollment),
+    db.query.outboundMessages.findFirst({
+      where: and(
+        eq(outboundMessages.sequenceEnrollmentId, enrollment.id),
+        eq(outboundMessages.status, "draft"),
+      ),
+    }),
+  ]);
+
+  if (existingDraft) {
+    return existingDraft.id;
+  }
+
+  if (!contact || !sequence) {
+    throw new Error("Unable to load sequence enrollment context.");
+  }
+
+  if (!step) {
+    await db
+      .update(sequenceEnrollments)
+      .set({
+        nextDueAt: null,
+        status: "completed",
+        stopReason: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(sequenceEnrollments.id, enrollment.id));
+
+    return null;
+  }
+
+  if (!contact.primaryEmail) {
+    await db
+      .update(sequenceEnrollments)
+      .set({
+        nextDueAt: null,
+        status: "paused",
+        stopReason: "Primary email is missing for this contact.",
+        updatedAt: new Date(),
+      })
+      .where(eq(sequenceEnrollments.id, enrollment.id));
+
+    return null;
+  }
+
+  const sendingAccount = enrollment.connectedAccountId
+    ? await getConnectedSendAccountById(enrollment.connectedAccountId)
+    : null;
+
+  if (!sendingAccount) {
+    await db
+      .update(sequenceEnrollments)
+      .set({
+        nextDueAt: null,
+        status: "paused",
+        stopReason:
+          "Reconnect the selected Gmail or Microsoft account with send permissions.",
+        updatedAt: new Date(),
+      })
+      .where(eq(sequenceEnrollments.id, enrollment.id));
+
+    return null;
+  }
+
+  const variables = buildTemplateVariables({ contact, sequence });
+  const subject = renderTemplate(step.subjectTemplate, variables);
+  const body = renderTemplate(step.bodyTemplate, variables);
+  const unresolved = [
+    ...subject.missing,
+    ...subject.unknown,
+    ...body.missing,
+    ...body.unknown,
+  ];
+
+  if (!subject.rendered || !body.rendered || unresolved.length > 0) {
+    await db
+      .update(sequenceEnrollments)
+      .set({
+        nextDueAt: null,
+        status: "paused",
+        stopReason: `Fix unresolved sequence variables: ${Array.from(new Set(unresolved)).join(", ")}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(sequenceEnrollments.id, enrollment.id));
+
+    return null;
+  }
+
+  const [message] = await db
+    .insert(outboundMessages)
+    .values({
+      bodyTemplate: step.bodyTemplate,
+      connectedAccountId: sendingAccount.id,
+      contactId: contact.id,
+      dueAt: new Date(),
+      finalBody: body.rendered,
+      finalSubject: subject.rendered,
+      metadata: {
+        renderedWith: variables,
+        stepPosition: step.position,
+      },
+      provider: sendingAccount.provider,
+      renderedBody: body.rendered,
+      renderedSubject: subject.rendered,
+      sequenceEnrollmentId: enrollment.id,
+      sequenceId: sequence.id,
+      sequenceStepId: step.id,
+      status: "draft",
+      subjectTemplate: step.subjectTemplate,
+    })
+    .returning();
+
+  await db
+    .update(sequenceEnrollments)
+    .set({
+      nextDueAt: null,
+      stopReason: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(sequenceEnrollments.id, enrollment.id));
+
+  await recordAuditEvent({
+    actorUserId,
+    entityId: message.id,
+    entityType: "outbound_message",
+    eventName: "outbound.draft_created",
+    metadata: {
+      contactId: contact.id,
+      sequenceEnrollmentId: enrollment.id,
+      sequenceStepId: step.id,
+    },
+  });
+
+  return message.id;
+}
+
+export async function approveOutboundDraft(input: {
+  actorUserId?: string | null;
+  body: string;
+  messageId: string;
+  subject: string;
+}) {
+  const message = await db.query.outboundMessages.findFirst({
+    where: eq(outboundMessages.id, input.messageId),
+  });
+
+  if (!message) {
+    throw new Error("Outbound draft not found.");
+  }
+
+  if (message.status !== "draft" && message.status !== "failed") {
+    throw new Error("Only draft or failed outbound items can be queued.");
+  }
+
+  const subject = input.subject.trim();
+  const body = input.body.trim();
+
+  if (!subject || !body) {
+    throw new Error("Subject and body are both required before send.");
+  }
+
+  const sendingAccount = message.connectedAccountId
+    ? await getConnectedSendAccountById(message.connectedAccountId)
+    : null;
+
+  if (!sendingAccount) {
+    throw new Error(
+      "Reconnect the selected Gmail or Microsoft account before sending.",
+    );
+  }
+
+  await db
+    .update(outboundMessages)
+    .set({
+      approvedAt: new Date(),
+      failedAt: null,
+      finalBody: body,
+      finalSubject: subject,
+      lastError: null,
+      queuedAt: new Date(),
+      status: "queued",
+      updatedAt: new Date(),
+    })
+    .where(eq(outboundMessages.id, message.id));
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: message.id,
+    entityType: "outbound_message",
+    eventName: "outbound.queued",
+    metadata: {
+      connectedAccountId: sendingAccount.id,
+    },
+  });
+}
+
+async function advanceEnrollmentAfterSend(message: typeof outboundMessages.$inferSelect) {
+  if (!message.sequenceEnrollmentId) {
+    return;
+  }
+
+  const enrollment = await db.query.sequenceEnrollments.findFirst({
+    where: eq(sequenceEnrollments.id, message.sequenceEnrollmentId),
+  });
+
+  if (!enrollment) {
+    return;
+  }
+
+  const currentStep = message.sequenceStepId
+    ? await db.query.sequenceSteps.findFirst({
+        where: eq(sequenceSteps.id, message.sequenceStepId),
+      })
+    : await getStepForEnrollment(enrollment);
+
+  if (!currentStep) {
+    await db
+      .update(sequenceEnrollments)
+      .set({
+        nextDueAt: null,
+        status: "completed",
+        stopReason: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(sequenceEnrollments.id, enrollment.id));
+    return;
+  }
+
+  const nextStep = await db.query.sequenceSteps.findFirst({
+    where: and(
+      eq(sequenceSteps.sequenceId, enrollment.sequenceId),
+      eq(sequenceSteps.position, currentStep.position + 1),
+    ),
+  });
+
+  if (!nextStep) {
+    await db
+      .update(sequenceEnrollments)
+      .set({
+        currentStepPosition: currentStep.position,
+        nextDueAt: null,
+        status: "completed",
+        stopReason: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(sequenceEnrollments.id, enrollment.id));
+    return;
+  }
+
+  await db
+    .update(sequenceEnrollments)
+    .set({
+      currentStepPosition: nextStep.position,
+      nextDueAt: addDays(new Date(), nextStep.delayDays),
+      status: "active",
+      stopReason: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(sequenceEnrollments.id, enrollment.id));
+}
+
+export async function sendOutboundMessage(messageId: string) {
+  const message = await db.query.outboundMessages.findFirst({
+    where: eq(outboundMessages.id, messageId),
+  });
+
+  if (!message) {
+    throw new Error("Outbound message not found.");
+  }
+
+  const [contact, sendingAccount] = await Promise.all([
+    db.query.contacts.findFirst({
+      where: eq(contacts.id, message.contactId),
+    }),
+    message.connectedAccountId
+      ? getConnectedSendAccountById(message.connectedAccountId)
+      : Promise.resolve(null),
+  ]);
+
+  if (!contact?.primaryEmail) {
+    throw new Error("A primary email is required before sending.");
+  }
+
+  if (!sendingAccount) {
+    throw new Error(
+      "Reconnect the selected Gmail or Microsoft account before sending.",
+    );
+  }
+
+  const payload = {
+    accountId: sendingAccount.id,
+    bodyText: message.finalBody,
+    subject: message.finalSubject,
+    to: contact.primaryEmail,
+  };
+
+  const providerResult =
+    sendingAccount.provider === "google"
+      ? await sendGoogleMessage(payload)
+      : await sendMicrosoftMessage(payload);
+
+  await db
+    .update(outboundMessages)
+    .set({
+      failedAt: null,
+      lastError: null,
+      providerMessageId: providerResult.providerMessageId,
+      providerThreadId: providerResult.providerThreadId,
+      sentAt: new Date(),
+      status: "sent",
+      updatedAt: new Date(),
+    })
+    .where(eq(outboundMessages.id, message.id));
+
+  await advanceEnrollmentAfterSend(message);
+
+  await recordAuditEvent({
+    entityId: message.id,
+    entityType: "outbound_message",
+    eventName: "outbound.sent",
+    metadata: {
+      contactId: message.contactId,
+      provider: sendingAccount.provider,
+    },
+  });
+}
+
+export async function markOutboundMessageFailed(
+  messageId: string,
+  errorMessage: string,
+) {
+  const message = await db.query.outboundMessages.findFirst({
+    where: eq(outboundMessages.id, messageId),
+  });
+
+  if (!message) {
+    return;
+  }
+
+  await db
+    .update(outboundMessages)
+    .set({
+      failedAt: new Date(),
+      lastError: errorMessage,
+      status: "failed",
+      updatedAt: new Date(),
+    })
+    .where(eq(outboundMessages.id, messageId));
+
+  if (message.sequenceEnrollmentId) {
+    await db
+      .update(sequenceEnrollments)
+      .set({
+        nextDueAt: null,
+        status: "paused",
+        stopReason: errorMessage,
+        updatedAt: new Date(),
+      })
+      .where(eq(sequenceEnrollments.id, message.sequenceEnrollmentId));
+  }
+}
+
+export async function claimNextDueEnrollmentId() {
+  const enrollment = await db.query.sequenceEnrollments.findFirst({
+    where: and(
+      eq(sequenceEnrollments.status, "active"),
+      lte(sequenceEnrollments.nextDueAt, new Date()),
+    ),
+    orderBy: [asc(sequenceEnrollments.nextDueAt)],
+  });
+
+  if (!enrollment) {
+    return null;
+  }
+
+  await db
+    .update(sequenceEnrollments)
+    .set({
+      nextDueAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(sequenceEnrollments.id, enrollment.id));
+
+  return enrollment.id;
+}
+
+export async function claimNextQueuedOutboundMessageId() {
+  const message = await db.query.outboundMessages.findFirst({
+    where: eq(outboundMessages.status, "queued"),
+    orderBy: [asc(outboundMessages.queuedAt)],
+  });
+
+  if (!message) {
+    return null;
+  }
+
+  await db
+    .update(outboundMessages)
+    .set({
+      status: "sending",
+      updatedAt: new Date(),
+    })
+    .where(eq(outboundMessages.id, message.id));
+
+  return message.id;
+}
+
+export async function listSendCapableAccountsForUser(userId: string) {
+  return getConnectedSendAccountsForUser(userId);
+}

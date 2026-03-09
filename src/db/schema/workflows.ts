@@ -34,11 +34,23 @@ export const sequenceStatusEnum = pgEnum("sequence_status", [
   "active",
   "paused",
 ]);
+export const sequenceStepKindEnum = pgEnum("sequence_step_kind", ["email"]);
+export const sequenceSendModeEnum = pgEnum("sequence_send_mode", [
+  "manual_review",
+]);
 export const enrollmentStatusEnum = pgEnum("enrollment_status", [
   "active",
   "paused",
   "completed",
   "stopped",
+]);
+export const outboundMessageStatusEnum = pgEnum("outbound_message_status", [
+  "draft",
+  "queued",
+  "sending",
+  "sent",
+  "failed",
+  "cancelled",
 ]);
 export const importStatusEnum = pgEnum("import_status", [
   "draft",
@@ -174,9 +186,39 @@ export const sequences = pgTable(
     name: text("name").notNull(),
     status: sequenceStatusEnum("status").default("draft").notNull(),
     description: text("description"),
+    sendMode: sequenceSendModeEnum("send_mode")
+      .default("manual_review")
+      .notNull(),
     ...timestamps,
   },
   (table) => [index("sequences_name_idx").on(table.name)],
+);
+
+export const sequenceSteps = pgTable(
+  "sequence_steps",
+  {
+    id: idColumn(),
+    sequenceId: text("sequence_id")
+      .notNull()
+      .references(() => sequences.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    kind: sequenceStepKindEnum("kind").default("email").notNull(),
+    title: text("title").notNull(),
+    subjectTemplate: text("subject_template").notNull(),
+    bodyTemplate: text("body_template").notNull(),
+    delayDays: integer("delay_days").default(0).notNull(),
+    sendMode: sequenceSendModeEnum("send_mode")
+      .default("manual_review")
+      .notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("sequence_steps_sequence_position_unique").on(
+      table.sequenceId,
+      table.position,
+    ),
+    index("sequence_steps_sequence_id_idx").on(table.sequenceId),
+  ],
 );
 
 export const contactMergeReviews = pgTable(
@@ -235,6 +277,13 @@ export const sequenceEnrollments = pgTable(
     contactId: text("contact_id")
       .notNull()
       .references(() => contacts.id, { onDelete: "cascade" }),
+    connectedAccountId: text("connected_account_id").references(
+      () => connectedAccounts.id,
+      {
+        onDelete: "set null",
+      },
+    ),
+    currentStepPosition: integer("current_step_position").default(1).notNull(),
     status: enrollmentStatusEnum("status").default("active").notNull(),
     nextDueAt: timestamp("next_due_at", { withTimezone: true }),
     stopReason: text("stop_reason"),
@@ -243,6 +292,70 @@ export const sequenceEnrollments = pgTable(
   (table) => [
     index("sequence_enrollments_sequence_id_idx").on(table.sequenceId),
     index("sequence_enrollments_contact_id_idx").on(table.contactId),
+    index("sequence_enrollments_connected_account_id_idx").on(
+      table.connectedAccountId,
+    ),
+  ],
+);
+
+export const outboundMessages = pgTable(
+  "outbound_messages",
+  {
+    id: idColumn(),
+    contactId: text("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    connectedAccountId: text("connected_account_id").references(
+      () => connectedAccounts.id,
+      {
+        onDelete: "set null",
+      },
+    ),
+    sequenceId: text("sequence_id").references(() => sequences.id, {
+      onDelete: "set null",
+    }),
+    sequenceEnrollmentId: text("sequence_enrollment_id").references(
+      () => sequenceEnrollments.id,
+      {
+        onDelete: "set null",
+      },
+    ),
+    sequenceStepId: text("sequence_step_id").references(() => sequenceSteps.id, {
+      onDelete: "set null",
+    }),
+    provider: providerEnum("provider"),
+    status: outboundMessageStatusEnum("status").default("draft").notNull(),
+    subjectTemplate: text("subject_template"),
+    bodyTemplate: text("body_template"),
+    renderedSubject: text("rendered_subject").notNull(),
+    renderedBody: text("rendered_body").notNull(),
+    finalSubject: text("final_subject").notNull(),
+    finalBody: text("final_body").notNull(),
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    queuedAt: timestamp("queued_at", { withTimezone: true }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    providerMessageId: text("provider_message_id"),
+    providerThreadId: text("provider_thread_id"),
+    lastError: text("last_error"),
+    metadata: jsonb("metadata").default({}).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index("outbound_messages_contact_id_idx").on(table.contactId),
+    index("outbound_messages_connected_account_id_idx").on(
+      table.connectedAccountId,
+    ),
+    index("outbound_messages_sequence_enrollment_id_idx").on(
+      table.sequenceEnrollmentId,
+    ),
+    index("outbound_messages_status_idx").on(table.status),
+    index("outbound_messages_due_at_idx").on(table.dueAt),
+    uniqueIndex("outbound_messages_enrollment_step_unique").on(
+      table.sequenceEnrollmentId,
+      table.sequenceStepId,
+    ),
   ],
 );
 

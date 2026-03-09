@@ -12,6 +12,10 @@ import { buildUniqueSlug, mergeContactFields } from "@/lib/contacts";
 import { normalizeEmail } from "@/lib/csv";
 import { env } from "@/lib/env";
 import { upsertMergeReview } from "@/lib/merge-reviews";
+import {
+  MICROSOFT_CONTACTS_SCOPE,
+  MICROSOFT_SEND_SCOPE,
+} from "@/lib/provider-scopes";
 import { decryptSecret, encryptSecret } from "@/lib/secrets";
 
 const MICROSOFT_OAUTH_STATE_COOKIE = "kanbun_microsoft_oauth_state";
@@ -21,7 +25,8 @@ const MICROSOFT_SCOPES = [
   "profile",
   "email",
   "User.Read",
-  "Contacts.Read",
+  MICROSOFT_CONTACTS_SCOPE,
+  MICROSOFT_SEND_SCOPE,
 ];
 
 type MicrosoftTokenResponse = {
@@ -87,6 +92,19 @@ async function microsoftFetch<T>(
   }
 
   return (await response.json()) as T;
+}
+
+async function microsoftFetchWithoutJson(
+  url: string,
+  init: RequestInit,
+  errorMessage: string,
+) {
+  const response = await fetch(url, init);
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`${errorMessage} (${response.status}): ${body}`);
+  }
 }
 
 function pickPrimaryEmail(contact: MicrosoftContact) {
@@ -593,5 +611,48 @@ export async function syncMicrosoftContactsForAccount(accountId: string) {
 
   return {
     syncedCount,
+  };
+}
+
+export async function sendMicrosoftMessage(input: {
+  accountId: string;
+  bodyText: string;
+  subject: string;
+  to: string;
+}) {
+  const accessToken = await getMicrosoftAccessToken(input.accountId);
+
+  await microsoftFetchWithoutJson(
+    "https://graph.microsoft.com/v1.0/me/sendMail",
+    {
+      body: JSON.stringify({
+        message: {
+          body: {
+            content: input.bodyText,
+            contentType: "Text",
+          },
+          subject: input.subject,
+          toRecipients: [
+            {
+              emailAddress: {
+                address: input.to,
+              },
+            },
+          ],
+        },
+        saveToSentItems: true,
+      }),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+    "Unable to send Microsoft message",
+  );
+
+  return {
+    providerMessageId: null,
+    providerThreadId: null,
   };
 }
