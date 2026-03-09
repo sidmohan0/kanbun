@@ -54,13 +54,14 @@ cp .env.example .env.local
 # fill in the placeholder values in .env.local
 pnpm db:up
 pnpm db:migrate
-pnpm db:seed-owner
 pnpm dev
 # in a second terminal
 pnpm worker
 ```
 
 Open `http://localhost:7890`.
+
+With `OWNER_MODE_ENABLED=true`, sign in once with Google at `/signin`. That first Google sign-in creates or reactivates the owner user automatically.
 
 ## Environment
 
@@ -71,10 +72,15 @@ Open `http://localhost:7890`.
 - `DATABASE_URL`
 - `APP_ENCRYPTION_KEY`
 - `OWNER_MODE_ENABLED`
+
+If `OWNER_MODE_ENABLED=false`, Kanbun bypasses sign-in for local development.
+
+Optional legacy bootstrap:
+
 - `OWNER_EMAIL`
 - `OWNER_PASSWORD`
 
-If `OWNER_MODE_ENABLED=false`, Kanbun bypasses sign-in for local development.
+Those are only needed if you still want to run `pnpm db:seed-owner`. Google sign-in is the default auth path now.
 
 ### Optional Integrations
 
@@ -89,7 +95,7 @@ If `OWNER_MODE_ENABLED=false`, Kanbun bypasses sign-in for local development.
 
 Register these exact callback URLs in your provider apps when running locally:
 
-- Google: `http://localhost:7890/api/auth/google/callback`
+- Google sign-in and Gmail connect: `http://localhost:7890/api/auth/google/callback`
 - Microsoft: `http://localhost:7890/api/auth/microsoft/callback`
 
 If you connected Google or Microsoft before send or reply-detection scopes were added, reconnect once so the newer permissions are granted.
@@ -123,6 +129,12 @@ pnpm worker:once
 This repo is intentionally documentation-first and agent-friendly.
 
 Before changing behavior, read the relevant ADRs and product docs first. The expectation is that code follows the documented operating model instead of drifting into undocumented behavior.
+
+Auth model:
+
+- production owner auth is Google sign-in
+- Gmail provider connection is a separate integration step after sign-in
+- local bypass remains available only when `OWNER_MODE_ENABLED=false`
 
 ## Near-Term Work
 

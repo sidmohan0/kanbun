@@ -29,6 +29,8 @@ import { decryptSecret, encryptSecret } from "@/lib/secrets";
 import { recordReplySignal } from "@/lib/sequences";
 
 const GOOGLE_OAUTH_STATE_COOKIE = "kanbun_google_oauth_state";
+const GOOGLE_SIGNIN_STATE_COOKIE = "kanbun_google_signin_state";
+const GOOGLE_SIGNIN_SCOPES = ["openid", "email", "profile"];
 const GOOGLE_SCOPES = [
   "openid",
   "email",
@@ -114,6 +116,10 @@ function buildStateCookieValue() {
 
 function parseScopes(scope: string | undefined) {
   return scope?.split(" ").filter(Boolean) ?? GOOGLE_SCOPES;
+}
+
+function parseSigninScopes(scope: string | undefined) {
+  return scope?.split(" ").filter(Boolean) ?? GOOGLE_SIGNIN_SCOPES;
 }
 
 function ensureGoogleConfigured() {
@@ -266,12 +272,17 @@ export function isGoogleOAuthConfigured() {
   return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 }
 
-export async function createGoogleOAuthUrl() {
+async function createGoogleAuthorizationUrl(input: {
+  cookieName: string;
+  prompt: string;
+  scopes: string[];
+  withOfflineAccess: boolean;
+}) {
   ensureGoogleConfigured();
 
   const state = buildStateCookieValue();
   const cookieStore = await cookies();
-  cookieStore.set(GOOGLE_OAUTH_STATE_COOKIE, state, {
+  cookieStore.set(input.cookieName, state, {
     httpOnly: true,
     maxAge: 60 * 10,
     path: "/",
@@ -280,17 +291,109 @@ export async function createGoogleOAuthUrl() {
   });
 
   const params = new URLSearchParams({
-    access_type: "offline",
     client_id: env.GOOGLE_CLIENT_ID!,
     include_granted_scopes: "true",
-    prompt: "consent",
+    prompt: input.prompt,
     redirect_uri: googleRedirectUri(),
     response_type: "code",
-    scope: GOOGLE_SCOPES.join(" "),
+    scope: input.scopes.join(" "),
     state,
   });
 
+  if (input.withOfflineAccess) {
+    params.set("access_type", "offline");
+  }
+
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+}
+
+export async function createGoogleSignInUrl() {
+  return createGoogleAuthorizationUrl({
+    cookieName: GOOGLE_SIGNIN_STATE_COOKIE,
+    prompt: "select_account",
+    scopes: GOOGLE_SIGNIN_SCOPES,
+    withOfflineAccess: false,
+  });
+}
+
+export async function createGoogleOAuthUrl() {
+  return createGoogleAuthorizationUrl({
+    cookieName: GOOGLE_OAUTH_STATE_COOKIE,
+    prompt: "consent",
+    scopes: GOOGLE_SCOPES,
+    withOfflineAccess: true,
+  });
+}
+
+async function exchangeGoogleAuthorizationCode(code: string) {
+  return googleFetch<GoogleTokenResponse>(
+    "https://oauth2.googleapis.com/token",
+    {
+      body: new URLSearchParams({
+        client_id: env.GOOGLE_CLIENT_ID!,
+        client_secret: env.GOOGLE_CLIENT_SECRET!,
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: googleRedirectUri(),
+      }),
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    },
+    "Unable to exchange Google authorization code",
+  );
+}
+
+async function fetchGoogleProfile(accessToken: string) {
+  return googleFetch<GoogleUserInfo>(
+    "https://openidconnect.googleapis.com/v1/userinfo",
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+    "Unable to fetch Google account profile",
+  );
+}
+
+export async function identifyGoogleCallbackIntent(state: string) {
+  const cookieStore = await cookies();
+  const signinState = cookieStore.get(GOOGLE_SIGNIN_STATE_COOKIE)?.value;
+  const connectState = cookieStore.get(GOOGLE_OAUTH_STATE_COOKIE)?.value;
+
+  if (signinState && signinState === state) {
+    return "signin" as const;
+  }
+
+  if (connectState && connectState === state) {
+    return "connect" as const;
+  }
+
+  return "unknown" as const;
+}
+
+export async function consumeGoogleSignInCallback(input: {
+  code: string;
+  state: string;
+}) {
+  ensureGoogleConfigured();
+
+  const cookieStore = await cookies();
+  const expectedState = cookieStore.get(GOOGLE_SIGNIN_STATE_COOKIE)?.value;
+  cookieStore.delete(GOOGLE_SIGNIN_STATE_COOKIE);
+
+  if (!expectedState || input.state !== expectedState) {
+    throw new Error("Google sign-in state validation failed.");
+  }
+
+  const token = await exchangeGoogleAuthorizationCode(input.code);
+  const profile = await fetchGoogleProfile(token.access_token);
+
+  return {
+    profile,
+    scopes: parseSigninScopes(token.scope),
+  };
 }
 
 export async function consumeGoogleOAuthCallback(input: {
@@ -308,32 +411,8 @@ export async function consumeGoogleOAuthCallback(input: {
     throw new Error("Google OAuth state validation failed.");
   }
 
-  const token = await googleFetch<GoogleTokenResponse>(
-    "https://oauth2.googleapis.com/token",
-    {
-      body: new URLSearchParams({
-        client_id: env.GOOGLE_CLIENT_ID!,
-        client_secret: env.GOOGLE_CLIENT_SECRET!,
-        code: input.code,
-        grant_type: "authorization_code",
-        redirect_uri: googleRedirectUri(),
-      }),
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    },
-    "Unable to exchange Google authorization code",
-  );
-  const profile = await googleFetch<GoogleUserInfo>(
-    "https://openidconnect.googleapis.com/v1/userinfo",
-    {
-      headers: {
-        Authorization: `Bearer ${token.access_token}`,
-      },
-    },
-    "Unable to fetch Google account profile",
-  );
+  const token = await exchangeGoogleAuthorizationCode(input.code);
+  const profile = await fetchGoogleProfile(token.access_token);
 
   const existing = await db.query.connectedAccounts.findFirst({
     where: and(

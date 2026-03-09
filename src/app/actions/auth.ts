@@ -3,29 +3,26 @@
 import { redirect } from "next/navigation";
 import {
   clearCurrentSession,
-  createSessionForPasswordLogin,
   isOwnerModeEnabled,
 } from "@/lib/auth";
+import { createGoogleSignInUrl } from "@/lib/google";
 
-export async function signInWithPasswordAction(formData: FormData) {
+export async function startGoogleSignInAction() {
   if (!isOwnerModeEnabled()) {
     redirect("/");
   }
 
-  const email = String(formData.get("email") ?? "");
-  const password = String(formData.get("password") ?? "");
+  let url: string;
 
-  if (!email.trim() || !password) {
-    redirect("/signin?error=missing-fields");
+  try {
+    url = await createGoogleSignInUrl();
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to start Google sign-in.";
+    redirect(`/signin?error=${encodeURIComponent(message)}`);
   }
 
-  const result = await createSessionForPasswordLogin(email, password);
-
-  if (!result.ok) {
-    redirect(`/signin?error=${result.error}`);
-  }
-
-  redirect("/");
+  redirect(url);
 }
 
 export async function signOutAction() {

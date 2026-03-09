@@ -134,7 +134,7 @@ async function getDefaultTodoistUserId() {
 
   if (!owner) {
     throw new Error(
-      "No persistent owner user exists. Run pnpm db:seed-owner before enabling Todoist.",
+      "No persistent owner user exists. Sign in with Google once before enabling Todoist.",
     );
   }
 

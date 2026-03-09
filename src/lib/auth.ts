@@ -1,5 +1,4 @@
 import "server-only";
-import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { and, eq, gt } from "drizzle-orm";
 import { cookies } from "next/headers";
@@ -10,6 +9,7 @@ import { env } from "@/lib/env";
 
 const SESSION_COOKIE_NAME = "kanbun_session";
 const SESSION_TTL_DAYS = 14;
+const UNUSABLE_PASSWORD_HASH_PREFIX = "google-oauth-only:";
 const bypassUser = {
   id: "local-owner-bypass",
   email: "local@kanbun.dev",
@@ -29,32 +29,17 @@ export function isOwnerModeEnabled() {
   return env.OWNER_MODE_ENABLED;
 }
 
-export async function createSessionForPasswordLogin(
-  email: string,
-  password: string,
-) {
-  const normalizedEmail = email.trim().toLowerCase();
+function buildUnusablePasswordHash(email: string) {
+  return `${UNUSABLE_PASSWORD_HASH_PREFIX}${hashToken(email)}`;
+}
 
-  const user = await db.query.users.findFirst({
-    where: and(eq(users.email, normalizedEmail), eq(users.status, "active")),
-  });
-
-  if (!user) {
-    return { ok: false as const, error: "invalid-credentials" as const };
-  }
-
-  const valid = await bcrypt.compare(password, user.passwordHash);
-
-  if (!valid) {
-    return { ok: false as const, error: "invalid-credentials" as const };
-  }
-
+export async function createSessionForUserId(userId: string) {
   const sessionToken = crypto.randomBytes(32).toString("hex");
   const tokenHash = hashToken(sessionToken);
   const expiresAt = sessionExpiryDate();
 
   await db.insert(sessions).values({
-    userId: user.id,
+    userId,
     tokenHash,
     expiresAt,
   });
@@ -120,6 +105,66 @@ export async function getCurrentUser() {
   return record;
 }
 
+export async function resolveOrCreateOwnerFromGoogleProfile(input: {
+  email: string | undefined;
+  name: string | undefined;
+}) {
+  const normalizedEmail = input.email?.trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    throw new Error("Google did not return an email address for sign-in.");
+  }
+
+  const [existingUser, existingOwner] = await Promise.all([
+    db.query.users.findFirst({
+      where: eq(users.email, normalizedEmail),
+    }),
+    db.query.users.findFirst({
+      where: and(eq(users.role, "owner"), eq(users.status, "active")),
+      columns: {
+        email: true,
+        id: true,
+      },
+    }),
+  ]);
+
+  if (existingOwner && existingOwner.email !== normalizedEmail && !existingUser) {
+    throw new Error("This Google account is not authorized for the Kanbun owner workspace.");
+  }
+
+  if (existingUser) {
+    await db
+      .update(users)
+      .set({
+        email: normalizedEmail,
+        name: input.name?.trim() || existingUser.name,
+        passwordHash:
+          existingUser.passwordHash || buildUnusablePasswordHash(normalizedEmail),
+        role: "owner",
+        status: "active",
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, existingUser.id));
+
+    return existingUser.id;
+  }
+
+  const [user] = await db
+    .insert(users)
+    .values({
+      email: normalizedEmail,
+      name: input.name?.trim() || null,
+      passwordHash: buildUnusablePasswordHash(normalizedEmail),
+      role: "owner",
+      status: "active",
+    })
+    .returning({
+      id: users.id,
+    });
+
+  return user.id;
+}
+
 export async function getPersistentOwnerUserId() {
   const user = await getCurrentUser();
 
@@ -136,7 +181,7 @@ export async function getPersistentOwnerUserId() {
 
   if (!fallbackOwner) {
     throw new Error(
-      "No persistent owner user exists. Run pnpm db:seed-owner before connecting accounts.",
+      "No persistent owner user exists. Sign in with Google once before connecting accounts.",
     );
   }
 

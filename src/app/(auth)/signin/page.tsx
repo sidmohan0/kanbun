@@ -1,19 +1,18 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { signInWithPasswordAction } from "@/app/actions/auth";
+import { startGoogleSignInAction } from "@/app/actions/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { getCurrentUser, isOwnerModeEnabled } from "@/lib/auth";
+import { isGoogleOAuthConfigured } from "@/lib/google";
 
 export const metadata: Metadata = {
   title: "Sign in | Kanbun",
-  description: "Owner-mode sign in for the Kanbun workspace.",
+  description: "Owner-mode Google sign in for the Kanbun workspace.",
 };
 
 const errorMessages: Record<string, string> = {
-  "invalid-credentials": "The email or password is incorrect.",
-  "missing-fields": "Email and password are both required.",
+  "Google OAuth is not configured.": "Google OAuth is not configured.",
 };
 
 export default async function SignInPage({
@@ -33,7 +32,8 @@ export default async function SignInPage({
 
   const params = await searchParams;
   const errorKey = typeof params.error === "string" ? params.error : undefined;
-  const errorMessage = errorKey ? errorMessages[errorKey] : null;
+  const errorMessage = errorKey ? errorMessages[errorKey] ?? errorKey : null;
+  const googleConfigured = isGoogleOAuthConfigured();
 
   return (
     <main className="flex min-h-screen items-center justify-center px-6 py-10">
@@ -52,8 +52,9 @@ export default async function SignInPage({
               </p>
               <p className="text-muted-foreground max-w-xl text-base leading-7">
                 Personal relationship work, organized into one calm operating
-                surface. This first auth pass is intentionally owner-only and
-                database-backed.
+                surface. Auth is now intentionally owner-only through Google
+                sign-in, while Gmail connection remains a separate integration
+                step inside Settings.
               </p>
             </div>
           </div>
@@ -69,49 +70,32 @@ export default async function SignInPage({
                 Enter the workspace
               </h1>
               <p className="text-muted-foreground text-sm leading-6">
-                Use the owner credentials seeded into the local database.
+                Sign in with the Google account that owns this Kanbun
+                workspace.
               </p>
             </div>
 
-            <form action={signInWithPasswordAction} className="space-y-4">
-              <div className="space-y-2">
-                <label
-                  className="text-foreground text-sm font-medium"
-                  htmlFor="email"
-                >
-                  Email
-                </label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="owner@example.com"
-                />
-              </div>
-              <div className="space-y-2">
-                <label
-                  className="text-foreground text-sm font-medium"
-                  htmlFor="password"
-                >
-                  Password
-                </label>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  placeholder="••••••••"
-                />
-              </div>
-
+            <form action={startGoogleSignInAction} className="space-y-4">
               {errorMessage ? (
                 <div className="border-destructive/20 bg-destructive/8 text-destructive rounded-2xl border px-4 py-3 text-sm">
                   {errorMessage}
                 </div>
               ) : null}
 
-              <Button type="submit" size="lg" className="w-full">
-                Sign in
+              <Button
+                type="submit"
+                size="lg"
+                className="w-full"
+                disabled={!googleConfigured}
+              >
+                Continue with Google
               </Button>
+
+              <p className="text-muted-foreground text-sm leading-6">
+                Use the same Google OAuth application you already configured for
+                Gmail connection. The callback remains{" "}
+                <code>http://localhost:7890/api/auth/google/callback</code>.
+              </p>
             </form>
           </div>
         </section>
