@@ -1069,6 +1069,7 @@ export async function cancelOutboundMessage(input: {
 export async function recordReplySignal(input: {
   actorUserId?: string | null;
   contactId: string;
+  sourceType?: string;
   summary?: string | null;
 }) {
   const contact = await db.query.contacts.findFirst({
@@ -1081,7 +1082,7 @@ export async function recordReplySignal(input: {
 
   await db.insert(replySignals).values({
     contactId: contact.id,
-    sourceType: "manual",
+    sourceType: input.sourceType?.trim() || "manual",
     summary: input.summary?.trim() || "Manual reply recorded by operator.",
   });
 

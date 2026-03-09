@@ -1,14 +1,31 @@
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
-import { connectedAccounts, contactIdentities, contactSources, contacts } from "@/db/schema";
+import {
+  connectedAccounts,
+  contactIdentities,
+  contactSources,
+  contacts,
+  outboundMessages,
+  replySignals,
+} from "@/db/schema";
 import { buildUniqueSlug, mergeContactFields } from "@/lib/contacts";
 import { normalizeEmail } from "@/lib/csv";
 import { env } from "@/lib/env";
 import { upsertMergeReview } from "@/lib/merge-reviews";
-import { GOOGLE_CONTACTS_SCOPE, GOOGLE_SEND_SCOPE } from "@/lib/provider-scopes";
+import {
+  GOOGLE_CONTACTS_SCOPE,
+  GOOGLE_REPLY_READ_SCOPE,
+  GOOGLE_SEND_SCOPE,
+} from "@/lib/provider-scopes";
+import {
+  buildLatestSentContactMap,
+  extractEmailAddress,
+  matchInboundReplies,
+} from "@/lib/reply-detection";
 import { decryptSecret, encryptSecret } from "@/lib/secrets";
+import { recordReplySignal } from "@/lib/sequences";
 
 const GOOGLE_OAUTH_STATE_COOKIE = "kanbun_google_oauth_state";
 const GOOGLE_SCOPES = [
@@ -16,6 +33,7 @@ const GOOGLE_SCOPES = [
   "email",
   "profile",
   GOOGLE_CONTACTS_SCOPE,
+  GOOGLE_REPLY_READ_SCOPE,
   GOOGLE_SEND_SCOPE,
 ];
 
@@ -46,6 +64,25 @@ type GoogleConnectionsResponse = {
   connections?: GoogleConnection[];
   nextPageToken?: string;
   nextSyncToken?: string;
+};
+
+type GmailListMessagesResponse = {
+  messages?: Array<{
+    id: string;
+    threadId?: string;
+  }>;
+};
+
+type GmailMetadataMessage = {
+  id: string;
+  internalDate?: string;
+  payload?: {
+    headers?: Array<{
+      name?: string;
+      value?: string;
+    }>;
+  };
+  threadId?: string;
 };
 
 type GmailSendResponse = {
@@ -128,6 +165,19 @@ function pickDisplayName(connection: GoogleConnection) {
 
 function pickOrganization(connection: GoogleConnection) {
   return connection.organizations?.find((organization) => organization.name || organization.title) ?? null;
+}
+
+function getGoogleMetadataTimestamp(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === "string" ? value : null;
+}
+
+function getGoogleReplySummary(message: GmailMetadataMessage) {
+  const subject =
+    message.payload?.headers?.find((header) => header.name === "Subject")?.value ??
+    null;
+
+  return subject ? `Automatic Gmail reply detected: ${subject}` : null;
 }
 
 async function ensureIdentity(params: {
@@ -455,6 +505,162 @@ export async function getGoogleAccessToken(accountId: string) {
   }
 
   return refreshGoogleAccessToken(accountId);
+}
+
+async function listRecentGoogleInboundMessages(input: {
+  accessToken: string;
+  since: Date;
+}) {
+  const query = `in:inbox after:${Math.floor(input.since.getTime() / 1000)}`;
+  const listResponse = await googleFetch<GmailListMessagesResponse>(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?${new URLSearchParams({
+      maxResults: "50",
+      q: query,
+    }).toString()}`,
+    {
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+      },
+    },
+    "Unable to list recent Gmail messages",
+  );
+
+  const results = await Promise.all(
+    (listResponse.messages ?? []).map((message) =>
+      googleFetch<GmailMetadataMessage>(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?${new URLSearchParams({
+          format: "metadata",
+          metadataHeaders: "From",
+        }).toString()}&metadataHeaders=Subject`,
+        {
+          headers: {
+            Authorization: `Bearer ${input.accessToken}`,
+          },
+        },
+        "Unable to fetch Gmail reply metadata",
+      ),
+    ),
+  );
+
+  return results
+    .map((message) => ({
+      receivedAt: new Date(Number(message.internalDate ?? Date.now())),
+      senderEmail: extractEmailAddress(
+        message.payload?.headers?.find((header) => header.name === "From")?.value,
+      ),
+      summary: getGoogleReplySummary(message),
+    }))
+    .filter((message) => !Number.isNaN(message.receivedAt.getTime()));
+}
+
+export async function syncGoogleRepliesForAccount(accountId: string) {
+  const account = await db.query.connectedAccounts.findFirst({
+    where: eq(connectedAccounts.id, accountId),
+  });
+
+  if (!account) {
+    throw new Error("Connected Google account not found.");
+  }
+
+  if (!account.grantedScopes.includes(GOOGLE_REPLY_READ_SCOPE)) {
+    return {
+      checkedCount: 0,
+      detectedCount: 0,
+      skippedReason: "Reconnect Google to enable automatic reply detection.",
+    };
+  }
+
+  const accessToken = await getGoogleAccessToken(accountId);
+  const metadata = (account.metadata as Record<string, unknown>) ?? {};
+  const cursorAt =
+    getGoogleMetadataTimestamp(metadata, "replySyncCursorAt") ??
+    new Date(Date.now() - 1000 * 60 * 60 * 24 * 14).toISOString();
+
+  const [recentInboundMessages, sentMessages] = await Promise.all([
+    listRecentGoogleInboundMessages({
+      accessToken,
+      since: new Date(cursorAt),
+    }),
+    db.query.outboundMessages.findMany({
+      where: and(
+        eq(outboundMessages.connectedAccountId, accountId),
+        eq(outboundMessages.provider, "google"),
+        eq(outboundMessages.status, "sent"),
+      ),
+      orderBy: [desc(outboundMessages.sentAt)],
+      limit: 250,
+    }),
+  ]);
+
+  const contactIds = Array.from(new Set(sentMessages.map((message) => message.contactId)));
+  const contactRows = contactIds.length
+    ? await db.query.contacts.findMany({
+        where: inArray(contacts.id, contactIds),
+        columns: {
+          displayName: true,
+          id: true,
+          primaryEmail: true,
+        },
+      })
+    : [];
+  const contactMap = new Map(contactRows.map((contact) => [contact.id, contact]));
+  const sentContacts = buildLatestSentContactMap(
+    sentMessages.map((message) => ({
+      contactId: message.contactId,
+      contactName: contactMap.get(message.contactId)?.displayName ?? "Contact",
+      primaryEmail: contactMap.get(message.contactId)?.primaryEmail ?? null,
+      sentAt: message.sentAt,
+    })),
+  );
+  const replyMatches = matchInboundReplies(sentContacts, recentInboundMessages);
+
+  let detectedCount = 0;
+
+  for (const match of replyMatches) {
+    const existingSignal = await db.query.replySignals.findFirst({
+      where: eq(replySignals.contactId, match.contactId),
+      columns: {
+        id: true,
+      },
+    });
+
+    if (existingSignal) {
+      continue;
+    }
+
+    await recordReplySignal({
+      contactId: match.contactId,
+      sourceType: "google_auto",
+      summary:
+        match.summary ??
+        `Automatic Gmail reply detected from ${match.senderEmail}.`,
+    });
+    detectedCount += 1;
+  }
+
+  const newestTimestamp =
+    recentInboundMessages
+      .map((message) => message.receivedAt.getTime())
+      .sort((left, right) => right - left)[0] ?? Date.now();
+
+  await db
+    .update(connectedAccounts)
+    .set({
+      metadata: {
+        ...metadata,
+        replySyncCursorAt: new Date(newestTimestamp).toISOString(),
+        replySyncLastError: null,
+        replySyncLastRunAt: new Date().toISOString(),
+      },
+      updatedAt: new Date(),
+    })
+    .where(eq(connectedAccounts.id, account.id));
+
+  return {
+    checkedCount: recentInboundMessages.length,
+    detectedCount,
+    skippedReason: null,
+  };
 }
 
 export async function syncGoogleContactsForAccount(accountId: string) {

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ArrowRight, GitMerge } from "lucide-react";
+import { updateContactAction } from "@/app/actions/contacts";
 import { createFollowUpTaskAction } from "@/app/actions/workflows";
 import {
   enrollContactInSequenceAction,
@@ -43,9 +44,11 @@ export default async function ContactDetailPage({
 }: PageProps<"/contacts/[slug]">) {
   const { slug } = await params;
   const query = await searchParams;
+  const contactCreated = query.created === "1";
   const followUpCreated = query.followup === "created";
   const replyRecorded = query.reply === "recorded";
   const sequenceEnrolled = query.sequence === "enrolled";
+  const contactUpdated = query.updated === "1";
   const error =
     typeof query.error === "string" ? decodeURIComponent(query.error) : null;
   const contact = await getContactBySlug(slug);
@@ -154,6 +157,12 @@ export default async function ContactDetailPage({
         </div>
       ) : null}
 
+      {contactCreated ? (
+        <div className="rounded-2xl border border-border/80 bg-primary/8 px-4 py-3 text-sm text-foreground">
+          Contact created and ready for follow-up, sequence enrollment, or provider merge review.
+        </div>
+      ) : null}
+
       {error ? (
         <div className="rounded-2xl border border-destructive/20 bg-destructive/8 px-4 py-3 text-sm text-destructive">
           {error}
@@ -174,13 +183,79 @@ export default async function ContactDetailPage({
         </div>
       ) : null}
 
+      {contactUpdated ? (
+        <div className="rounded-2xl border border-border/80 bg-primary/8 px-4 py-3 text-sm text-foreground">
+          Contact details updated.
+        </div>
+      ) : null}
+
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <DashboardPanel>
           <SectionHeading
             eyebrow="Relationship"
             title="Current narrative"
-            description="The contact page now reflects real imports, identities, and follow-up tasks from the database."
+            description="The contact page now reflects real imports, identities, follow-up tasks, and manual edits from the database."
           />
+          <form action={updateContactAction} className="mb-5 space-y-4">
+            <input type="hidden" name="contactId" value={contact.id} />
+            <input type="hidden" name="returnTo" value={`/contacts/${contact.slug}`} />
+            <div className="grid gap-4 lg:grid-cols-2">
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-foreground">Full name</span>
+                <input
+                  aria-label="Full name"
+                  name="displayName"
+                  defaultValue={contact.displayName}
+                  className="h-11 w-full rounded-2xl border border-border bg-background px-3 text-sm text-foreground outline-none"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-foreground">
+                  Primary email
+                </span>
+                <input
+                  aria-label="Primary email"
+                  name="primaryEmail"
+                  type="email"
+                  defaultValue={contact.primaryEmail ?? ""}
+                  className="h-11 w-full rounded-2xl border border-border bg-background px-3 text-sm text-foreground outline-none"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-foreground">Company</span>
+                <input
+                  aria-label="Company"
+                  name="company"
+                  defaultValue={contact.company ?? ""}
+                  className="h-11 w-full rounded-2xl border border-border bg-background px-3 text-sm text-foreground outline-none"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-foreground">Title</span>
+                <input
+                  aria-label="Title"
+                  name="title"
+                  defaultValue={contact.title ?? ""}
+                  className="h-11 w-full rounded-2xl border border-border bg-background px-3 text-sm text-foreground outline-none"
+                />
+              </label>
+            </div>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-foreground">
+                Relationship summary
+              </span>
+              <textarea
+                aria-label="Relationship summary"
+                name="relationshipSummary"
+                rows={4}
+                defaultValue={contact.relationshipSummary ?? ""}
+                className="w-full rounded-2xl border border-border bg-background px-3 py-3 text-sm text-foreground outline-none"
+              />
+            </label>
+            <Button type="submit" variant="outline">
+              Save contact details
+            </Button>
+          </form>
           <div className="space-y-3">
             {contact.sources.length === 0 ? (
               <div className="border-border/85 bg-background/75 text-muted-foreground rounded-2xl border px-4 py-4 text-sm">
@@ -299,7 +374,7 @@ export default async function ContactDetailPage({
             <SectionHeading
               eyebrow="Replies"
               title="Stop-on-reply history"
-              description="Reply signals stop active sequence progression for this contact and cancel pending drafts that have not been sent yet."
+              description="Reply signals stop active sequence progression for this contact and cancel pending drafts that have not been sent yet. Automatic provider detection now writes into the same history."
             />
             <div className="space-y-3">
               {replyHistory.length === 0 ? (

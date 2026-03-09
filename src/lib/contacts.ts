@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
+  auditEvents,
   contactIdentities,
   contactMergeReviews,
   contactSources,
@@ -9,7 +10,31 @@ import {
 } from "@/db/schema";
 import { normalizeEmail, slugify } from "@/lib/csv";
 
-export async function listContacts() {
+type ContactSourceType = "csv" | "google" | "manual" | "microsoft";
+
+type ListContactsOptions = {
+  needsAttentionOnly?: boolean;
+  query?: string;
+  sourceType?: ContactSourceType | "all";
+};
+
+async function recordAuditEvent(input: {
+  actorUserId?: string | null;
+  entityId: string;
+  entityType: string;
+  eventName: string;
+  metadata?: Record<string, unknown>;
+}) {
+  await db.insert(auditEvents).values({
+    actorUserId: input.actorUserId ?? null,
+    entityId: input.entityId,
+    entityType: input.entityType,
+    eventName: input.eventName,
+    metadata: input.metadata ?? {},
+  });
+}
+
+export async function listContacts(options: ListContactsOptions = {}) {
   const rows = await db.query.contacts.findMany({
     orderBy: [asc(contacts.displayName)],
   });
@@ -29,29 +54,83 @@ export async function listContacts() {
       contactId: true,
     },
   });
-
-  return rows.map((contact) => {
-    const dueTasks = openTasks.filter((task) => task.contactId === contact.id);
-    const reviewCount = openMergeReviews.filter(
-      (review) => review.contactId === contact.id,
-    ).length;
-    const nextTask = dueTasks
-      .filter((task) => task.dueAt)
-      .sort((left, right) => {
-        if (!left.dueAt || !right.dueAt) {
-          return 0;
-        }
-
-        return left.dueAt.getTime() - right.dueAt.getTime();
-      })[0];
-
-    return {
-      ...contact,
-      openMergeReviewCount: reviewCount,
-      openTaskCount: dueTasks.length,
-      nextDueAt: nextTask?.dueAt ?? null,
-    };
+  const sourceRows = await db.query.contactSources.findMany({
+    orderBy: [desc(contactSources.importedAt)],
+    columns: {
+      contactId: true,
+      sourceType: true,
+    },
   });
+
+  return rows
+    .map((contact) => {
+      const dueTasks = openTasks.filter((task) => task.contactId === contact.id);
+      const reviewCount = openMergeReviews.filter(
+        (review) => review.contactId === contact.id,
+      ).length;
+      const nextTask = dueTasks
+        .filter((task) => task.dueAt)
+        .sort((left, right) => {
+          if (!left.dueAt || !right.dueAt) {
+            return 0;
+          }
+
+          return left.dueAt.getTime() - right.dueAt.getTime();
+        })[0];
+      const sourceTypes = Array.from(
+        new Set(
+          sourceRows
+            .filter((source) => source.contactId === contact.id)
+            .map((source) => source.sourceType),
+        ),
+      );
+
+      return {
+        ...contact,
+        openMergeReviewCount: reviewCount,
+        openTaskCount: dueTasks.length,
+        nextDueAt: nextTask?.dueAt ?? null,
+        sourceTypes,
+      };
+    })
+    .filter((contact) => {
+      const query = options.query?.trim().toLowerCase();
+
+      if (query) {
+        const haystack = [
+          contact.displayName,
+          contact.primaryEmail,
+          contact.company,
+          contact.title,
+          contact.relationshipSummary,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        if (!haystack.includes(query)) {
+          return false;
+        }
+      }
+
+      if (
+        options.sourceType &&
+        options.sourceType !== "all" &&
+        !contact.sourceTypes.includes(options.sourceType)
+      ) {
+        return false;
+      }
+
+      if (
+        options.needsAttentionOnly &&
+        contact.openTaskCount === 0 &&
+        contact.openMergeReviewCount === 0
+      ) {
+        return false;
+      }
+
+      return true;
+    });
 }
 
 export async function getContactBySlug(slug: string) {
@@ -155,6 +234,152 @@ export async function createFollowUpTask(
   });
 
   return contact.slug;
+}
+
+export async function createManualContact(input: {
+  actorUserId?: string | null;
+  company?: string | null;
+  displayName: string;
+  primaryEmail?: string | null;
+  relationshipSummary?: string | null;
+  title?: string | null;
+}) {
+  const displayName = input.displayName.trim();
+  const primaryEmail = normalizeEmail(input.primaryEmail);
+
+  if (!displayName && !primaryEmail) {
+    throw new Error("Add at least a name or email before creating a contact.");
+  }
+
+  if (primaryEmail) {
+    const existingIdentity = await findContactIdentityByEmail(primaryEmail);
+
+    if (existingIdentity) {
+      throw new Error("A contact with this primary email already exists.");
+    }
+  }
+
+  const slug = await buildUniqueSlug(displayName || primaryEmail || "contact");
+  const [contact] = await db
+    .insert(contacts)
+    .values({
+      company: input.company?.trim() || null,
+      displayName: displayName || primaryEmail || "Unnamed contact",
+      primaryEmail,
+      relationshipSummary: input.relationshipSummary?.trim() || null,
+      slug,
+      title: input.title?.trim() || null,
+    })
+    .returning();
+
+  await db.insert(contactSources).values({
+    contactId: contact.id,
+    sourceLabel: "Created in Kanbun",
+    sourceRef: `manual:${contact.id}`,
+    sourceType: "manual",
+  });
+
+  if (primaryEmail) {
+    await db.insert(contactIdentities).values({
+      contactId: contact.id,
+      kind: "email",
+      normalizedValue: primaryEmail,
+      sourceType: "manual",
+      value: primaryEmail,
+    });
+  }
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: contact.id,
+    entityType: "contact",
+    eventName: "contact.created_manual",
+  });
+
+  return contact;
+}
+
+export async function updateContact(input: {
+  actorUserId?: string | null;
+  company?: string | null;
+  contactId: string;
+  displayName: string;
+  primaryEmail?: string | null;
+  relationshipSummary?: string | null;
+  title?: string | null;
+}) {
+  const existing = await db.query.contacts.findFirst({
+    where: eq(contacts.id, input.contactId),
+  });
+
+  if (!existing) {
+    throw new Error("Contact not found.");
+  }
+
+  const displayName = input.displayName.trim();
+  const primaryEmail = normalizeEmail(input.primaryEmail);
+
+  if (!displayName && !primaryEmail) {
+    throw new Error("A contact still needs a name or email.");
+  }
+
+  if (primaryEmail) {
+    const existingIdentity = await findContactIdentityByEmail(primaryEmail);
+
+    if (existingIdentity && existingIdentity.contactId !== existing.id) {
+      throw new Error("That email is already attached to another contact.");
+    }
+  }
+
+  await db
+    .update(contacts)
+    .set({
+      company: input.company?.trim() || null,
+      displayName: displayName || primaryEmail || existing.displayName,
+      primaryEmail,
+      relationshipSummary: input.relationshipSummary?.trim() || null,
+      title: input.title?.trim() || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(contacts.id, existing.id));
+
+  if (primaryEmail) {
+    const identity = await db.query.contactIdentities.findFirst({
+      where: and(
+        eq(contactIdentities.contactId, existing.id),
+        eq(contactIdentities.kind, "email"),
+        eq(contactIdentities.sourceType, "manual"),
+      ),
+    });
+
+    if (identity) {
+      await db
+        .update(contactIdentities)
+        .set({
+          normalizedValue: primaryEmail,
+          value: primaryEmail,
+          updatedAt: new Date(),
+        })
+        .where(eq(contactIdentities.id, identity.id));
+    } else {
+      await db.insert(contactIdentities).values({
+        contactId: existing.id,
+        kind: "email",
+        normalizedValue: primaryEmail,
+        sourceType: "manual",
+        value: primaryEmail,
+      });
+    }
+  }
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: existing.id,
+    entityType: "contact",
+    eventName: "contact.updated_manual",
+  });
+
+  return existing.slug;
 }
 
 export async function findContactIdentityByEmail(normalizedEmail: string) {

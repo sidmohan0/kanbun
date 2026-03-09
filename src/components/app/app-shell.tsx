@@ -149,14 +149,18 @@ export function AppShell({ children, ownerModeEnabled, user }: AppShellProps) {
                 </SheetContent>
               </Sheet>
 
-              <div className="relative hidden max-w-md flex-1 items-center sm:flex">
+              <form
+                action="/contacts"
+                className="relative hidden max-w-md flex-1 items-center sm:flex"
+              >
                 <Search className="text-muted-foreground pointer-events-none absolute left-3 size-4" />
                 <Input
                   aria-label="Search contacts"
+                  name="q"
                   placeholder="Search by name or email"
                   className="border-border/80 bg-card h-11 rounded-2xl pl-10 text-sm shadow-none"
                 />
-              </div>
+              </form>
 
               <div className="ml-auto flex items-center gap-2">
                 <Badge

@@ -27,6 +27,11 @@ async function getAuditActorUserId() {
   return user.id;
 }
 
+function getReturnTo(formData: FormData, fallback: string) {
+  const value = String(formData.get("returnTo") ?? "").trim();
+  return value.startsWith("/") ? value : fallback;
+}
+
 export async function createSequenceAction(formData: FormData) {
   try {
     await createSequence({
@@ -192,9 +197,10 @@ export async function enrollContactInSequenceAction(formData: FormData) {
 
 export async function approveOutboundDraftAction(formData: FormData) {
   const messageId = String(formData.get("messageId") ?? "");
+  const returnTo = getReturnTo(formData, "/sequences");
 
   if (!messageId) {
-    redirect("/sequences?error=missing-message");
+    redirect(`${returnTo}?error=missing-message`);
   }
 
   try {
@@ -207,19 +213,21 @@ export async function approveOutboundDraftAction(formData: FormData) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unable to queue send.";
-    redirect(`/sequences?error=${encodeURIComponent(message)}`);
+    redirect(`${returnTo}?error=${encodeURIComponent(message)}`);
   }
 
   revalidatePath("/sequences");
+  revalidatePath("/reviews");
   revalidatePath("/contacts");
-  redirect("/sequences?queued=1");
+  redirect(`${returnTo}?queued=1`);
 }
 
 export async function retryOutboundMessageAction(formData: FormData) {
   const messageId = String(formData.get("messageId") ?? "");
+  const returnTo = getReturnTo(formData, "/sequences");
 
   if (!messageId) {
-    redirect("/sequences?error=missing-message");
+    redirect(`${returnTo}?error=missing-message`);
   }
 
   try {
@@ -230,18 +238,20 @@ export async function retryOutboundMessageAction(formData: FormData) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unable to retry send.";
-    redirect(`/sequences?error=${encodeURIComponent(message)}`);
+    redirect(`${returnTo}?error=${encodeURIComponent(message)}`);
   }
 
   revalidatePath("/sequences");
-  redirect("/sequences?queued=1");
+  revalidatePath("/reviews");
+  redirect(`${returnTo}?queued=1`);
 }
 
 export async function cancelOutboundMessageAction(formData: FormData) {
   const messageId = String(formData.get("messageId") ?? "");
+  const returnTo = getReturnTo(formData, "/sequences");
 
   if (!messageId) {
-    redirect("/sequences?error=missing-message");
+    redirect(`${returnTo}?error=missing-message`);
   }
 
   try {
@@ -252,12 +262,13 @@ export async function cancelOutboundMessageAction(formData: FormData) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unable to cancel outbound item.";
-    redirect(`/sequences?error=${encodeURIComponent(message)}`);
+    redirect(`${returnTo}?error=${encodeURIComponent(message)}`);
   }
 
   revalidatePath("/sequences");
+  revalidatePath("/reviews");
   revalidatePath("/contacts");
-  redirect("/sequences?cancelled=1");
+  redirect(`${returnTo}?cancelled=1`);
 }
 
 export async function recordReplySignalAction(formData: FormData) {

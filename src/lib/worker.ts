@@ -1,7 +1,10 @@
 import { env } from "@/lib/env";
-import { processNextGoogleSync } from "@/lib/google-worker";
+import { processNextGoogleReplySync, processNextGoogleSync } from "@/lib/google-worker";
 import { processNextImportBatch } from "@/lib/import-worker";
-import { processNextMicrosoftSync } from "@/lib/microsoft-worker";
+import {
+  processNextMicrosoftReplySync,
+  processNextMicrosoftSync,
+} from "@/lib/microsoft-worker";
 import {
   processNextOutboundSend,
   processNextSequenceDraft,
@@ -37,8 +40,10 @@ export async function runWorker(options?: {
     try {
       const [
         processedGoogle,
+        processedGoogleReplies,
         processedImport,
         processedMicrosoft,
+        processedMicrosoftReplies,
         processedOutboundSend,
         processedSequenceDraft,
         processedTodoistAccount,
@@ -46,8 +51,10 @@ export async function runWorker(options?: {
       ] =
         await Promise.all([
           processNextGoogleSync(logger),
+          processNextGoogleReplySync(logger),
           processNextImportBatch(importBatchSize),
           processNextMicrosoftSync(logger),
+          processNextMicrosoftReplySync(logger),
           processNextOutboundSend(logger),
           processNextSequenceDraft(logger),
           processNextTodoistAccountSync(logger),
@@ -60,8 +67,10 @@ export async function runWorker(options?: {
 
       if (
         !processedGoogle &&
+        !processedGoogleReplies &&
         !processedImport &&
         !processedMicrosoft &&
+        !processedMicrosoftReplies &&
         !processedOutboundSend &&
         !processedSequenceDraft &&
         !processedTodoistAccount &&

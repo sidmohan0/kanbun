@@ -15,11 +15,17 @@ async function getAuditActorUserId() {
   return user.id;
 }
 
+function getReturnTo(formData: FormData, fallback: string) {
+  const value = String(formData.get("returnTo") ?? "").trim();
+  return value.startsWith("/") ? value : fallback;
+}
+
 export async function resolveMergeReviewAction(formData: FormData) {
   const reviewId = String(formData.get("reviewId") ?? "");
+  const returnTo = getReturnTo(formData, "/reviews");
 
   if (!reviewId) {
-    redirect("/reviews?error=missing-review");
+    redirect(`${returnTo}?error=missing-review`);
   }
 
   const decisions = Object.fromEntries(
@@ -39,20 +45,21 @@ export async function resolveMergeReviewAction(formData: FormData) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unable to resolve merge review.";
-    redirect(`/reviews?error=${encodeURIComponent(message)}`);
+    redirect(`${returnTo}?error=${encodeURIComponent(message)}`);
   }
 
   revalidatePath("/");
   revalidatePath("/contacts");
   revalidatePath("/reviews");
-  redirect("/reviews?resolved=1");
+  redirect(`${returnTo}?resolved=1`);
 }
 
 export async function dismissMergeReviewAction(formData: FormData) {
   const reviewId = String(formData.get("reviewId") ?? "");
+  const returnTo = getReturnTo(formData, "/reviews");
 
   if (!reviewId) {
-    redirect("/reviews?error=missing-review");
+    redirect(`${returnTo}?error=missing-review`);
   }
 
   try {
@@ -63,11 +70,11 @@ export async function dismissMergeReviewAction(formData: FormData) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unable to dismiss merge review.";
-    redirect(`/reviews?error=${encodeURIComponent(message)}`);
+    redirect(`${returnTo}?error=${encodeURIComponent(message)}`);
   }
 
   revalidatePath("/");
   revalidatePath("/contacts");
   revalidatePath("/reviews");
-  redirect("/reviews?dismissed=1");
+  redirect(`${returnTo}?dismissed=1`);
 }

@@ -12,6 +12,7 @@
     "format:fix": "prettier --write .",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
@@ -42,6 +43,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

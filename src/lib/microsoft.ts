@@ -1,12 +1,14 @@
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
   connectedAccounts,
   contactIdentities,
   contactSources,
   contacts,
+  outboundMessages,
+  replySignals,
 } from "@/db/schema";
 import { buildUniqueSlug, mergeContactFields } from "@/lib/contacts";
 import { normalizeEmail } from "@/lib/csv";
@@ -14,9 +16,15 @@ import { env } from "@/lib/env";
 import { upsertMergeReview } from "@/lib/merge-reviews";
 import {
   MICROSOFT_CONTACTS_SCOPE,
+  MICROSOFT_REPLY_READ_SCOPE,
   MICROSOFT_SEND_SCOPE,
 } from "@/lib/provider-scopes";
+import {
+  buildLatestSentContactMap,
+  matchInboundReplies,
+} from "@/lib/reply-detection";
 import { decryptSecret, encryptSecret } from "@/lib/secrets";
+import { recordReplySignal } from "@/lib/sequences";
 
 const MICROSOFT_OAUTH_STATE_COOKIE = "kanbun_microsoft_oauth_state";
 const MICROSOFT_SCOPES = [
@@ -26,6 +34,7 @@ const MICROSOFT_SCOPES = [
   "email",
   "User.Read",
   MICROSOFT_CONTACTS_SCOPE,
+  MICROSOFT_REPLY_READ_SCOPE,
   MICROSOFT_SEND_SCOPE,
 ];
 
@@ -55,6 +64,21 @@ type MicrosoftContact = {
 type MicrosoftContactsResponse = {
   "@odata.nextLink"?: string;
   value?: MicrosoftContact[];
+};
+
+type MicrosoftInboxMessage = {
+  from?: {
+    emailAddress?: {
+      address?: string | null;
+    };
+  };
+  id: string;
+  receivedDateTime?: string | null;
+  subject?: string | null;
+};
+
+type MicrosoftInboxMessagesResponse = {
+  value?: MicrosoftInboxMessage[];
 };
 
 function microsoftTenantAuthority() {
@@ -109,6 +133,14 @@ async function microsoftFetchWithoutJson(
 
 function pickPrimaryEmail(contact: MicrosoftContact) {
   return normalizeEmail(contact.emailAddresses?.find((email) => email.address)?.address);
+}
+
+function getMicrosoftMetadataTimestamp(
+  metadata: Record<string, unknown>,
+  key: string,
+) {
+  const value = metadata[key];
+  return typeof value === "string" ? value : null;
 }
 
 async function ensureIdentity(params: {
@@ -441,6 +473,148 @@ export async function getMicrosoftAccessToken(accountId: string) {
   }
 
   return refreshMicrosoftAccessToken(accountId);
+}
+
+async function listRecentMicrosoftInboxMessages(input: {
+  accessToken: string;
+  since: Date;
+}) {
+  const params = new URLSearchParams({
+    $filter: `receivedDateTime ge ${input.since.toISOString()}`,
+    $orderby: "receivedDateTime desc",
+    $select: "id,from,receivedDateTime,subject",
+    $top: "50",
+  });
+
+  const response = await microsoftFetch<MicrosoftInboxMessagesResponse>(
+    `https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?${params.toString()}`,
+    {
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+      },
+    },
+    "Unable to fetch Microsoft inbox messages",
+  );
+
+  return (response.value ?? [])
+    .map((message) => ({
+      receivedAt: new Date(message.receivedDateTime ?? Date.now()),
+      senderEmail: normalizeEmail(message.from?.emailAddress?.address ?? null),
+      summary: message.subject
+        ? `Automatic Outlook reply detected: ${message.subject}`
+        : null,
+    }))
+    .filter((message) => !Number.isNaN(message.receivedAt.getTime()));
+}
+
+export async function syncMicrosoftRepliesForAccount(accountId: string) {
+  const account = await db.query.connectedAccounts.findFirst({
+    where: eq(connectedAccounts.id, accountId),
+  });
+
+  if (!account) {
+    throw new Error("Connected Microsoft account not found.");
+  }
+
+  if (!account.grantedScopes.includes(MICROSOFT_REPLY_READ_SCOPE)) {
+    return {
+      checkedCount: 0,
+      detectedCount: 0,
+      skippedReason: "Reconnect Microsoft to enable automatic reply detection.",
+    };
+  }
+
+  const accessToken = await getMicrosoftAccessToken(accountId);
+  const metadata = (account.metadata as Record<string, unknown>) ?? {};
+  const cursorAt =
+    getMicrosoftMetadataTimestamp(metadata, "replySyncCursorAt") ??
+    new Date(Date.now() - 1000 * 60 * 60 * 24 * 14).toISOString();
+
+  const [recentInboundMessages, sentMessages] = await Promise.all([
+    listRecentMicrosoftInboxMessages({
+      accessToken,
+      since: new Date(cursorAt),
+    }),
+    db.query.outboundMessages.findMany({
+      where: and(
+        eq(outboundMessages.connectedAccountId, accountId),
+        eq(outboundMessages.provider, "microsoft"),
+        eq(outboundMessages.status, "sent"),
+      ),
+      orderBy: [desc(outboundMessages.sentAt)],
+      limit: 250,
+    }),
+  ]);
+
+  const contactIds = Array.from(new Set(sentMessages.map((message) => message.contactId)));
+  const contactRows = contactIds.length
+    ? await db.query.contacts.findMany({
+        where: inArray(contacts.id, contactIds),
+        columns: {
+          displayName: true,
+          id: true,
+          primaryEmail: true,
+        },
+      })
+    : [];
+  const contactMap = new Map(contactRows.map((contact) => [contact.id, contact]));
+  const sentContacts = buildLatestSentContactMap(
+    sentMessages.map((message) => ({
+      contactId: message.contactId,
+      contactName: contactMap.get(message.contactId)?.displayName ?? "Contact",
+      primaryEmail: contactMap.get(message.contactId)?.primaryEmail ?? null,
+      sentAt: message.sentAt,
+    })),
+  );
+  const replyMatches = matchInboundReplies(sentContacts, recentInboundMessages);
+
+  let detectedCount = 0;
+
+  for (const match of replyMatches) {
+    const existingSignal = await db.query.replySignals.findFirst({
+      where: eq(replySignals.contactId, match.contactId),
+      columns: {
+        id: true,
+      },
+    });
+
+    if (existingSignal) {
+      continue;
+    }
+
+    await recordReplySignal({
+      contactId: match.contactId,
+      sourceType: "microsoft_auto",
+      summary:
+        match.summary ??
+        `Automatic Outlook reply detected from ${match.senderEmail}.`,
+    });
+    detectedCount += 1;
+  }
+
+  const newestTimestamp =
+    recentInboundMessages
+      .map((message) => message.receivedAt.getTime())
+      .sort((left, right) => right - left)[0] ?? Date.now();
+
+  await db
+    .update(connectedAccounts)
+    .set({
+      metadata: {
+        ...metadata,
+        replySyncCursorAt: new Date(newestTimestamp).toISOString(),
+        replySyncLastError: null,
+        replySyncLastRunAt: new Date().toISOString(),
+      },
+      updatedAt: new Date(),
+    })
+    .where(eq(connectedAccounts.id, account.id));
+
+  return {
+    checkedCount: recentInboundMessages.length,
+    detectedCount,
+    skippedReason: null,
+  };
 }
 
 export async function syncMicrosoftContactsForAccount(accountId: string) {
