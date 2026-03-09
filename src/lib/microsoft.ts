@@ -917,6 +917,7 @@ export async function sendMicrosoftMessage(input: {
     diagnostic: draft.id
       ? `microsoft message ${draft.id} in conversation ${draft.conversationId ?? "unknown"}`
       : `microsoft send completed for outbound ${input.messageId}`,
+    providerInternetMessageId: draft.internetMessageId ?? null,
     providerMessageId: draft.id ?? null,
     providerThreadId: draft.conversationId ?? null,
   };

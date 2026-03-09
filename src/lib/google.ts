@@ -20,8 +20,10 @@ import {
   GOOGLE_SEND_SCOPE,
 } from "@/lib/provider-scopes";
 import {
+  extractMessageReferenceIds,
   extractEmailAddress,
   matchThreadedInboundReplies,
+  normalizeMessageReferenceId,
 } from "@/lib/reply-detection";
 import { decryptSecret, encryptSecret } from "@/lib/secrets";
 import { recordReplySignal } from "@/lib/sequences";
@@ -88,6 +90,12 @@ type GmailSendDiagnosticMessage = {
   id?: string;
   internalDate?: string;
   labelIds?: string[];
+  payload?: {
+    headers?: Array<{
+      name?: string;
+      value?: string;
+    }>;
+  };
   threadId?: string;
 };
 
@@ -184,6 +192,23 @@ function getGoogleReplySummary(message: GmailMetadataMessage) {
     null;
 
   return subject ? `Automatic Gmail reply detected: ${subject}` : null;
+}
+
+function getGoogleHeaderValue(
+  message: GmailMetadataMessage | GmailSendDiagnosticMessage | null | undefined,
+  name: string,
+) {
+  return (
+    message?.payload?.headers?.find(
+      (header) => header.name?.toLowerCase() === name.toLowerCase(),
+    )?.value ?? null
+  );
+}
+
+function getGoogleProviderInternetMessageId(
+  message: GmailSendDiagnosticMessage | null,
+) {
+  return normalizeMessageReferenceId(getGoogleHeaderValue(message, "Message-ID"));
 }
 
 async function ensureIdentity(params: {
@@ -532,28 +557,40 @@ async function listRecentGoogleInboundMessages(input: {
   );
 
   const results = await Promise.all(
-    (listResponse.messages ?? []).map((message) =>
-      googleFetch<GmailMetadataMessage>(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?${new URLSearchParams({
+    (listResponse.messages ?? []).map((message) => {
+      const metadataParams = (() => {
+        const params = new URLSearchParams({
           format: "metadata",
-          metadataHeaders: "From",
-        }).toString()}&metadataHeaders=Subject`,
+        });
+        params.append("metadataHeaders", "From");
+        params.append("metadataHeaders", "Subject");
+        params.append("metadataHeaders", "In-Reply-To");
+        params.append("metadataHeaders", "References");
+        return params;
+      })();
+
+      return googleFetch<GmailMetadataMessage>(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?${metadataParams.toString()}`,
         {
           headers: {
             Authorization: `Bearer ${input.accessToken}`,
           },
         },
         "Unable to fetch Gmail reply metadata",
-      ),
-    ),
+      );
+    }),
   );
 
   return results
     .map((message) => ({
+      inReplyTo: getGoogleHeaderValue(message, "In-Reply-To"),
       providerThreadId: message.threadId ?? null,
+      referenceMessageIds: extractMessageReferenceIds(
+        getGoogleHeaderValue(message, "References"),
+      ),
       receivedAt: new Date(Number(message.internalDate ?? Date.now())),
       senderEmail: extractEmailAddress(
-        message.payload?.headers?.find((header) => header.name === "From")?.value,
+        getGoogleHeaderValue(message, "From"),
       ),
       summary: getGoogleReplySummary(message),
     }))
@@ -622,6 +659,17 @@ export async function syncGoogleRepliesForAccount(accountId: string) {
     {
       contactId: string;
       contactName: string;
+      providerInternetMessageId?: string | null;
+      senderEmail: string;
+      sentAt: Date;
+    }
+  >();
+  const sentMessageReferences = new Map<
+    string,
+    {
+      contactId: string;
+      contactName: string;
+      providerInternetMessageId?: string | null;
       senderEmail: string;
       sentAt: Date;
     }
@@ -631,6 +679,12 @@ export async function syncGoogleRepliesForAccount(accountId: string) {
     const providerThreadId = message.providerThreadId?.trim();
     const contact = contactMap.get(message.contactId);
     const senderEmail = normalizeEmail(contact?.primaryEmail);
+    const providerInternetMessageId = normalizeMessageReferenceId(
+      typeof (message.metadata as Record<string, unknown> | null)?.providerInternetMessageId ===
+        "string"
+        ? ((message.metadata as Record<string, unknown>).providerInternetMessageId as string)
+        : null,
+    );
 
     if (!providerThreadId || !senderEmail || !message.sentAt) {
       continue;
@@ -642,6 +696,17 @@ export async function syncGoogleRepliesForAccount(accountId: string) {
       sentThreads.set(providerThreadId, {
         contactId: message.contactId,
         contactName: contact?.displayName ?? "Contact",
+        providerInternetMessageId,
+        senderEmail,
+        sentAt: message.sentAt,
+      });
+    }
+
+    if (providerInternetMessageId) {
+      sentMessageReferences.set(providerInternetMessageId, {
+        contactId: message.contactId,
+        contactName: contact?.displayName ?? "Contact",
+        providerInternetMessageId,
         senderEmail,
         sentAt: message.sentAt,
       });
@@ -651,6 +716,7 @@ export async function syncGoogleRepliesForAccount(accountId: string) {
   const replyMatches = matchThreadedInboundReplies(
     sentThreads,
     recentInboundMessages,
+    sentMessageReferences,
   );
 
   let detectedCount = 0;
@@ -718,7 +784,6 @@ export async function syncGoogleContactsForAccount(accountId: string) {
   let nextSyncToken = account.syncCursor ?? undefined;
   let syncedCount = 0;
 
-  try {
   try {
     do {
       const params = new URLSearchParams({
@@ -901,24 +966,6 @@ export async function syncGoogleContactsForAccount(accountId: string) {
 
     throw error;
   }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Google sync failed.";
-
-    if (message.includes("(410)") && account.syncCursor) {
-      await db
-        .update(connectedAccounts)
-        .set({
-          syncCursor: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(connectedAccounts.id, account.id));
-
-      return syncGoogleContactsForAccount(accountId);
-    }
-
-    throw error;
-  }
-
   await db
     .update(connectedAccounts)
     .set({
@@ -984,7 +1031,13 @@ export async function sendGoogleMessage(input: {
 
   const messageMetadata = response?.id
     ? await googleFetch<GmailSendDiagnosticMessage>(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${response.id}?format=minimal`,
+        (() => {
+          const params = new URLSearchParams({
+            format: "metadata",
+          });
+          params.append("metadataHeaders", "Message-ID");
+          return `https://gmail.googleapis.com/gmail/v1/users/me/messages/${response.id}?${params.toString()}`;
+        })(),
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -998,6 +1051,7 @@ export async function sendGoogleMessage(input: {
     diagnostic: messageMetadata?.id
       ? `gmail message ${messageMetadata.id} in thread ${messageMetadata.threadId ?? "unknown"}`
       : `gmail send completed for outbound ${input.messageId}`,
+    providerInternetMessageId: getGoogleProviderInternetMessageId(messageMetadata),
     providerMessageId: response?.id ?? null,
     providerThreadId: messageMetadata?.threadId ?? response?.threadId ?? null,
   };

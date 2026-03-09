@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildLatestSentContactMap,
   extractEmailAddress,
+  extractMessageReferenceIds,
   matchInboundReplies,
   matchThreadedInboundReplies,
+  normalizeMessageReferenceId,
 } from "@/lib/reply-detection";
 
 describe("extractEmailAddress", () => {
@@ -55,6 +57,78 @@ describe("matchThreadedInboundReplies", () => {
         summary: "Re: hello",
       },
     ]);
+  });
+
+  it("prefers explicit message references when available", () => {
+    const sentThreads = new Map([
+      [
+        "thread-older",
+        {
+          contactId: "contact-1",
+          contactName: "Asha Patel",
+          providerInternetMessageId: "older@example.test",
+          senderEmail: "asha@example.com",
+          sentAt: new Date("2026-03-03T12:00:00.000Z"),
+        },
+      ],
+      [
+        "thread-current",
+        {
+          contactId: "contact-2",
+          contactName: "Bryn Carter",
+          providerInternetMessageId: "current@example.test",
+          senderEmail: "bryn@example.com",
+          sentAt: new Date("2026-03-03T12:30:00.000Z"),
+        },
+      ],
+    ]);
+
+    const sentReferences = new Map([
+      ["current@example.test", sentThreads.get("thread-current")!],
+    ]);
+
+    const matches = matchThreadedInboundReplies(
+      sentThreads,
+      [
+        {
+          inReplyTo: "<current@example.test>",
+          providerThreadId: "thread-older",
+          receivedAt: new Date("2026-03-03T13:00:00.000Z"),
+          referenceMessageIds: ["older@example.test"],
+          senderEmail: "bryn@example.com",
+          summary: "Threaded reply",
+        },
+      ],
+      sentReferences,
+    );
+
+    expect(matches).toEqual([
+      {
+        contactId: "contact-2",
+        contactName: "Bryn Carter",
+        providerThreadId: "thread-older",
+        receivedAt: new Date("2026-03-03T13:00:00.000Z"),
+        senderEmail: "bryn@example.com",
+        summary: "Threaded reply",
+      },
+    ]);
+  });
+});
+
+describe("message reference helpers", () => {
+  it("normalizes single message references", () => {
+    expect(normalizeMessageReferenceId("<ABC@example.com>")).toBe(
+      "abc@example.com",
+    );
+    expect(normalizeMessageReferenceId("")).toBeNull();
+  });
+
+  it("extracts unique reference ids from header values", () => {
+    expect(
+      extractMessageReferenceIds(
+        "<first@example.test> <second@example.test> <first@example.test>",
+      ),
+    ).toEqual(["first@example.test", "second@example.test"]);
   });
 });
 

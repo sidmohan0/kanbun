@@ -43,7 +43,12 @@ function outboundDiagnosticMetadata(value: unknown) {
   if (!value || typeof value !== "object") {
     return {
       attemptCount: 0,
+      blockedReason: null as string | null,
+      copyRevision: 0,
       deliveryDiagnostic: null as string | null,
+      deliveryState: null as string | null,
+      failureCategory: null as string | null,
+      retryable: true,
     };
   }
 
@@ -52,10 +57,22 @@ function outboundDiagnosticMetadata(value: unknown) {
   return {
     attemptCount:
       typeof metadata.attemptCount === "number" ? metadata.attemptCount : 0,
+    blockedReason:
+      typeof metadata.blockedReason === "string" ? metadata.blockedReason : null,
+    copyRevision:
+      typeof metadata.copyRevision === "number" ? metadata.copyRevision : 0,
     deliveryDiagnostic:
       typeof metadata.deliveryDiagnostic === "string"
         ? metadata.deliveryDiagnostic
         : null,
+    deliveryState:
+      typeof metadata.deliveryState === "string" ? metadata.deliveryState : null,
+    failureCategory:
+      typeof metadata.failureCategory === "string"
+        ? metadata.failureCategory
+        : null,
+    retryable:
+      typeof metadata.retryable === "boolean" ? metadata.retryable : true,
   };
 }
 
@@ -69,7 +86,7 @@ function feedbackMessage(params: Record<string, string | string[] | undefined>) 
   }
 
   if (params.queued === "1") {
-    return "Outbound item queued. The worker will send it when policy allows.";
+    return "Outbound item saved and queued. The worker will send it when policy allows.";
   }
 
   if (params.cancelled === "1") {
@@ -147,7 +164,7 @@ export default async function SequencesPage({
             </div>
             <div className="rounded-2xl bg-secondary/65 px-4 py-4">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                Pending approvals
+                Needs attention
               </p>
               <p className="mt-2 text-2xl font-semibold text-foreground">
                 {approvals.length}
@@ -570,8 +587,8 @@ export default async function SequencesPage({
         <div className="mt-5 space-y-4">
           {approvals.length === 0 ? (
             <div className="rounded-2xl border border-border/85 bg-background/75 px-4 py-4 text-sm text-muted-foreground">
-              No drafts are waiting right now. Enroll a contact in an active
-              sequence, then let the worker generate the due draft.
+              No outbound items need attention right now. Enroll a contact in
+              an active sequence, then let the worker generate the due draft.
             </div>
           ) : (
             approvals.map((draft) => (
@@ -601,7 +618,9 @@ export default async function SequencesPage({
                             variant={
                               draft.status === "failed"
                                 ? "destructive"
-                                : "outline"
+                                : draft.status === "queued"
+                                  ? "secondary"
+                                  : "outline"
                             }
                           >
                             {draft.status}
@@ -641,11 +660,25 @@ export default async function SequencesPage({
                         </div>
                       ) : null}
 
+                      {diagnostics.blockedReason &&
+                      draft.status === "queued" ? (
+                        <div className="rounded-xl border border-amber-300/40 bg-amber-100/50 px-3 py-3 text-sm text-amber-900">
+                          Blocked for now: {diagnostics.blockedReason}
+                        </div>
+                      ) : null}
+
                       {diagnostics.attemptCount > 0 ||
-                      diagnostics.deliveryDiagnostic ? (
+                      diagnostics.deliveryDiagnostic ||
+                      diagnostics.copyRevision > 0 ||
+                      diagnostics.failureCategory ? (
                         <div className="rounded-xl border border-border/80 bg-secondary/60 px-3 py-3 text-sm text-muted-foreground">
-                          Attempts {diagnostics.attemptCount}.{" "}
+                          Attempts {diagnostics.attemptCount}. Revision{" "}
+                          {Math.max(diagnostics.copyRevision, 1)}.{" "}
+                          {diagnostics.failureCategory
+                            ? `Failure class: ${diagnostics.failureCategory}. `
+                            : null}
                           {diagnostics.deliveryDiagnostic ??
+                            diagnostics.deliveryState ??
                             "No provider diagnostic captured yet."}
                         </div>
                       ) : null}
@@ -675,7 +708,15 @@ export default async function SequencesPage({
                           >
                             Cancel
                           </Button>
-                          <Button type="submit">Approve and queue send</Button>
+                          <Button type="submit">
+                            {draft.status === "queued"
+                              ? "Save copy and keep queued"
+                              : draft.status === "failed"
+                                ? diagnostics.retryable
+                                  ? "Save copy and requeue"
+                                  : "Save revised copy and requeue"
+                                : "Approve and queue send"}
+                          </Button>
                         </div>
                       </div>
                     </>

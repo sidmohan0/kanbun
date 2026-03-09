@@ -148,6 +148,163 @@ function getMetadataNumber(
   return typeof value === "number" ? value : 0;
 }
 
+function getMetadataString(
+  metadata: Record<string, unknown> | null | undefined,
+  key: string,
+) {
+  const value = metadata?.[key];
+  return typeof value === "string" ? value : null;
+}
+
+function appendDraftRevision(
+  metadata: Record<string, unknown> | null | undefined,
+  input: {
+    actorUserId?: string | null;
+    body: string;
+    reason: "approved" | "edited_failed" | "edited_queued" | "requeued";
+    subject: string;
+  },
+) {
+  const previousRevisions = Array.isArray(metadata?.draftRevisions)
+    ? metadata?.draftRevisions
+    : [];
+  const revisionNumber = getMetadataNumber(metadata, "copyRevision") + 1;
+  const nextRevision = {
+    actorUserId: input.actorUserId ?? "local",
+    approvedAt: new Date().toISOString(),
+    body: input.body,
+    reason: input.reason,
+    revision: revisionNumber,
+    subject: input.subject,
+  };
+
+  return {
+    ...(metadata ?? {}),
+    copyRevision: revisionNumber,
+    draftRevisions: [...previousRevisions, nextRevision].slice(-10),
+    lastApprovedAt: nextRevision.approvedAt,
+    queuedBy: input.actorUserId ?? "local",
+  };
+}
+
+function classifyOutboundFailure(errorMessage: string) {
+  const normalized = errorMessage.toLowerCase();
+
+  if (
+    normalized.includes("missing refresh token") ||
+    normalized.includes("invalid_grant") ||
+    normalized.includes("invalid credentials") ||
+    normalized.includes("(401)")
+  ) {
+    return {
+      accountStatus: "reconnect_required" as const,
+      category: "auth_reconnect_required",
+      retryable: false,
+    };
+  }
+
+  if (
+    normalized.includes("insufficient permission") ||
+    normalized.includes("insufficient permissions") ||
+    normalized.includes("insufficient authentication scopes") ||
+    normalized.includes("(403)")
+  ) {
+    return {
+      accountStatus: "reconnect_required" as const,
+      category: "permission_reconnect_required",
+      retryable: false,
+    };
+  }
+
+  if (
+    normalized.includes("(429)") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("quota")
+  ) {
+    return {
+      accountStatus: "degraded" as const,
+      category: "rate_limited",
+      retryable: true,
+    };
+  }
+
+  if (
+    normalized.includes("(500)") ||
+    normalized.includes("(502)") ||
+    normalized.includes("(503)") ||
+    normalized.includes("(504)") ||
+    normalized.includes("timed out") ||
+    normalized.includes("timeout")
+  ) {
+    return {
+      accountStatus: "degraded" as const,
+      category: "temporary_provider_error",
+      retryable: true,
+    };
+  }
+
+  if (
+    normalized.includes("invalid recipient") ||
+    normalized.includes("recipient address rejected") ||
+    normalized.includes("primary email is required")
+  ) {
+    return {
+      accountStatus: null,
+      category: "invalid_recipient",
+      retryable: false,
+    };
+  }
+
+  return {
+    accountStatus: null,
+    category: "unknown",
+    retryable: true,
+  };
+}
+
+async function markConnectedAccountSendFailure(
+  accountId: string | null | undefined,
+  errorMessage: string,
+) {
+  if (!accountId) {
+    return;
+  }
+
+  const account = await db.query.connectedAccounts.findFirst({
+    where: eq(connectedAccounts.id, accountId),
+    columns: {
+      id: true,
+      metadata: true,
+      status: true,
+    },
+  });
+
+  if (!account) {
+    return;
+  }
+
+  const classification = classifyOutboundFailure(errorMessage);
+
+  if (!classification.accountStatus) {
+    return;
+  }
+
+  await db
+    .update(connectedAccounts)
+    .set({
+      lastError: errorMessage,
+      metadata: {
+        ...((account.metadata as Record<string, unknown>) ?? {}),
+        outboundSendFailureCategory: classification.category,
+        outboundSendLastError: errorMessage,
+        outboundSendLastErrorAt: new Date().toISOString(),
+      },
+      status: classification.accountStatus,
+      updatedAt: new Date(),
+    })
+    .where(eq(connectedAccounts.id, account.id));
+}
+
 async function getConnectedSendAccountsForUser(userId: string) {
   const accounts = await db.query.connectedAccounts.findMany({
     where: and(
@@ -309,6 +466,7 @@ export async function listPendingOutboundApprovals() {
     where: or(
       eq(outboundMessages.status, "draft"),
       eq(outboundMessages.status, "failed"),
+      eq(outboundMessages.status, "queued"),
     ),
     orderBy: [asc(outboundMessages.dueAt), desc(outboundMessages.createdAt)],
   });
@@ -1147,8 +1305,12 @@ export async function approveOutboundDraft(input: {
     throw new Error("Outbound draft not found.");
   }
 
-  if (message.status !== "draft" && message.status !== "failed") {
-    throw new Error("Only draft or failed outbound items can be queued.");
+  if (
+    message.status !== "draft" &&
+    message.status !== "failed" &&
+    message.status !== "queued"
+  ) {
+    throw new Error("Only draft, failed, or queued outbound items can be edited.");
   }
 
   const subject = input.subject.trim();
@@ -1168,6 +1330,14 @@ export async function approveOutboundDraft(input: {
     );
   }
 
+  const previousMetadata = (message.metadata as Record<string, unknown>) ?? {};
+  const reason =
+    message.status === "failed"
+      ? "edited_failed"
+      : message.status === "queued"
+        ? "edited_queued"
+        : "approved";
+
   await db
     .update(outboundMessages)
     .set({
@@ -1177,9 +1347,18 @@ export async function approveOutboundDraft(input: {
       finalSubject: subject,
       lastError: null,
       metadata: {
-        ...(message.metadata as Record<string, unknown>),
-        lastApprovedAt: new Date().toISOString(),
-        queuedBy: input.actorUserId ?? "local",
+        ...appendDraftRevision(previousMetadata, {
+          actorUserId: input.actorUserId,
+          body,
+          reason,
+          subject,
+        }),
+        blockedAt: null,
+        blockedReason: null,
+        deliveryDiagnostic:
+          getMetadataString(previousMetadata, "deliveryDiagnostic"),
+        failureCategory: null,
+        retryable: true,
       },
       queuedAt: new Date(),
       status: "queued",
@@ -1242,6 +1421,10 @@ export async function cancelOutboundMessage(input: {
     .update(outboundMessages)
     .set({
       lastError: "Cancelled by operator.",
+      metadata: {
+        ...((message.metadata as Record<string, unknown>) ?? {}),
+        deliveryState: "cancelled",
+      },
       status: "cancelled",
       updatedAt: new Date(),
     })
@@ -1326,10 +1509,18 @@ export async function recordReplySignal(input: {
   });
 
   for (const message of activeMessages) {
+    const existingMessage = await db.query.outboundMessages.findFirst({
+      where: eq(outboundMessages.id, message.id),
+    });
+
     await db
       .update(outboundMessages)
       .set({
         lastError: "Cancelled because a reply signal was recorded.",
+        metadata: {
+          ...((existingMessage?.metadata as Record<string, unknown>) ?? {}),
+          deliveryState: "cancelled",
+        },
         status: "cancelled",
         updatedAt: new Date(),
       })
@@ -1476,10 +1667,16 @@ export async function sendOutboundMessage(messageId: string) {
       metadata: {
         ...previousMetadata,
         attemptCount: getMetadataNumber(previousMetadata, "attemptCount") + 1,
+        blockedAt: null,
+        blockedReason: null,
+        deliveryState: "sent",
         deliveryDiagnostic: providerResult.diagnostic ?? null,
+        failureCategory: null,
         lastAttemptAt: new Date().toISOString(),
         lastReplySyncMode: "thread_aware",
         providerReplyAddress: contact.primaryEmail,
+        providerInternetMessageId: providerResult.providerInternetMessageId ?? null,
+        retryable: true,
       },
       providerMessageId: providerResult.providerMessageId,
       providerThreadId: providerResult.providerThreadId,
@@ -1515,6 +1712,7 @@ export async function markOutboundMessageFailed(
   }
 
   const previousMetadata = (message.metadata as Record<string, unknown>) ?? {};
+  const classification = classifyOutboundFailure(errorMessage);
   await db
     .update(outboundMessages)
     .set({
@@ -1523,13 +1721,20 @@ export async function markOutboundMessageFailed(
       metadata: {
         ...previousMetadata,
         attemptCount: getMetadataNumber(previousMetadata, "attemptCount") + 1,
+        blockedAt: null,
+        blockedReason: null,
+        deliveryState: "failed",
+        failureCategory: classification.category,
         lastAttemptAt: new Date().toISOString(),
         lastErrorAt: new Date().toISOString(),
+        retryable: classification.retryable,
       },
       status: "failed",
       updatedAt: new Date(),
     })
     .where(eq(outboundMessages.id, messageId));
+
+  await markConnectedAccountSendFailure(message.connectedAccountId, errorMessage);
 
   if (message.sequenceEnrollmentId) {
     await db
@@ -1584,12 +1789,19 @@ export async function claimNextQueuedOutboundMessageId() {
 
   for (const message of messages) {
     const blockReason = await getSendPolicyBlockReason(message);
+    const previousMetadata = (message.metadata as Record<string, unknown>) ?? {};
 
     if (blockReason) {
       await db
         .update(outboundMessages)
         .set({
           lastError: blockReason,
+          metadata: {
+            ...previousMetadata,
+            blockedAt: new Date().toISOString(),
+            blockedReason: blockReason,
+            deliveryState: "blocked",
+          },
           updatedAt: new Date(),
         })
         .where(eq(outboundMessages.id, message.id));
@@ -1600,6 +1812,12 @@ export async function claimNextQueuedOutboundMessageId() {
       .update(outboundMessages)
       .set({
         lastError: null,
+        metadata: {
+          ...previousMetadata,
+          blockedAt: null,
+          blockedReason: null,
+          deliveryState: "sending",
+        },
         status: "sending",
         updatedAt: new Date(),
       })

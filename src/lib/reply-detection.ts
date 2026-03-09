@@ -1,17 +1,27 @@
 import { normalizeEmail } from "@/lib/csv";
 
+export type InboundReplyCandidate = {
+  inReplyTo?: string | null;
+  providerThreadId?: string | null;
+  referenceMessageIds?: string[] | null;
+  receivedAt: Date;
+  senderEmail: string | null;
+  summary?: string | null;
+};
+
+export type SentThreadCandidate = {
+  contactId: string;
+  contactName: string;
+  providerInternetMessageId?: string | null;
+  senderEmail: string;
+  sentAt: Date;
+};
+
 export type SentContactCandidate = {
   contactId: string;
   contactName: string;
   primaryEmail: string | null;
   sentAt: Date | null;
-};
-
-export type InboundReplyCandidate = {
-  providerThreadId?: string | null;
-  receivedAt: Date;
-  senderEmail: string | null;
-  summary?: string | null;
 };
 
 export function extractEmailAddress(value: string | null | undefined) {
@@ -54,6 +64,30 @@ export function buildLatestSentContactMap(
   }
 
   return map;
+}
+
+export function normalizeMessageReferenceId(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.trim().replace(/^<|>$/g, "").trim().toLowerCase();
+  return normalized || null;
+}
+
+export function extractMessageReferenceIds(value: string | null | undefined) {
+  if (!value) {
+    return [];
+  }
+
+  const matches = value.match(/<[^>]+>/g) ?? value.split(/\s+/);
+  return Array.from(
+    new Set(
+      matches
+        .map((match) => normalizeMessageReferenceId(match))
+        .filter((match): match is string => Boolean(match)),
+    ),
+  );
 }
 
 export function matchInboundReplies(
@@ -114,16 +148,9 @@ export function matchInboundReplies(
 }
 
 export function matchThreadedInboundReplies(
-  sentThreads: Map<
-    string,
-    {
-      contactId: string;
-      contactName: string;
-      senderEmail: string;
-      sentAt: Date;
-    }
-  >,
+  sentThreads: Map<string, SentThreadCandidate>,
   inboundMessages: InboundReplyCandidate[],
+  sentMessageReferences?: Map<string, SentThreadCandidate>,
 ) {
   const matches = new Map<
     string,
@@ -140,12 +167,20 @@ export function matchThreadedInboundReplies(
   for (const message of inboundMessages) {
     const providerThreadId = message.providerThreadId?.trim();
     const senderEmail = normalizeEmail(message.senderEmail);
+    const referenceIds = [
+      normalizeMessageReferenceId(message.inReplyTo),
+      ...(message.referenceMessageIds ?? []),
+    ].filter((referenceId): referenceId is string => Boolean(referenceId));
 
-    if (!providerThreadId || !senderEmail) {
+    if (!senderEmail) {
       continue;
     }
 
-    const sentThread = sentThreads.get(providerThreadId);
+    const sentThread =
+      referenceIds
+        .map((referenceId) => sentMessageReferences?.get(referenceId) ?? null)
+        .find((candidate): candidate is SentThreadCandidate => Boolean(candidate)) ??
+      (providerThreadId ? sentThreads.get(providerThreadId) ?? null : null);
 
     if (!sentThread) {
       continue;
@@ -165,7 +200,10 @@ export function matchThreadedInboundReplies(
       matches.set(sentThread.contactId, {
         contactId: sentThread.contactId,
         contactName: sentThread.contactName,
-        providerThreadId,
+        providerThreadId:
+          providerThreadId ??
+          sentThread.providerInternetMessageId ??
+          "reference-only",
         receivedAt: message.receivedAt,
         senderEmail,
         summary: message.summary?.trim() || null,
