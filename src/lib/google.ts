@@ -20,9 +20,8 @@ import {
   GOOGLE_SEND_SCOPE,
 } from "@/lib/provider-scopes";
 import {
-  buildLatestSentContactMap,
   extractEmailAddress,
-  matchInboundReplies,
+  matchThreadedInboundReplies,
 } from "@/lib/reply-detection";
 import { decryptSecret, encryptSecret } from "@/lib/secrets";
 import { recordReplySignal } from "@/lib/sequences";
@@ -82,6 +81,13 @@ type GmailMetadataMessage = {
       value?: string;
     }>;
   };
+  threadId?: string;
+};
+
+type GmailSendDiagnosticMessage = {
+  id?: string;
+  internalDate?: string;
+  labelIds?: string[];
   threadId?: string;
 };
 
@@ -544,6 +550,7 @@ async function listRecentGoogleInboundMessages(input: {
 
   return results
     .map((message) => ({
+      providerThreadId: message.threadId ?? null,
       receivedAt: new Date(Number(message.internalDate ?? Date.now())),
       senderEmail: extractEmailAddress(
         message.payload?.headers?.find((header) => header.name === "From")?.value,
@@ -592,7 +599,13 @@ export async function syncGoogleRepliesForAccount(accountId: string) {
     }),
   ]);
 
-  const contactIds = Array.from(new Set(sentMessages.map((message) => message.contactId)));
+  const contactIds = Array.from(
+    new Set(
+      sentMessages
+        .filter((message) => Boolean(message.providerThreadId))
+        .map((message) => message.contactId),
+    ),
+  );
   const contactRows = contactIds.length
     ? await db.query.contacts.findMany({
         where: inArray(contacts.id, contactIds),
@@ -604,15 +617,41 @@ export async function syncGoogleRepliesForAccount(accountId: string) {
       })
     : [];
   const contactMap = new Map(contactRows.map((contact) => [contact.id, contact]));
-  const sentContacts = buildLatestSentContactMap(
-    sentMessages.map((message) => ({
-      contactId: message.contactId,
-      contactName: contactMap.get(message.contactId)?.displayName ?? "Contact",
-      primaryEmail: contactMap.get(message.contactId)?.primaryEmail ?? null,
-      sentAt: message.sentAt,
-    })),
+  const sentThreads = new Map<
+    string,
+    {
+      contactId: string;
+      contactName: string;
+      senderEmail: string;
+      sentAt: Date;
+    }
+  >();
+
+  for (const message of sentMessages) {
+    const providerThreadId = message.providerThreadId?.trim();
+    const contact = contactMap.get(message.contactId);
+    const senderEmail = normalizeEmail(contact?.primaryEmail);
+
+    if (!providerThreadId || !senderEmail || !message.sentAt) {
+      continue;
+    }
+
+    const existing = sentThreads.get(providerThreadId);
+
+    if (!existing || existing.sentAt.getTime() < message.sentAt.getTime()) {
+      sentThreads.set(providerThreadId, {
+        contactId: message.contactId,
+        contactName: contact?.displayName ?? "Contact",
+        senderEmail,
+        sentAt: message.sentAt,
+      });
+    }
+  }
+
+  const replyMatches = matchThreadedInboundReplies(
+    sentThreads,
+    recentInboundMessages,
   );
-  const replyMatches = matchInboundReplies(sentContacts, recentInboundMessages);
 
   let detectedCount = 0;
 
@@ -649,8 +688,10 @@ export async function syncGoogleRepliesForAccount(accountId: string) {
       metadata: {
         ...metadata,
         replySyncCursorAt: new Date(newestTimestamp).toISOString(),
+        replySyncLastDetectedCount: detectedCount,
         replySyncLastError: null,
         replySyncLastRunAt: new Date().toISOString(),
+        replySyncMode: "thread",
       },
       updatedAt: new Date(),
     })
@@ -677,170 +718,206 @@ export async function syncGoogleContactsForAccount(accountId: string) {
   let nextSyncToken = account.syncCursor ?? undefined;
   let syncedCount = 0;
 
-  do {
-    const params = new URLSearchParams({
-      personFields: "names,emailAddresses,organizations",
-      pageSize: "200",
-      requestSyncToken: nextSyncToken ? "false" : "true",
-      sortOrder: "LAST_MODIFIED_ASCENDING",
-    });
+  try {
+  try {
+    do {
+      const params = new URLSearchParams({
+        personFields: "names,emailAddresses,organizations",
+        pageSize: "200",
+        requestSyncToken: nextSyncToken ? "false" : "true",
+        sortOrder: "LAST_MODIFIED_ASCENDING",
+      });
 
-    if (nextPageToken) {
-      params.set("pageToken", nextPageToken);
-    }
+      if (nextPageToken) {
+        params.set("pageToken", nextPageToken);
+      }
 
-    if (nextSyncToken) {
-      params.set("syncToken", nextSyncToken);
-    }
+      if (nextSyncToken) {
+        params.set("syncToken", nextSyncToken);
+      }
 
-    const response = await googleFetch<GoogleConnectionsResponse>(
-      `https://people.googleapis.com/v1/people/me/connections?${params.toString()}`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
+      const response = await googleFetch<GoogleConnectionsResponse>(
+        `https://people.googleapis.com/v1/people/me/connections?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
         },
-      },
-      "Unable to fetch Google contacts",
-    );
+        "Unable to fetch Google contacts",
+      );
 
-    for (const person of response.connections ?? []) {
-      const providerPersonKey = `google:${person.resourceName}`;
-      const providerIdentity = await db.query.contactIdentities.findFirst({
-        where: and(
-          eq(contactIdentities.kind, "provider_person_id"),
-          eq(contactIdentities.normalizedValue, providerPersonKey),
-        ),
-      });
-      const email = pickPrimaryEmail(person);
-      const emailIdentity = email
-        ? await db.query.contactIdentities.findFirst({
-            where: and(
-              eq(contactIdentities.kind, "email"),
-              eq(contactIdentities.normalizedValue, email),
-            ),
-          })
-        : null;
-      const matchedContactId =
-        providerIdentity?.contactId ?? emailIdentity?.contactId ?? null;
-      const displayName = pickDisplayName(person);
-      const organization = pickOrganization(person);
-
-      let contactId = matchedContactId;
-      let hasPrimaryEmailConflict = false;
-
-      if (contactId) {
-        const existingContact = await db.query.contacts.findFirst({
-          where: eq(contacts.id, contactId),
+      for (const person of response.connections ?? []) {
+        const providerPersonKey = `google:${person.resourceName}`;
+        const providerIdentity = await db.query.contactIdentities.findFirst({
+          where: and(
+            eq(contactIdentities.kind, "provider_person_id"),
+            eq(contactIdentities.normalizedValue, providerPersonKey),
+          ),
         });
-
-        if (existingContact) {
-          const proposedValues = {
-            company: organization?.name ?? null,
-            displayName: displayName || email || existingContact.displayName,
-            primaryEmail: email,
-            title: organization?.title ?? null,
-          } as const;
-          const merged = mergeContactFields(existingContact, proposedValues);
-          const review = await upsertMergeReview({
-            connectedAccountId: account.id,
-            contactId: existingContact.id,
-            currentValues: {
-              company: existingContact.company,
-              displayName: existingContact.displayName,
-              primaryEmail: existingContact.primaryEmail,
-              title: existingContact.title,
-            },
-            proposedValues,
-            provider: "google",
-            sourceLabel: account.email ?? account.displayName,
-            sourceRef: `${account.id}:${person.resourceName}`,
-          });
-          hasPrimaryEmailConflict = review.conflictFields.includes("primaryEmail");
-          const nextPrimaryEmail = review.conflictFields.includes("primaryEmail")
-            ? existingContact.primaryEmail
-            : merged.primaryEmail;
-
-          await db
-            .update(contacts)
-            .set({
-              company:
-                review.autoUpdates.company !== undefined
-                  ? merged.company
-                  : existingContact.company,
-              displayName:
-                review.autoUpdates.displayName !== undefined
-                  ? merged.displayName
-                  : existingContact.displayName,
-              primaryEmail: nextPrimaryEmail,
-              title:
-                review.autoUpdates.title !== undefined
-                  ? merged.title
-                  : existingContact.title,
-              updatedAt: new Date(),
+        const email = pickPrimaryEmail(person);
+        const emailIdentity = email
+          ? await db.query.contactIdentities.findFirst({
+              where: and(
+                eq(contactIdentities.kind, "email"),
+                eq(contactIdentities.normalizedValue, email),
+              ),
             })
-            .where(eq(contacts.id, existingContact.id));
+          : null;
+        const matchedContactId =
+          providerIdentity?.contactId ?? emailIdentity?.contactId ?? null;
+        const displayName = pickDisplayName(person);
+        const organization = pickOrganization(person);
+
+        let contactId = matchedContactId;
+        let hasPrimaryEmailConflict = false;
+
+        if (contactId) {
+          const existingContact = await db.query.contacts.findFirst({
+            where: eq(contacts.id, contactId),
+          });
+
+          if (existingContact) {
+            const proposedValues = {
+              company: organization?.name ?? null,
+              displayName: displayName || email || existingContact.displayName,
+              primaryEmail: email,
+              title: organization?.title ?? null,
+            } as const;
+            const merged = mergeContactFields(existingContact, proposedValues);
+            const review = await upsertMergeReview({
+              connectedAccountId: account.id,
+              contactId: existingContact.id,
+              currentValues: {
+                company: existingContact.company,
+                displayName: existingContact.displayName,
+                primaryEmail: existingContact.primaryEmail,
+                title: existingContact.title,
+              },
+              proposedValues,
+              provider: "google",
+              sourceLabel: account.email ?? account.displayName,
+              sourceRef: `${account.id}:${person.resourceName}`,
+            });
+            hasPrimaryEmailConflict = review.conflictFields.includes("primaryEmail");
+            const nextPrimaryEmail = review.conflictFields.includes("primaryEmail")
+              ? existingContact.primaryEmail
+              : merged.primaryEmail;
+
+            await db
+              .update(contacts)
+              .set({
+                company:
+                  review.autoUpdates.company !== undefined
+                    ? merged.company
+                    : existingContact.company,
+                displayName:
+                  review.autoUpdates.displayName !== undefined
+                    ? merged.displayName
+                    : existingContact.displayName,
+                primaryEmail: nextPrimaryEmail,
+                title:
+                  review.autoUpdates.title !== undefined
+                    ? merged.title
+                    : existingContact.title,
+                updatedAt: new Date(),
+              })
+              .where(eq(contacts.id, existingContact.id));
+          }
+        } else {
+          const slug = await buildUniqueSlug(displayName || email || "contact");
+          const [contact] = await db
+            .insert(contacts)
+            .values({
+              company: organization?.name ?? null,
+              displayName: displayName || email || "Unnamed contact",
+              primaryEmail: email,
+              slug,
+              title: organization?.title ?? null,
+            })
+            .returning();
+
+          contactId = contact.id;
         }
-      } else {
-        const slug = await buildUniqueSlug(displayName || email || "contact");
-        const [contact] = await db
-          .insert(contacts)
-          .values({
-            company: organization?.name ?? null,
-            displayName: displayName || email || "Unnamed contact",
-            primaryEmail: email,
-            slug,
-            title: organization?.title ?? null,
-          })
-          .returning();
 
-        contactId = contact.id;
-      }
+        if (!contactId) {
+          continue;
+        }
 
-      if (!contactId) {
-        continue;
-      }
-
-      await ensureIdentity({
-        contactId,
-        kind: "provider_person_id",
-        normalizedValue: providerPersonKey,
-        sourceType: "google",
-        value: person.resourceName,
-      });
-
-      await ensureIdentity({
-        contactId,
-        kind: "provider_contact_id",
-        normalizedValue: providerPersonKey,
-        sourceType: "google",
-        value: person.resourceName,
-      });
-
-      if (email && !hasPrimaryEmailConflict) {
         await ensureIdentity({
           contactId,
-          kind: "email",
-          normalizedValue: email,
+          kind: "provider_person_id",
+          normalizedValue: providerPersonKey,
           sourceType: "google",
-          value: email,
+          value: person.resourceName,
         });
+
+        await ensureIdentity({
+          contactId,
+          kind: "provider_contact_id",
+          normalizedValue: providerPersonKey,
+          sourceType: "google",
+          value: person.resourceName,
+        });
+
+        if (email && !hasPrimaryEmailConflict) {
+          await ensureIdentity({
+            contactId,
+            kind: "email",
+            normalizedValue: email,
+            sourceType: "google",
+            value: email,
+          });
+        }
+
+        await ensureContactSource({
+          contactId,
+          sourceLabel: account.email ?? account.displayName,
+          sourceRef: `${account.id}:${person.resourceName}`,
+        });
+
+        syncedCount += 1;
       }
 
-      await ensureContactSource({
-        contactId,
-        sourceLabel: account.email ?? account.displayName,
-        sourceRef: `${account.id}:${person.resourceName}`,
-      });
+      nextPageToken = response.nextPageToken;
 
-      syncedCount += 1;
+      if (response.nextSyncToken) {
+        nextSyncToken = response.nextSyncToken;
+      }
+    } while (nextPageToken);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Google sync failed.";
+
+    if (message.includes("(410)") && account.syncCursor) {
+      await db
+        .update(connectedAccounts)
+        .set({
+          syncCursor: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(connectedAccounts.id, account.id));
+
+      return syncGoogleContactsForAccount(accountId);
     }
 
-    nextPageToken = response.nextPageToken;
+    throw error;
+  }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Google sync failed.";
 
-    if (response.nextSyncToken) {
-      nextSyncToken = response.nextSyncToken;
+    if (message.includes("(410)") && account.syncCursor) {
+      await db
+        .update(connectedAccounts)
+        .set({
+          syncCursor: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(connectedAccounts.id, account.id));
+
+      return syncGoogleContactsForAccount(accountId);
     }
-  } while (nextPageToken);
+
+    throw error;
+  }
 
   await db
     .update(connectedAccounts)
@@ -849,6 +926,11 @@ export async function syncGoogleContactsForAccount(accountId: string) {
       lastSuccessfulSyncAt: new Date(),
       lastSyncedContactCount: syncedCount,
       status: "connected",
+      metadata: {
+        ...((account.metadata as Record<string, unknown>) ?? {}),
+        contactSyncCursorUpdatedAt: new Date().toISOString(),
+        contactSyncMode: "incremental",
+      },
       syncCursor: nextSyncToken ?? null,
       syncRequestedAt: null,
       updatedAt: new Date(),
@@ -871,6 +953,7 @@ function toBase64Url(value: string) {
 export async function sendGoogleMessage(input: {
   accountId: string;
   bodyText: string;
+  messageId: string;
   subject: string;
   to: string;
 }) {
@@ -899,8 +982,23 @@ export async function sendGoogleMessage(input: {
     "Unable to send Gmail message",
   );
 
+  const messageMetadata = response?.id
+    ? await googleFetch<GmailSendDiagnosticMessage>(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${response.id}?format=minimal`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+        "Unable to fetch Gmail sent message metadata",
+      )
+    : null;
+
   return {
+    diagnostic: messageMetadata?.id
+      ? `gmail message ${messageMetadata.id} in thread ${messageMetadata.threadId ?? "unknown"}`
+      : `gmail send completed for outbound ${input.messageId}`,
     providerMessageId: response?.id ?? null,
-    providerThreadId: response?.threadId ?? null,
+    providerThreadId: messageMetadata?.threadId ?? response?.threadId ?? null,
   };
 }

@@ -21,9 +21,11 @@ test("operator can create, search, edit, and follow up a contact", async ({
   await expect(page).toHaveURL(/\/contacts\/.+\?created=1$/);
   await expect(page.getByRole("heading", { name })).toBeVisible();
 
-  await page.getByLabel("Title").fill("Founder");
   await page
-    .getByLabel("Relationship summary")
+    .getByRole("textbox", { name: "Title", exact: true })
+    .fill("Founder");
+  await page
+    .getByRole("textbox", { name: "Relationship summary", exact: true })
     .fill("Updated during browser coverage.");
   await page.getByRole("button", { name: "Save contact details" }).click();
 

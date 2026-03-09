@@ -20,8 +20,7 @@ import {
   MICROSOFT_SEND_SCOPE,
 } from "@/lib/provider-scopes";
 import {
-  buildLatestSentContactMap,
-  matchInboundReplies,
+  matchThreadedInboundReplies,
 } from "@/lib/reply-detection";
 import { decryptSecret, encryptSecret } from "@/lib/secrets";
 import { recordReplySignal } from "@/lib/sequences";
@@ -63,10 +62,12 @@ type MicrosoftContact = {
 
 type MicrosoftContactsResponse = {
   "@odata.nextLink"?: string;
+  "@odata.deltaLink"?: string;
   value?: MicrosoftContact[];
 };
 
 type MicrosoftInboxMessage = {
+  conversationId?: string | null;
   from?: {
     emailAddress?: {
       address?: string | null;
@@ -79,6 +80,12 @@ type MicrosoftInboxMessage = {
 
 type MicrosoftInboxMessagesResponse = {
   value?: MicrosoftInboxMessage[];
+};
+
+type MicrosoftDraftMessage = {
+  conversationId?: string | null;
+  id?: string | null;
+  internetMessageId?: string | null;
 };
 
 function microsoftTenantAuthority() {
@@ -482,7 +489,7 @@ async function listRecentMicrosoftInboxMessages(input: {
   const params = new URLSearchParams({
     $filter: `receivedDateTime ge ${input.since.toISOString()}`,
     $orderby: "receivedDateTime desc",
-    $select: "id,from,receivedDateTime,subject",
+    $select: "conversationId,id,from,receivedDateTime,subject",
     $top: "50",
   });
 
@@ -498,6 +505,7 @@ async function listRecentMicrosoftInboxMessages(input: {
 
   return (response.value ?? [])
     .map((message) => ({
+      providerThreadId: message.conversationId ?? null,
       receivedAt: new Date(message.receivedDateTime ?? Date.now()),
       senderEmail: normalizeEmail(message.from?.emailAddress?.address ?? null),
       summary: message.subject
@@ -546,7 +554,13 @@ export async function syncMicrosoftRepliesForAccount(accountId: string) {
     }),
   ]);
 
-  const contactIds = Array.from(new Set(sentMessages.map((message) => message.contactId)));
+  const contactIds = Array.from(
+    new Set(
+      sentMessages
+        .filter((message) => Boolean(message.providerThreadId))
+        .map((message) => message.contactId),
+    ),
+  );
   const contactRows = contactIds.length
     ? await db.query.contacts.findMany({
         where: inArray(contacts.id, contactIds),
@@ -558,15 +572,41 @@ export async function syncMicrosoftRepliesForAccount(accountId: string) {
       })
     : [];
   const contactMap = new Map(contactRows.map((contact) => [contact.id, contact]));
-  const sentContacts = buildLatestSentContactMap(
-    sentMessages.map((message) => ({
-      contactId: message.contactId,
-      contactName: contactMap.get(message.contactId)?.displayName ?? "Contact",
-      primaryEmail: contactMap.get(message.contactId)?.primaryEmail ?? null,
-      sentAt: message.sentAt,
-    })),
+  const sentThreads = new Map<
+    string,
+    {
+      contactId: string;
+      contactName: string;
+      senderEmail: string;
+      sentAt: Date;
+    }
+  >();
+
+  for (const message of sentMessages) {
+    const providerThreadId = message.providerThreadId?.trim();
+    const contact = contactMap.get(message.contactId);
+    const senderEmail = normalizeEmail(contact?.primaryEmail);
+
+    if (!providerThreadId || !senderEmail || !message.sentAt) {
+      continue;
+    }
+
+    const existing = sentThreads.get(providerThreadId);
+
+    if (!existing || existing.sentAt.getTime() < message.sentAt.getTime()) {
+      sentThreads.set(providerThreadId, {
+        contactId: message.contactId,
+        contactName: contact?.displayName ?? "Contact",
+        senderEmail,
+        sentAt: message.sentAt,
+      });
+    }
+  }
+
+  const replyMatches = matchThreadedInboundReplies(
+    sentThreads,
+    recentInboundMessages,
   );
-  const replyMatches = matchInboundReplies(sentContacts, recentInboundMessages);
 
   let detectedCount = 0;
 
@@ -603,8 +643,10 @@ export async function syncMicrosoftRepliesForAccount(accountId: string) {
       metadata: {
         ...metadata,
         replySyncCursorAt: new Date(newestTimestamp).toISOString(),
+        replySyncLastDetectedCount: detectedCount,
         replySyncLastError: null,
         replySyncLastRunAt: new Date().toISOString(),
+        replySyncMode: "thread",
       },
       updatedAt: new Date(),
     })
@@ -627,148 +669,175 @@ export async function syncMicrosoftContactsForAccount(accountId: string) {
   }
 
   const accessToken = await getMicrosoftAccessToken(accountId);
-  let nextLink:
-    | string
-    | undefined = "https://graph.microsoft.com/v1.0/me/contacts?$top=200&$select=id,displayName,emailAddresses,companyName,jobTitle";
+  let nextLink: string | undefined =
+    account.syncCursor ??
+    "https://graph.microsoft.com/v1.0/me/contacts/delta?$top=200&$select=id,displayName,emailAddresses,companyName,jobTitle";
   let syncedCount = 0;
+  let nextDeltaLink = account.syncCursor ?? null;
 
-  while (nextLink) {
-    const response: MicrosoftContactsResponse =
-      await microsoftFetch<MicrosoftContactsResponse>(
-      nextLink,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      },
-      "Unable to fetch Microsoft contacts",
-      );
-
-    for (const person of response.value ?? []) {
-      const providerContactKey = `microsoft:${person.id}`;
-      const providerIdentity = await db.query.contactIdentities.findFirst({
-        where: and(
-          eq(contactIdentities.kind, "provider_contact_id"),
-          eq(contactIdentities.normalizedValue, providerContactKey),
-        ),
-      });
-      const email = pickPrimaryEmail(person);
-      const emailIdentity = email
-        ? await db.query.contactIdentities.findFirst({
-            where: and(
-              eq(contactIdentities.kind, "email"),
-              eq(contactIdentities.normalizedValue, email),
-            ),
-          })
-        : null;
-      const matchedContactId =
-        providerIdentity?.contactId ?? emailIdentity?.contactId ?? null;
-
-      let contactId = matchedContactId;
-      let hasPrimaryEmailConflict = false;
-
-      if (contactId) {
-        const existingContact = await db.query.contacts.findFirst({
-          where: eq(contacts.id, contactId),
-        });
-
-        if (existingContact) {
-          const proposedValues = {
-            company: person.companyName ?? null,
-            displayName:
-              person.displayName?.trim() || email || existingContact.displayName,
-            primaryEmail: email,
-            title: person.jobTitle ?? null,
-          } as const;
-          const merged = mergeContactFields(existingContact, proposedValues);
-          const review = await upsertMergeReview({
-            connectedAccountId: account.id,
-            contactId: existingContact.id,
-            currentValues: {
-              company: existingContact.company,
-              displayName: existingContact.displayName,
-              primaryEmail: existingContact.primaryEmail,
-              title: existingContact.title,
+  try {
+    while (nextLink) {
+      const response: MicrosoftContactsResponse =
+        await microsoftFetch<MicrosoftContactsResponse>(
+          nextLink,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
             },
-            proposedValues,
-            provider: "microsoft",
-            sourceLabel: account.email ?? account.displayName,
-            sourceRef: `${account.id}:${person.id}`,
-          });
-          hasPrimaryEmailConflict = review.conflictFields.includes("primaryEmail");
-
-          await db
-            .update(contacts)
-            .set({
-              company:
-                review.autoUpdates.company !== undefined
-                  ? merged.company
-                  : existingContact.company,
-              displayName:
-                review.autoUpdates.displayName !== undefined
-                  ? merged.displayName
-                  : existingContact.displayName,
-              primaryEmail: hasPrimaryEmailConflict
-                ? existingContact.primaryEmail
-                : merged.primaryEmail,
-              title:
-                review.autoUpdates.title !== undefined
-                  ? merged.title
-                  : existingContact.title,
-              updatedAt: new Date(),
-            })
-            .where(eq(contacts.id, existingContact.id));
-        }
-      } else {
-        const slug = await buildUniqueSlug(
-          person.displayName?.trim() || email || "contact",
+          },
+          "Unable to fetch Microsoft contacts",
         );
-        const [contact] = await db
-          .insert(contacts)
-          .values({
-            company: person.companyName ?? null,
-            displayName: person.displayName?.trim() || email || "Unnamed contact",
-            primaryEmail: email,
-            slug,
-            title: person.jobTitle ?? null,
-          })
-          .returning();
 
-        contactId = contact.id;
-      }
+      for (const person of response.value ?? []) {
+        const providerContactKey = `microsoft:${person.id}`;
+        const providerIdentity = await db.query.contactIdentities.findFirst({
+          where: and(
+            eq(contactIdentities.kind, "provider_contact_id"),
+            eq(contactIdentities.normalizedValue, providerContactKey),
+          ),
+        });
+        const email = pickPrimaryEmail(person);
+        const emailIdentity = email
+          ? await db.query.contactIdentities.findFirst({
+              where: and(
+                eq(contactIdentities.kind, "email"),
+                eq(contactIdentities.normalizedValue, email),
+              ),
+            })
+          : null;
+        const matchedContactId =
+          providerIdentity?.contactId ?? emailIdentity?.contactId ?? null;
 
-      if (!contactId) {
-        continue;
-      }
+        let contactId = matchedContactId;
+        let hasPrimaryEmailConflict = false;
 
-      await ensureIdentity({
-        contactId,
-        kind: "provider_contact_id",
-        normalizedValue: providerContactKey,
-        sourceType: "microsoft",
-        value: person.id,
-      });
+        if (contactId) {
+          const existingContact = await db.query.contacts.findFirst({
+            where: eq(contacts.id, contactId),
+          });
 
-      if (email && !hasPrimaryEmailConflict) {
+          if (existingContact) {
+            const proposedValues = {
+              company: person.companyName ?? null,
+              displayName:
+                person.displayName?.trim() || email || existingContact.displayName,
+              primaryEmail: email,
+              title: person.jobTitle ?? null,
+            } as const;
+            const merged = mergeContactFields(existingContact, proposedValues);
+            const review = await upsertMergeReview({
+              connectedAccountId: account.id,
+              contactId: existingContact.id,
+              currentValues: {
+                company: existingContact.company,
+                displayName: existingContact.displayName,
+                primaryEmail: existingContact.primaryEmail,
+                title: existingContact.title,
+              },
+              proposedValues,
+              provider: "microsoft",
+              sourceLabel: account.email ?? account.displayName,
+              sourceRef: `${account.id}:${person.id}`,
+            });
+            hasPrimaryEmailConflict = review.conflictFields.includes("primaryEmail");
+
+            await db
+              .update(contacts)
+              .set({
+                company:
+                  review.autoUpdates.company !== undefined
+                    ? merged.company
+                    : existingContact.company,
+                displayName:
+                  review.autoUpdates.displayName !== undefined
+                    ? merged.displayName
+                    : existingContact.displayName,
+                primaryEmail: hasPrimaryEmailConflict
+                  ? existingContact.primaryEmail
+                  : merged.primaryEmail,
+                title:
+                  review.autoUpdates.title !== undefined
+                    ? merged.title
+                    : existingContact.title,
+                updatedAt: new Date(),
+              })
+              .where(eq(contacts.id, existingContact.id));
+          }
+        } else {
+          const slug = await buildUniqueSlug(
+            person.displayName?.trim() || email || "contact",
+          );
+          const [contact] = await db
+            .insert(contacts)
+            .values({
+              company: person.companyName ?? null,
+              displayName:
+                person.displayName?.trim() || email || "Unnamed contact",
+              primaryEmail: email,
+              slug,
+              title: person.jobTitle ?? null,
+            })
+            .returning();
+
+          contactId = contact.id;
+        }
+
+        if (!contactId) {
+          continue;
+        }
+
         await ensureIdentity({
           contactId,
-          kind: "email",
-          normalizedValue: email,
+          kind: "provider_contact_id",
+          normalizedValue: providerContactKey,
           sourceType: "microsoft",
-          value: email,
+          value: person.id,
         });
+
+        if (email && !hasPrimaryEmailConflict) {
+          await ensureIdentity({
+            contactId,
+            kind: "email",
+            normalizedValue: email,
+            sourceType: "microsoft",
+            value: email,
+          });
+        }
+
+        await ensureContactSource({
+          contactId,
+          sourceLabel: account.email ?? account.displayName,
+          sourceRef: `${account.id}:${person.id}`,
+        });
+
+        syncedCount += 1;
       }
 
-      await ensureContactSource({
-        contactId,
-        sourceLabel: account.email ?? account.displayName,
-        sourceRef: `${account.id}:${person.id}`,
-      });
+      nextLink = response["@odata.nextLink"];
+      if (response["@odata.deltaLink"]) {
+        nextDeltaLink = response["@odata.deltaLink"];
+      }
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Microsoft sync failed.";
 
-      syncedCount += 1;
+    if (
+      (message.includes("(410)") || message.includes("(400)")) &&
+      account.syncCursor
+    ) {
+      await db
+        .update(connectedAccounts)
+        .set({
+          syncCursor: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(connectedAccounts.id, account.id));
+
+      return syncMicrosoftContactsForAccount(accountId);
     }
 
-    nextLink = response["@odata.nextLink"];
+    throw error;
   }
 
   await db
@@ -777,7 +846,13 @@ export async function syncMicrosoftContactsForAccount(accountId: string) {
       lastError: null,
       lastSuccessfulSyncAt: new Date(),
       lastSyncedContactCount: syncedCount,
+      metadata: {
+        ...((account.metadata as Record<string, unknown>) ?? {}),
+        contactSyncCursorUpdatedAt: new Date().toISOString(),
+        contactSyncMode: "incremental_delta",
+      },
       status: "connected",
+      syncCursor: nextDeltaLink,
       syncRequestedAt: null,
       updatedAt: new Date(),
     })
@@ -791,30 +866,28 @@ export async function syncMicrosoftContactsForAccount(accountId: string) {
 export async function sendMicrosoftMessage(input: {
   accountId: string;
   bodyText: string;
+  messageId: string;
   subject: string;
   to: string;
 }) {
   const accessToken = await getMicrosoftAccessToken(input.accountId);
 
-  await microsoftFetchWithoutJson(
-    "https://graph.microsoft.com/v1.0/me/sendMail",
+  const draft = await microsoftFetch<MicrosoftDraftMessage>(
+    "https://graph.microsoft.com/v1.0/me/messages",
     {
       body: JSON.stringify({
-        message: {
-          body: {
-            content: input.bodyText,
-            contentType: "Text",
-          },
-          subject: input.subject,
-          toRecipients: [
-            {
-              emailAddress: {
-                address: input.to,
-              },
-            },
-          ],
+        body: {
+          content: input.bodyText,
+          contentType: "Text",
         },
-        saveToSentItems: true,
+        subject: input.subject,
+        toRecipients: [
+          {
+            emailAddress: {
+              address: input.to,
+            },
+          },
+        ],
       }),
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -822,11 +895,29 @@ export async function sendMicrosoftMessage(input: {
       },
       method: "POST",
     },
+    "Unable to create Microsoft draft message",
+  );
+
+  if (!draft.id) {
+    throw new Error("Microsoft draft creation did not return a message id.");
+  }
+
+  await microsoftFetchWithoutJson(
+    `https://graph.microsoft.com/v1.0/me/messages/${draft.id}/send`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      method: "POST",
+    },
     "Unable to send Microsoft message",
   );
 
   return {
-    providerMessageId: null,
-    providerThreadId: null,
+    diagnostic: draft.id
+      ? `microsoft message ${draft.id} in conversation ${draft.conversationId ?? "unknown"}`
+      : `microsoft send completed for outbound ${input.messageId}`,
+    providerMessageId: draft.id ?? null,
+    providerThreadId: draft.conversationId ?? null,
   };
 }

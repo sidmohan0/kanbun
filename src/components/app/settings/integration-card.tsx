@@ -2,9 +2,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 type ConnectedAccountLike = {
+  contactSyncMode?: string | null;
   email: string | null;
   lastError: string | null;
   lastSuccessfulSyncAt: Date | null;
+  missingScopes?: string[];
+  replySyncLastDetectedCount?: number;
+  replySyncLastRunAt?: string | null;
+  replySyncMode?: string | null;
   status: string;
 };
 
@@ -19,6 +24,7 @@ type IntegrationCardProps = {
   metricLabel: string;
   metricValue: string | number;
   name: string;
+  notes?: string[];
   notConfiguredLabel?: string;
   syncAction: () => Promise<void>;
   syncLabel: string;
@@ -62,6 +68,7 @@ export function IntegrationCard({
   metricLabel,
   metricValue,
   name,
+  notes,
   notConfiguredLabel,
   syncAction,
   syncLabel,
@@ -116,6 +123,20 @@ export function IntegrationCard({
       {account?.lastError ? (
         <div className="mt-4 rounded-xl border border-destructive/20 bg-destructive/8 px-3 py-3 text-sm text-destructive">
           {account.lastError}
+        </div>
+      ) : null}
+
+      {account?.missingScopes?.length ? (
+        <div className="mt-4 rounded-xl border border-border/80 bg-secondary/65 px-3 py-3 text-sm text-muted-foreground">
+          Missing permissions: {account.missingScopes.join(", ")}
+        </div>
+      ) : null}
+
+      {notes?.length ? (
+        <div className="mt-4 space-y-2 rounded-xl border border-border/80 bg-secondary/65 px-3 py-3 text-sm text-muted-foreground">
+          {notes.map((note) => (
+            <p key={note}>{note}</p>
+          ))}
         </div>
       ) : null}
 

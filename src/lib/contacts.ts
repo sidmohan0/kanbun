@@ -6,6 +6,9 @@ import {
   contactMergeReviews,
   contactSources,
   contacts,
+  outboundMessages,
+  replySignals,
+  sequenceEnrollments,
   tasks,
 } from "@/db/schema";
 import { normalizeEmail, slugify } from "@/lib/csv";
@@ -34,8 +37,41 @@ async function recordAuditEvent(input: {
   });
 }
 
+function normalizeDisplayName(value: string | null | undefined) {
+  return value?.trim().toLowerCase().replace(/\s+/g, " ") ?? "";
+}
+
+function emailLocalPart(value: string | null | undefined) {
+  const email = normalizeEmail(value);
+
+  if (!email || !email.includes("@")) {
+    return null;
+  }
+
+  return email.split("@")[0] ?? null;
+}
+
+async function recalculatePrimaryEmail(contactId: string) {
+  const emailIdentity = await db.query.contactIdentities.findFirst({
+    where: and(
+      eq(contactIdentities.contactId, contactId),
+      eq(contactIdentities.kind, "email"),
+    ),
+    orderBy: [asc(contactIdentities.createdAt)],
+  });
+
+  await db
+    .update(contacts)
+    .set({
+      primaryEmail: emailIdentity?.normalizedValue ?? null,
+      updatedAt: new Date(),
+    })
+    .where(eq(contacts.id, contactId));
+}
+
 export async function listContacts(options: ListContactsOptions = {}) {
   const rows = await db.query.contacts.findMany({
+    where: eq(contacts.status, "active"),
     orderBy: [asc(contacts.displayName)],
   });
 
@@ -171,6 +207,77 @@ export async function getContactBySlug(slug: string) {
     identities,
     followUps,
   };
+}
+
+export async function listPotentialDuplicateContacts(contactId: string) {
+  const contact = await db.query.contacts.findFirst({
+    where: eq(contacts.id, contactId),
+  });
+
+  if (!contact) {
+    return [];
+  }
+
+  const candidates = await db.query.contacts.findMany({
+    where: eq(contacts.status, "active"),
+    orderBy: [asc(contacts.displayName)],
+  });
+
+  const normalizedName = normalizeDisplayName(contact.displayName);
+  const primaryLocalPart = emailLocalPart(contact.primaryEmail);
+
+  return candidates
+    .filter((candidate) => candidate.id !== contact.id)
+    .map((candidate) => {
+      const reasons: string[] = [];
+
+      if (
+        normalizedName &&
+        normalizeDisplayName(candidate.displayName) === normalizedName
+      ) {
+        reasons.push("Same display name");
+      }
+
+      if (
+        contact.company &&
+        candidate.company &&
+        contact.company.trim().toLowerCase() ===
+          candidate.company.trim().toLowerCase()
+      ) {
+        if (
+          contact.title &&
+          candidate.title &&
+          contact.title.trim().toLowerCase() ===
+            candidate.title.trim().toLowerCase()
+        ) {
+          reasons.push("Same company and title");
+        }
+
+        if (
+          normalizedName &&
+          normalizeDisplayName(candidate.displayName).includes(
+            normalizedName.split(" ")[0] ?? "",
+          )
+        ) {
+          reasons.push("Same company and similar name");
+        }
+      }
+
+      if (
+        primaryLocalPart &&
+        primaryLocalPart === emailLocalPart(candidate.primaryEmail) &&
+        contact.primaryEmail !== candidate.primaryEmail
+      ) {
+        reasons.push("Matching email local-part");
+      }
+
+      return {
+        ...candidate,
+        reasons,
+      };
+    })
+    .filter((candidate) => candidate.reasons.length > 0)
+    .sort((left, right) => right.reasons.length - left.reasons.length);
 }
 
 export async function listOpenTasks() {
@@ -380,6 +487,338 @@ export async function updateContact(input: {
   });
 
   return existing.slug;
+}
+
+export async function mergeContacts(input: {
+  actorUserId?: string | null;
+  sourceContactId: string;
+  targetContactId: string;
+}) {
+  if (input.sourceContactId === input.targetContactId) {
+    throw new Error("Choose two different contacts to merge.");
+  }
+
+  const [source, target] = await Promise.all([
+    db.query.contacts.findFirst({
+      where: eq(contacts.id, input.sourceContactId),
+    }),
+    db.query.contacts.findFirst({
+      where: eq(contacts.id, input.targetContactId),
+    }),
+  ]);
+
+  if (!source || !target) {
+    throw new Error("One of the contacts could not be found.");
+  }
+
+  const merged = mergeContactFields(target, {
+    company: source.company,
+    displayName: source.displayName,
+    primaryEmail: source.primaryEmail,
+    relationshipSummary:
+      target.relationshipSummary ?? source.relationshipSummary ?? null,
+    title: source.title,
+  });
+
+  await db
+    .update(contacts)
+    .set({
+      company: merged.company,
+      displayName: merged.displayName,
+      primaryEmail: merged.primaryEmail,
+      relationshipSummary:
+        target.relationshipSummary ?? source.relationshipSummary ?? null,
+      title: merged.title,
+      updatedAt: new Date(),
+    })
+    .where(eq(contacts.id, target.id));
+
+  const sourceIdentities = await db.query.contactIdentities.findMany({
+    where: eq(contactIdentities.contactId, source.id),
+  });
+
+  for (const identity of sourceIdentities) {
+    const existing = await db.query.contactIdentities.findFirst({
+      where: and(
+        eq(contactIdentities.kind, identity.kind),
+        eq(contactIdentities.normalizedValue, identity.normalizedValue),
+      ),
+    });
+
+    if (existing && existing.contactId === target.id) {
+      await db.delete(contactIdentities).where(eq(contactIdentities.id, identity.id));
+      continue;
+    }
+
+    await db
+      .update(contactIdentities)
+      .set({
+        contactId: target.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(contactIdentities.id, identity.id));
+  }
+
+  const sourceRows = await db.query.contactSources.findMany({
+    where: eq(contactSources.contactId, source.id),
+  });
+
+  for (const row of sourceRows) {
+    const existing = await db.query.contactSources.findFirst({
+      where: and(
+        eq(contactSources.sourceType, row.sourceType),
+        eq(contactSources.sourceRef, row.sourceRef),
+      ),
+    });
+
+    if (existing && existing.contactId === target.id) {
+      await db.delete(contactSources).where(eq(contactSources.id, row.id));
+      continue;
+    }
+
+    await db
+      .update(contactSources)
+      .set({
+        contactId: target.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(contactSources.id, row.id));
+  }
+
+  await Promise.all([
+    db
+      .update(tasks)
+      .set({ contactId: target.id, updatedAt: new Date() })
+      .where(eq(tasks.contactId, source.id)),
+    db
+      .update(contactMergeReviews)
+      .set({ contactId: target.id, updatedAt: new Date() })
+      .where(eq(contactMergeReviews.contactId, source.id)),
+    db
+      .update(replySignals)
+      .set({ contactId: target.id, updatedAt: new Date() })
+      .where(eq(replySignals.contactId, source.id)),
+    db
+      .update(outboundMessages)
+      .set({ contactId: target.id, updatedAt: new Date() })
+      .where(eq(outboundMessages.contactId, source.id)),
+    db
+      .update(sequenceEnrollments)
+      .set({ contactId: target.id, updatedAt: new Date() })
+      .where(eq(sequenceEnrollments.contactId, source.id)),
+  ]);
+
+  await db
+    .update(contacts)
+    .set({
+      status: "archived",
+      updatedAt: new Date(),
+    })
+    .where(eq(contacts.id, source.id));
+
+  await recalculatePrimaryEmail(target.id);
+  await recalculatePrimaryEmail(source.id);
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: target.id,
+    entityType: "contact",
+    eventName: "contact.merged",
+    metadata: {
+      sourceContactId: source.id,
+      targetContactId: target.id,
+    },
+  });
+
+  return target.slug;
+}
+
+export async function splitContact(input: {
+  actorUserId?: string | null;
+  company?: string | null;
+  displayName: string;
+  identityIds: string[];
+  primaryEmail?: string | null;
+  relationshipSummary?: string | null;
+  sourceContactId: string;
+  sourceIds: string[];
+  title?: string | null;
+}) {
+  const source = await db.query.contacts.findFirst({
+    where: eq(contacts.id, input.sourceContactId),
+  });
+
+  if (!source) {
+    throw new Error("Source contact not found.");
+  }
+
+  if (input.identityIds.length === 0 && input.sourceIds.length === 0) {
+    throw new Error("Select at least one identity or source to split out.");
+  }
+
+  const slug = await buildUniqueSlug(
+    input.displayName.trim() || input.primaryEmail || "contact",
+  );
+  const normalizedPrimaryEmail = normalizeEmail(input.primaryEmail);
+  const ownedIdentityIds = (
+    await db.query.contactIdentities.findMany({
+      where: and(
+        eq(contactIdentities.contactId, source.id),
+        inArray(contactIdentities.id, input.identityIds),
+      ),
+      columns: {
+        id: true,
+      },
+    })
+  ).map((identity) => identity.id);
+  const ownedSourceIds = (
+    await db.query.contactSources.findMany({
+      where: and(
+        eq(contactSources.contactId, source.id),
+        inArray(contactSources.id, input.sourceIds),
+      ),
+      columns: {
+        id: true,
+      },
+    })
+  ).map((row) => row.id);
+
+  if (ownedIdentityIds.length === 0 && ownedSourceIds.length === 0) {
+    throw new Error("No movable identities or sources were selected.");
+  }
+
+  const [created] = await db
+    .insert(contacts)
+    .values({
+      company: input.company?.trim() || null,
+      displayName:
+        input.displayName.trim() || normalizedPrimaryEmail || "Unnamed contact",
+      primaryEmail: normalizedPrimaryEmail,
+      relationshipSummary: input.relationshipSummary?.trim() || null,
+      slug,
+      title: input.title?.trim() || null,
+    })
+    .returning();
+
+  if (ownedIdentityIds.length > 0) {
+    await db
+      .update(contactIdentities)
+      .set({
+        contactId: created.id,
+        updatedAt: new Date(),
+      })
+      .where(inArray(contactIdentities.id, ownedIdentityIds));
+  }
+
+  if (ownedSourceIds.length > 0) {
+    await db
+      .update(contactSources)
+      .set({
+        contactId: created.id,
+        updatedAt: new Date(),
+      })
+      .where(inArray(contactSources.id, ownedSourceIds));
+  }
+
+  await recalculatePrimaryEmail(source.id);
+  await recalculatePrimaryEmail(created.id);
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: source.id,
+    entityType: "contact",
+    eventName: "contact.split",
+    metadata: {
+      createdContactId: created.id,
+      identityIds: ownedIdentityIds,
+      sourceIds: ownedSourceIds,
+    },
+  });
+
+  return created;
+}
+
+export async function listContactTimeline(contactId: string) {
+  const [auditRows, sourceRows, taskRows, replyRows, outboundRows, enrollmentRows, sequenceRows] =
+    await Promise.all([
+      db.query.auditEvents.findMany({
+        where: and(
+          eq(auditEvents.entityType, "contact"),
+          eq(auditEvents.entityId, contactId),
+        ),
+        orderBy: [desc(auditEvents.createdAt)],
+      }),
+      db.query.contactSources.findMany({
+        where: eq(contactSources.contactId, contactId),
+        orderBy: [desc(contactSources.importedAt)],
+      }),
+      db.query.tasks.findMany({
+        where: eq(tasks.contactId, contactId),
+        orderBy: [desc(tasks.updatedAt)],
+      }),
+      db.query.replySignals.findMany({
+        where: eq(replySignals.contactId, contactId),
+        orderBy: [desc(replySignals.createdAt)],
+      }),
+      db.query.outboundMessages.findMany({
+        where: eq(outboundMessages.contactId, contactId),
+        orderBy: [desc(outboundMessages.updatedAt)],
+      }),
+      db.query.sequenceEnrollments.findMany({
+        where: eq(sequenceEnrollments.contactId, contactId),
+        orderBy: [desc(sequenceEnrollments.updatedAt)],
+      }),
+      db.query.sequences.findMany(),
+    ]);
+
+  const sequenceMap = new Map(sequenceRows.map((sequence) => [sequence.id, sequence]));
+
+  return [
+    ...sourceRows.map((source) => ({
+      id: `source-${source.id}`,
+      kind: "source",
+      timestamp: source.importedAt,
+      title: `Source attached from ${source.sourceType.toUpperCase()}`,
+      detail: source.sourceLabel ?? source.sourceRef,
+    })),
+    ...taskRows.map((task) => ({
+      id: `task-${task.id}`,
+      kind: "task",
+      timestamp: task.updatedAt,
+      title: `Task ${task.status}: ${task.title}`,
+      detail: task.dueAt ? `Due ${task.dueAt.toLocaleString()}` : "No due date",
+    })),
+    ...replyRows.map((reply) => ({
+      id: `reply-${reply.id}`,
+      kind: "reply",
+      timestamp: reply.createdAt,
+      title: "Reply signal recorded",
+      detail: `${reply.sourceType} · ${reply.summary ?? "No summary"}`,
+    })),
+    ...outboundRows.map((message) => ({
+      id: `outbound-${message.id}`,
+      kind: "outbound",
+      timestamp: message.sentAt ?? message.updatedAt,
+      title: `Outbound ${message.status}: ${message.finalSubject}`,
+      detail:
+        message.lastError ??
+        `Provider thread ${message.providerThreadId ?? "not captured"}`,
+    })),
+    ...enrollmentRows.map((enrollment) => ({
+      id: `enrollment-${enrollment.id}`,
+      kind: "enrollment",
+      timestamp: enrollment.updatedAt,
+      title: `Sequence ${enrollment.status}: ${sequenceMap.get(enrollment.sequenceId)?.name ?? "Sequence"}`,
+      detail: enrollment.stopReason ?? "Enrollment active",
+    })),
+    ...auditRows.map((event) => ({
+      id: `audit-${event.id}`,
+      kind: "audit",
+      timestamp: event.createdAt,
+      title: event.eventName,
+      detail: null,
+    })),
+  ].sort((left, right) => right.timestamp.getTime() - left.timestamp.getTime());
 }
 
 export async function findContactIdentityByEmail(normalizedEmail: string) {

@@ -8,6 +8,7 @@ export type SentContactCandidate = {
 };
 
 export type InboundReplyCandidate = {
+  providerThreadId?: string | null;
   receivedAt: Date;
   senderEmail: string | null;
   summary?: string | null;
@@ -100,6 +101,71 @@ export function matchInboundReplies(
       matches.set(sentContact.contactId, {
         contactId: sentContact.contactId,
         contactName: sentContact.contactName,
+        receivedAt: message.receivedAt,
+        senderEmail,
+        summary: message.summary?.trim() || null,
+      });
+    }
+  }
+
+  return Array.from(matches.values()).sort(
+    (left, right) => right.receivedAt.getTime() - left.receivedAt.getTime(),
+  );
+}
+
+export function matchThreadedInboundReplies(
+  sentThreads: Map<
+    string,
+    {
+      contactId: string;
+      contactName: string;
+      senderEmail: string;
+      sentAt: Date;
+    }
+  >,
+  inboundMessages: InboundReplyCandidate[],
+) {
+  const matches = new Map<
+    string,
+    {
+      contactId: string;
+      contactName: string;
+      receivedAt: Date;
+      senderEmail: string;
+      summary: string | null;
+      providerThreadId: string;
+    }
+  >();
+
+  for (const message of inboundMessages) {
+    const providerThreadId = message.providerThreadId?.trim();
+    const senderEmail = normalizeEmail(message.senderEmail);
+
+    if (!providerThreadId || !senderEmail) {
+      continue;
+    }
+
+    const sentThread = sentThreads.get(providerThreadId);
+
+    if (!sentThread) {
+      continue;
+    }
+
+    if (senderEmail !== sentThread.senderEmail) {
+      continue;
+    }
+
+    if (message.receivedAt.getTime() <= sentThread.sentAt.getTime()) {
+      continue;
+    }
+
+    const existing = matches.get(sentThread.contactId);
+
+    if (!existing || existing.receivedAt.getTime() < message.receivedAt.getTime()) {
+      matches.set(sentThread.contactId, {
+        contactId: sentThread.contactId,
+        contactName: sentThread.contactName,
+        providerThreadId,
         receivedAt: message.receivedAt,
         senderEmail,
         summary: message.summary?.trim() || null,

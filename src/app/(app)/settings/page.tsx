@@ -49,6 +49,35 @@ function todoistMirrorCount(metadata: unknown) {
   return typeof count === "number" ? count : 0;
 }
 
+function providerNotes(account: {
+  contactSyncMode?: string | null;
+  replySyncLastDetectedCount?: number;
+  replySyncLastRunAt?: string | null;
+  replySyncMode?: string | null;
+} | null) {
+  if (!account) {
+    return [];
+  }
+
+  const notes: string[] = [];
+
+  if (account.contactSyncMode) {
+    notes.push(`Contact sync mode: ${account.contactSyncMode.replaceAll("_", " ")}`);
+  }
+
+  if (account.replySyncMode) {
+    notes.push(`Reply tracking mode: ${account.replySyncMode}`);
+  }
+
+  if (account.replySyncLastRunAt) {
+    notes.push(
+      `Last reply scan: ${new Date(account.replySyncLastRunAt).toLocaleString()} (${account.replySyncLastDetectedCount ?? 0} detected)`,
+    );
+  }
+
+  return notes;
+}
+
 export default async function SettingsPage({
   searchParams,
 }: {
@@ -103,6 +132,7 @@ export default async function SettingsPage({
             metricLabel="Contacts synced"
             metricValue={googleAccount?.lastSyncedContactCount ?? 0}
             name="Gmail"
+            notes={providerNotes(googleAccount)}
             syncAction={requestGoogleSyncAction}
             syncLabel="Run Google sync"
           />
@@ -119,6 +149,7 @@ export default async function SettingsPage({
             metricLabel="Contacts synced"
             metricValue={microsoftAccount?.lastSyncedContactCount ?? 0}
             name="Microsoft Outlook"
+            notes={providerNotes(microsoftAccount)}
             syncAction={requestMicrosoftSyncAction}
             syncLabel="Run Microsoft sync"
           />

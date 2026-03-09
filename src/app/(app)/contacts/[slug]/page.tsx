@@ -2,16 +2,26 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ArrowRight, GitMerge } from "lucide-react";
-import { updateContactAction } from "@/app/actions/contacts";
+import {
+  mergeContactsAction,
+  splitContactAction,
+  updateContactAction,
+} from "@/app/actions/contacts";
 import { createFollowUpTaskAction } from "@/app/actions/workflows";
 import {
   enrollContactInSequenceAction,
+  pauseEnrollmentAction,
   recordReplySignalAction,
+  resumeEnrollmentAction,
 } from "@/app/actions/sequences";
 import { DashboardPanel, SectionHeading } from "@/components/app/ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getContactBySlug } from "@/lib/contacts";
+import {
+  getContactBySlug,
+  listContactTimeline,
+  listPotentialDuplicateContacts,
+} from "@/lib/contacts";
 import {
   listActiveSequencesForContact,
   listContactSequenceEnrollments,
@@ -58,10 +68,13 @@ export default async function ContactDetailPage({
   }
 
   const todoistConnected = isTodoistApiTokenConfigured();
-  const [availableSequences, enrollments, replyHistory] = await Promise.all([
+  const [availableSequences, duplicateCandidates, enrollments, replyHistory, timeline] =
+    await Promise.all([
     listActiveSequencesForContact(contact.id),
+    listPotentialDuplicateContacts(contact.id),
     listContactSequenceEnrollments(contact.id),
     listReplySignalsForContact(contact.id),
+    listContactTimeline(contact.id),
   ]);
 
   return (
@@ -364,6 +377,103 @@ export default async function ContactDetailPage({
                         {enrollment.stopReason}
                       </p>
                     ) : null}
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      {enrollment.status === "active" ? (
+                        <form action={pauseEnrollmentAction}>
+                          <input
+                            type="hidden"
+                            name="contactSlug"
+                            value={contact.slug}
+                          />
+                          <input
+                            type="hidden"
+                            name="enrollmentId"
+                            value={enrollment.id}
+                          />
+                          <Button type="submit" variant="outline">
+                            Pause enrollment
+                          </Button>
+                        </form>
+                      ) : null}
+                      {enrollment.status === "paused" ? (
+                        <form action={resumeEnrollmentAction}>
+                          <input
+                            type="hidden"
+                            name="contactSlug"
+                            value={contact.slug}
+                          />
+                          <input
+                            type="hidden"
+                            name="enrollmentId"
+                            value={enrollment.id}
+                          />
+                          <Button type="submit" variant="outline">
+                            Resume enrollment
+                          </Button>
+                        </form>
+                      ) : null}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </DashboardPanel>
+
+          <DashboardPanel>
+            <SectionHeading
+              eyebrow="Duplicates"
+              title="Potential duplicate contacts"
+              description="Kanbun now flags stronger duplicate candidates beyond exact-email matching, but leaves the final merge decision to the operator."
+            />
+            <div className="space-y-4">
+              {duplicateCandidates.length === 0 ? (
+                <p className="text-sm leading-7 text-muted-foreground">
+                  No duplicate candidates detected for this contact right now.
+                </p>
+              ) : (
+                duplicateCandidates.map((candidate) => (
+                  <div
+                    key={candidate.id}
+                    className="rounded-2xl border border-border/85 bg-background/75 px-4 py-4"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-foreground">
+                          {candidate.displayName}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {[candidate.title, candidate.company]
+                            .filter(Boolean)
+                            .join(" · ") || "No company or title"}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {candidate.primaryEmail ?? "No primary email"}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {candidate.reasons.map((reason) => (
+                          <Badge key={`${candidate.id}-${reason}`} variant="outline">
+                            {reason}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      <form action={mergeContactsAction}>
+                        <input type="hidden" name="returnTo" value={`/contacts/${contact.slug}`} />
+                        <input type="hidden" name="sourceContactId" value={candidate.id} />
+                        <input type="hidden" name="targetContactId" value={contact.id} />
+                        <Button type="submit" variant="outline">
+                          Merge into this contact
+                        </Button>
+                      </form>
+                      <Button
+                        render={<Link href={`/contacts/${candidate.slug}`} />}
+                        variant="outline"
+                      >
+                        Open candidate
+                      </Button>
+                    </div>
                   </div>
                 ))
               )}
@@ -529,6 +639,163 @@ export default async function ContactDetailPage({
                     <span className="text-foreground font-medium">
                       {identity.value}
                     </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </DashboardPanel>
+
+          <DashboardPanel>
+            <SectionHeading
+              eyebrow="Split"
+              title="Split this canonical contact"
+              description="Use this when a conservative merge still combined two different people. Identities and source records selected below will move to a new contact."
+            />
+            <form action={splitContactAction} className="space-y-4">
+              <input type="hidden" name="returnTo" value={`/contacts/${contact.slug}`} />
+              <input type="hidden" name="sourceContactId" value={contact.id} />
+              <div className="grid gap-4 lg:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-foreground">New full name</span>
+                  <input
+                    name="displayName"
+                    placeholder="New contact name"
+                    className="h-11 w-full rounded-2xl border border-border bg-background px-3 text-sm text-foreground outline-none"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-foreground">
+                    New primary email
+                  </span>
+                  <input
+                    name="primaryEmail"
+                    type="email"
+                    placeholder="new@example.com"
+                    className="h-11 w-full rounded-2xl border border-border bg-background px-3 text-sm text-foreground outline-none"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-foreground">
+                    New company
+                  </span>
+                  <input
+                    aria-label="New company"
+                    name="company"
+                    placeholder="Optional"
+                    className="h-11 w-full rounded-2xl border border-border bg-background px-3 text-sm text-foreground outline-none"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-foreground">
+                    New title
+                  </span>
+                  <input
+                    aria-label="New title"
+                    name="title"
+                    placeholder="Optional"
+                    className="h-11 w-full rounded-2xl border border-border bg-background px-3 text-sm text-foreground outline-none"
+                  />
+                </label>
+              </div>
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-foreground">
+                  New relationship summary
+                </span>
+                <textarea
+                  aria-label="New relationship summary"
+                  name="relationshipSummary"
+                  rows={3}
+                  placeholder="Optional summary for the new split contact"
+                  className="w-full rounded-2xl border border-border bg-background px-3 py-3 text-sm text-foreground outline-none"
+                />
+              </label>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-3 rounded-2xl border border-border/85 bg-background/75 p-4">
+                  <p className="text-sm font-medium text-foreground">
+                    Move identities
+                  </p>
+                  {contact.identities.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No identities available.
+                    </p>
+                  ) : (
+                    contact.identities.map((identity) => (
+                      <label
+                        key={identity.id}
+                        className="flex items-center gap-3 text-sm text-foreground"
+                      >
+                        <input
+                          type="checkbox"
+                          name="identityIds"
+                          value={identity.id}
+                        />
+                        <span>{identity.kind}</span>
+                        <span className="text-muted-foreground">{identity.value}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+                <div className="space-y-3 rounded-2xl border border-border/85 bg-background/75 p-4">
+                  <p className="text-sm font-medium text-foreground">
+                    Move sources
+                  </p>
+                  {contact.sources.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No sources available.
+                    </p>
+                  ) : (
+                    contact.sources.map((source) => (
+                      <label
+                        key={source.id}
+                        className="flex items-center gap-3 text-sm text-foreground"
+                      >
+                        <input type="checkbox" name="sourceIds" value={source.id} />
+                        <span>{source.sourceType.toUpperCase()}</span>
+                        <span className="text-muted-foreground">
+                          {source.sourceLabel ?? source.sourceRef}
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+              <Button type="submit" variant="outline">
+                Create split contact
+              </Button>
+            </form>
+          </DashboardPanel>
+
+          <DashboardPanel>
+            <SectionHeading
+              eyebrow="Timeline"
+              title="Unified activity history"
+              description="Imports, sync signals, tasks, sends, replies, enrollments, and manual contact actions now render in one contact timeline."
+            />
+            <div className="space-y-3">
+              {timeline.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No timeline entries yet.
+                </p>
+              ) : (
+                timeline.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="rounded-2xl border border-border/85 bg-background/75 px-4 py-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <Badge variant="outline">{entry.kind}</Badge>
+                      <p className="text-sm text-muted-foreground">
+                        {entry.timestamp.toLocaleString()}
+                      </p>
+                    </div>
+                    <p className="mt-2 text-sm font-semibold text-foreground">
+                      {entry.title}
+                    </p>
+                    {entry.detail ? (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {entry.detail}
+                      </p>
+                    ) : null}
                   </div>
                 ))
               )}

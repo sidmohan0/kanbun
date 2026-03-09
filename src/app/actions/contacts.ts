@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { createManualContact, updateContact } from "@/lib/contacts";
+import {
+  createManualContact,
+  mergeContacts,
+  splitContact,
+  updateContact,
+} from "@/lib/contacts";
 
 function getReturnTo(formData: FormData, fallback: string) {
   const value = String(formData.get("returnTo") ?? "").trim();
@@ -72,4 +77,74 @@ export async function updateContactAction(formData: FormData) {
   revalidatePath("/contacts");
   revalidatePath(`/contacts/${slug}`);
   redirect(`/contacts/${slug}?updated=1`);
+}
+
+export async function mergeContactsAction(formData: FormData) {
+  const sourceContactId = String(formData.get("sourceContactId") ?? "");
+  const targetContactId = String(formData.get("targetContactId") ?? "");
+  const returnTo = getReturnTo(formData, "/contacts");
+
+  if (!sourceContactId || !targetContactId) {
+    redirect(`${returnTo}?error=missing-contact`);
+  }
+
+  let slug = "";
+
+  try {
+    slug = await mergeContacts({
+      actorUserId: await getAuditActorUserId(),
+      sourceContactId,
+      targetContactId,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to merge contacts.";
+    redirect(`${returnTo}?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/contacts");
+  revalidatePath(`/contacts/${slug}`);
+  redirect(`/contacts/${slug}?updated=1`);
+}
+
+export async function splitContactAction(formData: FormData) {
+  const sourceContactId = String(formData.get("sourceContactId") ?? "");
+  const returnTo = getReturnTo(formData, "/contacts");
+  const identityIds = formData
+    .getAll("identityIds")
+    .map((value) => String(value))
+    .filter(Boolean);
+  const sourceIds = formData
+    .getAll("sourceIds")
+    .map((value) => String(value))
+    .filter(Boolean);
+
+  if (!sourceContactId) {
+    redirect(`${returnTo}?error=missing-contact`);
+  }
+
+  let createdSlug = "";
+
+  try {
+    const created = await splitContact({
+      actorUserId: await getAuditActorUserId(),
+      company: String(formData.get("company") ?? ""),
+      displayName: String(formData.get("displayName") ?? ""),
+      identityIds,
+      primaryEmail: String(formData.get("primaryEmail") ?? ""),
+      relationshipSummary: String(formData.get("relationshipSummary") ?? ""),
+      sourceContactId,
+      sourceIds,
+      title: String(formData.get("title") ?? ""),
+    });
+    createdSlug = created.slug;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to split contact.";
+    redirect(`${returnTo}?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/contacts");
+  revalidatePath(returnTo);
+  redirect(`/contacts/${createdSlug}?created=1`);
 }

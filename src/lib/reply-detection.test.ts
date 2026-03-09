@@ -3,6 +3,7 @@ import {
   buildLatestSentContactMap,
   extractEmailAddress,
   matchInboundReplies,
+  matchThreadedInboundReplies,
 } from "@/lib/reply-detection";
 
 describe("extractEmailAddress", () => {
@@ -12,6 +13,48 @@ describe("extractEmailAddress", () => {
     );
     expect(extractEmailAddress("solo@example.com")).toBe("solo@example.com");
     expect(extractEmailAddress(null)).toBeNull();
+  });
+});
+
+describe("matchThreadedInboundReplies", () => {
+  it("matches replies only when provider thread ids and sender emails align", () => {
+    const sentThreads = new Map([
+      [
+        "thread-1",
+        {
+          contactId: "contact-1",
+          contactName: "Asha Patel",
+          senderEmail: "asha@example.com",
+          sentAt: new Date("2026-03-03T12:00:00.000Z"),
+        },
+      ],
+    ]);
+
+    const matches = matchThreadedInboundReplies(sentThreads, [
+      {
+        providerThreadId: "thread-1",
+        receivedAt: new Date("2026-03-03T15:00:00.000Z"),
+        senderEmail: "asha@example.com",
+        summary: "Re: hello",
+      },
+      {
+        providerThreadId: "thread-1",
+        receivedAt: new Date("2026-03-03T16:00:00.000Z"),
+        senderEmail: "someone-else@example.com",
+        summary: "Wrong sender",
+      },
+    ]);
+
+    expect(matches).toEqual([
+      {
+        contactId: "contact-1",
+        contactName: "Asha Patel",
+        providerThreadId: "thread-1",
+        receivedAt: new Date("2026-03-03T15:00:00.000Z"),
+        senderEmail: "asha@example.com",
+        summary: "Re: hello",
+      },
+    ]);
   });
 });
 

@@ -140,6 +140,14 @@ function buildTemplateVariables(input: {
   };
 }
 
+function getMetadataNumber(
+  metadata: Record<string, unknown> | null | undefined,
+  key: string,
+) {
+  const value = metadata?.[key];
+  return typeof value === "number" ? value : 0;
+}
+
 async function getConnectedSendAccountsForUser(userId: string) {
   const accounts = await db.query.connectedAccounts.findMany({
     where: and(
@@ -187,6 +195,14 @@ async function getStepForEnrollment(
       eq(sequenceSteps.sequenceId, enrollment.sequenceId),
       eq(sequenceSteps.position, enrollment.currentStepPosition),
     ),
+  });
+}
+
+async function getSequenceForEnrollment(
+  enrollment: typeof sequenceEnrollments.$inferSelect,
+) {
+  return db.query.sequences.findFirst({
+    where: eq(sequences.id, enrollment.sequenceId),
   });
 }
 
@@ -412,6 +428,182 @@ export async function listContactSequenceEnrollments(contactId: string) {
     ...enrollment,
     sequence: sequenceMap.get(enrollment.sequenceId) ?? null,
   }));
+}
+
+export async function pauseSequence(input: {
+  actorUserId?: string | null;
+  sequenceId: string;
+}) {
+  const sequence = await db.query.sequences.findFirst({
+    where: eq(sequences.id, input.sequenceId),
+  });
+
+  if (!sequence) {
+    throw new Error("Sequence not found.");
+  }
+
+  await db
+    .update(sequences)
+    .set({
+      status: "paused",
+      updatedAt: new Date(),
+    })
+    .where(eq(sequences.id, sequence.id));
+
+  await db
+    .update(sequenceEnrollments)
+    .set({
+      status: "paused",
+      stopReason: "Paused because the sequence was paused by the operator.",
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(sequenceEnrollments.sequenceId, sequence.id),
+        eq(sequenceEnrollments.status, "active"),
+      ),
+    );
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: sequence.id,
+    entityType: "sequence",
+    eventName: "sequence.paused",
+  });
+}
+
+export async function resumeSequence(input: {
+  actorUserId?: string | null;
+  sequenceId: string;
+}) {
+  const sequence = await db.query.sequences.findFirst({
+    where: eq(sequences.id, input.sequenceId),
+  });
+
+  if (!sequence) {
+    throw new Error("Sequence not found.");
+  }
+
+  await db
+    .update(sequences)
+    .set({
+      status: "active",
+      updatedAt: new Date(),
+    })
+    .where(eq(sequences.id, sequence.id));
+
+  const pausedEnrollments = await db.query.sequenceEnrollments.findMany({
+    where: and(
+      eq(sequenceEnrollments.sequenceId, sequence.id),
+      eq(sequenceEnrollments.status, "paused"),
+    ),
+  });
+
+  for (const enrollment of pausedEnrollments) {
+    if (
+      enrollment.stopReason &&
+      enrollment.stopReason !==
+        "Paused because the sequence was paused by the operator."
+    ) {
+      continue;
+    }
+
+    await db
+      .update(sequenceEnrollments)
+      .set({
+        nextDueAt: enrollment.nextDueAt ?? new Date(),
+        status: "active",
+        stopReason: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(sequenceEnrollments.id, enrollment.id));
+  }
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: sequence.id,
+    entityType: "sequence",
+    eventName: "sequence.resumed",
+  });
+}
+
+export async function pauseEnrollment(input: {
+  actorUserId?: string | null;
+  enrollmentId: string;
+}) {
+  const enrollment = await db.query.sequenceEnrollments.findFirst({
+    where: eq(sequenceEnrollments.id, input.enrollmentId),
+  });
+
+  if (!enrollment) {
+    throw new Error("Enrollment not found.");
+  }
+
+  if (enrollment.status !== "active") {
+    throw new Error("Only active enrollments can be paused.");
+  }
+
+  await db
+    .update(sequenceEnrollments)
+    .set({
+      status: "paused",
+      stopReason: "Paused by operator.",
+      updatedAt: new Date(),
+    })
+    .where(eq(sequenceEnrollments.id, enrollment.id));
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: enrollment.id,
+    entityType: "sequence_enrollment",
+    eventName: "sequence_enrollment.paused",
+  });
+}
+
+export async function resumeEnrollment(input: {
+  actorUserId?: string | null;
+  enrollmentId: string;
+}) {
+  const enrollment = await db.query.sequenceEnrollments.findFirst({
+    where: eq(sequenceEnrollments.id, input.enrollmentId),
+  });
+
+  if (!enrollment) {
+    throw new Error("Enrollment not found.");
+  }
+
+  if (enrollment.status !== "paused") {
+    throw new Error("Only paused enrollments can be resumed.");
+  }
+
+  const sequence = await getSequenceForEnrollment(enrollment);
+
+  if (!sequence || sequence.status !== "active") {
+    throw new Error("Resume the parent sequence before resuming this enrollment.");
+  }
+
+  const replySignalCount = await getReplySignalCount(enrollment.contactId);
+
+  if (replySignalCount > 0) {
+    throw new Error("This contact already has a reply signal. Resume is blocked.");
+  }
+
+  await db
+    .update(sequenceEnrollments)
+    .set({
+      nextDueAt: enrollment.nextDueAt ?? new Date(),
+      status: "active",
+      stopReason: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(sequenceEnrollments.id, enrollment.id));
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: enrollment.id,
+    entityType: "sequence_enrollment",
+    eventName: "sequence_enrollment.resumed",
+  });
 }
 
 export async function listReplySignalsForContact(contactId: string) {
@@ -804,6 +996,10 @@ export async function generateDraftForEnrollment(
     throw new Error("Unable to load sequence enrollment context.");
   }
 
+  if (sequence.status !== "active") {
+    return null;
+  }
+
   if (replySignalCount > 0) {
     await db
       .update(sequenceEnrollments)
@@ -980,6 +1176,11 @@ export async function approveOutboundDraft(input: {
       finalBody: body,
       finalSubject: subject,
       lastError: null,
+      metadata: {
+        ...(message.metadata as Record<string, unknown>),
+        lastApprovedAt: new Date().toISOString(),
+        queuedBy: input.actorUserId ?? "local",
+      },
       queuedAt: new Date(),
       status: "queued",
       updatedAt: new Date(),
@@ -1256,10 +1457,12 @@ export async function sendOutboundMessage(messageId: string) {
   const payload = {
     accountId: sendingAccount.id,
     bodyText: message.finalBody,
+    messageId: message.id,
     subject: message.finalSubject,
     to: contact.primaryEmail,
   };
 
+  const previousMetadata = (message.metadata as Record<string, unknown>) ?? {};
   const providerResult =
     sendingAccount.provider === "google"
       ? await sendGoogleMessage(payload)
@@ -1270,6 +1473,14 @@ export async function sendOutboundMessage(messageId: string) {
     .set({
       failedAt: null,
       lastError: null,
+      metadata: {
+        ...previousMetadata,
+        attemptCount: getMetadataNumber(previousMetadata, "attemptCount") + 1,
+        deliveryDiagnostic: providerResult.diagnostic ?? null,
+        lastAttemptAt: new Date().toISOString(),
+        lastReplySyncMode: "thread_aware",
+        providerReplyAddress: contact.primaryEmail,
+      },
       providerMessageId: providerResult.providerMessageId,
       providerThreadId: providerResult.providerThreadId,
       sentAt: new Date(),
@@ -1303,11 +1514,18 @@ export async function markOutboundMessageFailed(
     return;
   }
 
+  const previousMetadata = (message.metadata as Record<string, unknown>) ?? {};
   await db
     .update(outboundMessages)
     .set({
       failedAt: new Date(),
       lastError: errorMessage,
+      metadata: {
+        ...previousMetadata,
+        attemptCount: getMetadataNumber(previousMetadata, "attemptCount") + 1,
+        lastAttemptAt: new Date().toISOString(),
+        lastErrorAt: new Date().toISOString(),
+      },
       status: "failed",
       updatedAt: new Date(),
     })
@@ -1327,27 +1545,34 @@ export async function markOutboundMessageFailed(
 }
 
 export async function claimNextDueEnrollmentId() {
-  const enrollment = await db.query.sequenceEnrollments.findFirst({
+  const enrollments = await db.query.sequenceEnrollments.findMany({
     where: and(
       eq(sequenceEnrollments.status, "active"),
       lte(sequenceEnrollments.nextDueAt, new Date()),
     ),
     orderBy: [asc(sequenceEnrollments.nextDueAt)],
+    limit: 25,
   });
 
-  if (!enrollment) {
-    return null;
+  for (const enrollment of enrollments) {
+    const sequence = await getSequenceForEnrollment(enrollment);
+
+    if (!sequence || sequence.status !== "active") {
+      continue;
+    }
+
+    await db
+      .update(sequenceEnrollments)
+      .set({
+        nextDueAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(sequenceEnrollments.id, enrollment.id));
+
+    return enrollment.id;
   }
 
-  await db
-    .update(sequenceEnrollments)
-    .set({
-      nextDueAt: null,
-      updatedAt: new Date(),
-    })
-    .where(eq(sequenceEnrollments.id, enrollment.id));
-
-  return enrollment.id;
+  return null;
 }
 
 export async function claimNextQueuedOutboundMessageId() {

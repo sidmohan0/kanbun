@@ -11,7 +11,11 @@ import {
   createSequence,
   deleteSequenceStep,
   enrollContactInSequence,
+  pauseEnrollment,
+  pauseSequence,
   recordReplySignal,
+  resumeEnrollment,
+  resumeSequence,
   retryOutboundMessage,
   updateSequence,
   updateSequenceStep,
@@ -160,6 +164,52 @@ export async function deleteSequenceStepAction(formData: FormData) {
   redirect("/sequences?step=deleted");
 }
 
+export async function pauseSequenceAction(formData: FormData) {
+  const sequenceId = String(formData.get("sequenceId") ?? "");
+
+  if (!sequenceId) {
+    redirect("/sequences?error=missing-sequence");
+  }
+
+  try {
+    await pauseSequence({
+      actorUserId: await getAuditActorUserId(),
+      sequenceId,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to pause sequence.";
+    redirect(`/sequences?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/sequences");
+  revalidatePath("/contacts");
+  redirect("/sequences?updated=1");
+}
+
+export async function resumeSequenceAction(formData: FormData) {
+  const sequenceId = String(formData.get("sequenceId") ?? "");
+
+  if (!sequenceId) {
+    redirect("/sequences?error=missing-sequence");
+  }
+
+  try {
+    await resumeSequence({
+      actorUserId: await getAuditActorUserId(),
+      sequenceId,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to resume sequence.";
+    redirect(`/sequences?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/sequences");
+  revalidatePath("/contacts");
+  redirect("/sequences?updated=1");
+}
+
 export async function enrollContactInSequenceAction(formData: FormData) {
   const contactId = String(formData.get("contactId") ?? "");
   const sequenceId = String(formData.get("sequenceId") ?? "");
@@ -299,4 +349,52 @@ export async function recordReplySignalAction(formData: FormData) {
   revalidatePath("/sequences");
   revalidatePath(`/contacts/${contactSlug}`);
   redirect(`/contacts/${contactSlug}?reply=recorded`);
+}
+
+export async function pauseEnrollmentAction(formData: FormData) {
+  const enrollmentId = String(formData.get("enrollmentId") ?? "");
+  const contactSlug = String(formData.get("contactSlug") ?? "");
+
+  if (!enrollmentId || !contactSlug) {
+    redirect("/contacts?error=missing-enrollment");
+  }
+
+  try {
+    await pauseEnrollment({
+      actorUserId: await getAuditActorUserId(),
+      enrollmentId,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to pause enrollment.";
+    redirect(`/contacts/${contactSlug}?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/sequences");
+  revalidatePath(`/contacts/${contactSlug}`);
+  redirect(`/contacts/${contactSlug}?updated=1`);
+}
+
+export async function resumeEnrollmentAction(formData: FormData) {
+  const enrollmentId = String(formData.get("enrollmentId") ?? "");
+  const contactSlug = String(formData.get("contactSlug") ?? "");
+
+  if (!enrollmentId || !contactSlug) {
+    redirect("/contacts?error=missing-enrollment");
+  }
+
+  try {
+    await resumeEnrollment({
+      actorUserId: await getAuditActorUserId(),
+      enrollmentId,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to resume enrollment.";
+    redirect(`/contacts/${contactSlug}?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/sequences");
+  revalidatePath(`/contacts/${contactSlug}`);
+  redirect(`/contacts/${contactSlug}?updated=1`);
 }

@@ -5,6 +5,8 @@ import {
   cancelOutboundMessageAction,
   createSequenceAction,
   deleteSequenceStepAction,
+  pauseSequenceAction,
+  resumeSequenceAction,
   retryOutboundMessageAction,
   updateSequenceAction,
   updateSequenceStepAction,
@@ -35,6 +37,26 @@ function formatDueAt(value: Date | null) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function outboundDiagnosticMetadata(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return {
+      attemptCount: 0,
+      deliveryDiagnostic: null as string | null,
+    };
+  }
+
+  const metadata = value as Record<string, unknown>;
+
+  return {
+    attemptCount:
+      typeof metadata.attemptCount === "number" ? metadata.attemptCount : 0,
+    deliveryDiagnostic:
+      typeof metadata.deliveryDiagnostic === "string"
+        ? metadata.deliveryDiagnostic
+        : null,
+  };
 }
 
 function feedbackMessage(params: Record<string, string | string[] | undefined>) {
@@ -375,9 +397,32 @@ export default async function SequencesPage({
                       />
                     </label>
                     <div className="flex justify-end">
-                      <Button type="submit" variant="outline">
-                        Save sequence settings
-                      </Button>
+                      <div className="flex flex-wrap gap-3">
+                        {sequence.status === "active" ? (
+                          <Button
+                            formAction={pauseSequenceAction}
+                            name="sequenceId"
+                            value={sequence.id}
+                            type="submit"
+                            variant="outline"
+                          >
+                            Pause sequence
+                          </Button>
+                        ) : (
+                          <Button
+                            formAction={resumeSequenceAction}
+                            name="sequenceId"
+                            value={sequence.id}
+                            type="submit"
+                            variant="outline"
+                          >
+                            Resume sequence
+                          </Button>
+                        )}
+                        <Button type="submit" variant="outline">
+                          Save sequence settings
+                        </Button>
+                      </div>
                     </div>
                   </form>
 
@@ -535,88 +580,107 @@ export default async function SequencesPage({
                 action={approveOutboundDraftAction}
                 className="space-y-4 rounded-2xl border border-border/85 bg-background/75 px-4 py-4"
               >
-                <input type="hidden" name="messageId" value={draft.id} />
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="text-sm font-semibold text-foreground">
-                      {draft.contact?.displayName ?? "Unknown contact"}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {draft.sequence?.name ?? "Ad hoc"} ·{" "}
-                      {draft.contact?.primaryEmail ?? "No email"}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge
-                      variant={
-                        draft.status === "failed" ? "destructive" : "outline"
-                      }
-                    >
-                      {draft.status}
-                    </Badge>
-                    <Badge variant="secondary">
-                      {draft.connectedAccount?.email ??
-                        draft.connectedAccount?.provider ??
-                        "No sender"}
-                    </Badge>
-                  </div>
-                </div>
+                {(() => {
+                  const diagnostics = outboundDiagnosticMetadata(draft.metadata);
 
-                <label className="space-y-2 text-sm">
-                  <span className="text-muted-foreground">Subject</span>
-                  <input
-                    name="subject"
-                    defaultValue={draft.finalSubject}
-                    className="border-border/80 bg-background h-11 w-full rounded-2xl border px-3 outline-none"
-                    required
-                  />
-                </label>
+                  return (
+                    <>
+                      <input type="hidden" name="messageId" value={draft.id} />
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-foreground">
+                            {draft.contact?.displayName ?? "Unknown contact"}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {draft.sequence?.name ?? "Ad hoc"} ·{" "}
+                            {draft.contact?.primaryEmail ?? "No email"}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge
+                            variant={
+                              draft.status === "failed"
+                                ? "destructive"
+                                : "outline"
+                            }
+                          >
+                            {draft.status}
+                          </Badge>
+                          <Badge variant="secondary">
+                            {draft.connectedAccount?.email ??
+                              draft.connectedAccount?.provider ??
+                              "No sender"}
+                          </Badge>
+                        </div>
+                      </div>
 
-                <label className="space-y-2 text-sm">
-                  <span className="text-muted-foreground">Body</span>
-                  <textarea
-                    name="body"
-                    defaultValue={draft.finalBody}
-                    rows={10}
-                    className="border-border/80 bg-background w-full rounded-2xl border px-3 py-3 font-mono text-sm outline-none"
-                    required
-                  />
-                </label>
+                      <label className="space-y-2 text-sm">
+                        <span className="text-muted-foreground">Subject</span>
+                        <input
+                          name="subject"
+                          defaultValue={draft.finalSubject}
+                          className="border-border/80 bg-background h-11 w-full rounded-2xl border px-3 outline-none"
+                          required
+                        />
+                      </label>
 
-                {draft.lastError ? (
-                  <div className="rounded-xl border border-destructive/20 bg-destructive/8 px-3 py-3 text-sm text-destructive">
-                    {draft.lastError}
-                  </div>
-                ) : null}
+                      <label className="space-y-2 text-sm">
+                        <span className="text-muted-foreground">Body</span>
+                        <textarea
+                          name="body"
+                          defaultValue={draft.finalBody}
+                          rows={10}
+                          className="border-border/80 bg-background w-full rounded-2xl border px-3 py-3 font-mono text-sm outline-none"
+                          required
+                        />
+                      </label>
 
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-muted-foreground text-sm">
-                    Due {formatDueAt(draft.dueAt)}.
-                  </p>
-                  <div className="flex flex-wrap gap-3">
-                    {draft.status === "failed" ? (
-                      <Button
-                        formAction={retryOutboundMessageAction}
-                        name="messageId"
-                        value={draft.id}
-                        type="submit"
-                        variant="outline"
-                      >
-                        Retry with current copy
-                      </Button>
-                    ) : null}
-                    <Button
-                      formAction={cancelOutboundMessageAction}
-                      name="messageId"
-                      value={draft.id}
-                      type="submit"
-                      variant="outline"
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit">Approve and queue send</Button>
-                  </div>
-                </div>
+                      {draft.lastError ? (
+                        <div className="rounded-xl border border-destructive/20 bg-destructive/8 px-3 py-3 text-sm text-destructive">
+                          {draft.lastError}
+                        </div>
+                      ) : null}
+
+                      {diagnostics.attemptCount > 0 ||
+                      diagnostics.deliveryDiagnostic ? (
+                        <div className="rounded-xl border border-border/80 bg-secondary/60 px-3 py-3 text-sm text-muted-foreground">
+                          Attempts {diagnostics.attemptCount}.{" "}
+                          {diagnostics.deliveryDiagnostic ??
+                            "No provider diagnostic captured yet."}
+                        </div>
+                      ) : null}
+
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-muted-foreground text-sm">
+                          Due {formatDueAt(draft.dueAt)}.
+                        </p>
+                        <div className="flex flex-wrap gap-3">
+                          {draft.status === "failed" ? (
+                            <Button
+                              formAction={retryOutboundMessageAction}
+                              name="messageId"
+                              value={draft.id}
+                              type="submit"
+                              variant="outline"
+                            >
+                              Retry with current copy
+                            </Button>
+                          ) : null}
+                          <Button
+                            formAction={cancelOutboundMessageAction}
+                            name="messageId"
+                            value={draft.id}
+                            type="submit"
+                            variant="outline"
+                          >
+                            Cancel
+                          </Button>
+                          <Button type="submit">Approve and queue send</Button>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </form>
             ))
           )}

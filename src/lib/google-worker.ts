@@ -29,6 +29,11 @@ async function claimNextGoogleSyncAccountId() {
     .update(connectedAccounts)
     .set({
       lastError: null,
+      metadata: {
+        ...((account.metadata as Record<string, unknown>) ?? {}),
+        contactSyncLastRunAt: new Date().toISOString(),
+        contactSyncLastError: null,
+      },
       syncRequestedAt: null,
       updatedAt: new Date(),
     })
@@ -55,6 +60,7 @@ export async function processNextGoogleSync(logger: WorkerLogger = console) {
     const account = await db.query.connectedAccounts.findFirst({
       where: eq(connectedAccounts.id, accountId),
       columns: {
+        metadata: true,
         status: true,
       },
     });
@@ -62,6 +68,11 @@ export async function processNextGoogleSync(logger: WorkerLogger = console) {
       .update(connectedAccounts)
       .set({
         lastError: message,
+        metadata: {
+          ...((account?.metadata as Record<string, unknown>) ?? {}),
+          contactSyncLastError: message,
+          contactSyncLastRunAt: new Date().toISOString(),
+        },
         status:
           account?.status === "reconnect_required"
             ? "reconnect_required"

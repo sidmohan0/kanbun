@@ -6,5 +6,5 @@ export const GOOGLE_SEND_SCOPE =
   "https://www.googleapis.com/auth/gmail.send";
 
 export const MICROSOFT_CONTACTS_SCOPE = "Contacts.Read";
-export const MICROSOFT_REPLY_READ_SCOPE = "Mail.ReadBasic";
+export const MICROSOFT_REPLY_READ_SCOPE = "Mail.Read";
 export const MICROSOFT_SEND_SCOPE = "Mail.Send";
