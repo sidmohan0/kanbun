@@ -3,6 +3,7 @@ import {
   asc,
   desc,
   eq,
+  gte,
   inArray,
   lte,
   or,
@@ -13,6 +14,7 @@ import {
   connectedAccounts,
   contacts,
   outboundMessages,
+  replySignals,
   sequenceEnrollments,
   sequences,
   sequenceSteps,
@@ -28,6 +30,28 @@ function addDays(base: Date, days: number) {
   const next = new Date(base);
   next.setDate(next.getDate() + days);
   return next;
+}
+
+function startOfToday() {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return now;
+}
+
+function sanitizeHour(value: number | undefined, fallback: number) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.min(23, Math.max(0, Math.trunc(value!)));
+}
+
+function sanitizeDailyCap(value: number | undefined) {
+  if (!Number.isFinite(value)) {
+    return 25;
+  }
+
+  return Math.max(1, Math.trunc(value!));
 }
 
 function extractFirstName(displayName: string) {
@@ -144,6 +168,17 @@ async function pickDefaultSendAccountForUser(userId: string) {
   return accounts[0] ?? null;
 }
 
+async function getReplySignalCount(contactId: string) {
+  const rows = await db.query.replySignals.findMany({
+    where: eq(replySignals.contactId, contactId),
+    columns: {
+      id: true,
+    },
+  });
+
+  return rows.length;
+}
+
 async function getStepForEnrollment(
   enrollment: typeof sequenceEnrollments.$inferSelect,
 ) {
@@ -155,26 +190,76 @@ async function getStepForEnrollment(
   });
 }
 
+async function getSendPolicyBlockReason(
+  message: typeof outboundMessages.$inferSelect,
+) {
+  const sequence = message.sequenceId
+    ? await db.query.sequences.findFirst({
+        where: eq(sequences.id, message.sequenceId),
+      })
+    : null;
+
+  const sendWindowStartHour = sanitizeHour(
+    sequence?.sendWindowStartHour,
+    8,
+  );
+  const sendWindowEndHour = sanitizeHour(sequence?.sendWindowEndHour, 17);
+  const dailySendCap = sanitizeDailyCap(sequence?.dailySendCap);
+  const hour = new Date().getHours();
+
+  if (hour < sendWindowStartHour || hour >= sendWindowEndHour) {
+    return `Waiting for send window (${String(sendWindowStartHour).padStart(2, "0")}:00-${String(sendWindowEndHour).padStart(2, "0")}:00 local time).`;
+  }
+
+  if (!message.connectedAccountId) {
+    return null;
+  }
+
+  const sentToday = await db.query.outboundMessages.findMany({
+    where: and(
+      eq(outboundMessages.connectedAccountId, message.connectedAccountId),
+      eq(outboundMessages.status, "sent"),
+      gte(outboundMessages.sentAt, startOfToday()),
+    ),
+    columns: {
+      id: true,
+    },
+  });
+
+  if (sentToday.length >= dailySendCap) {
+    return `Daily send cap reached (${dailySendCap}) for this sending account.`;
+  }
+
+  return null;
+}
+
 export async function listSequencesOverview() {
-  const [sequenceRows, enrollmentRows, draftRows, sentRows] = await Promise.all([
-    db.query.sequences.findMany({
-      orderBy: [desc(sequences.updatedAt)],
-    }),
-    db.query.sequenceEnrollments.findMany(),
-    db.query.outboundMessages.findMany({
-      where: eq(outboundMessages.status, "draft"),
-      columns: {
-        dueAt: true,
-        sequenceId: true,
-      },
-    }),
-    db.query.outboundMessages.findMany({
-      where: eq(outboundMessages.status, "sent"),
-      columns: {
-        sequenceId: true,
-      },
-    }),
-  ]);
+  const [sequenceRows, enrollmentRows, draftRows, sentRows, stepRows] =
+    await Promise.all([
+      db.query.sequences.findMany({
+        orderBy: [desc(sequences.updatedAt)],
+      }),
+      db.query.sequenceEnrollments.findMany(),
+      db.query.outboundMessages.findMany({
+        where: or(
+          eq(outboundMessages.status, "draft"),
+          eq(outboundMessages.status, "failed"),
+        ),
+        columns: {
+          dueAt: true,
+          sequenceId: true,
+        },
+      }),
+      db.query.outboundMessages.findMany({
+        where: eq(outboundMessages.status, "sent"),
+        columns: {
+          sequenceId: true,
+        },
+      }),
+      db.query.sequenceSteps.findMany({
+        orderBy: [asc(sequenceSteps.sequenceId), asc(sequenceSteps.position)],
+      }),
+    ]);
 
   return sequenceRows.map((sequence) => {
     const enrollments = enrollmentRows.filter(
@@ -197,6 +282,7 @@ export async function listSequencesOverview() {
       pendingApprovalCount: drafts.length,
       sentCount: sentRows.filter((message) => message.sequenceId === sequence.id)
         .length,
+      steps: stepRows.filter((step) => step.sequenceId === sequence.id),
       nextDueAt,
     };
   });
@@ -328,18 +414,31 @@ export async function listContactSequenceEnrollments(contactId: string) {
   }));
 }
 
+export async function listReplySignalsForContact(contactId: string) {
+  return db.query.replySignals.findMany({
+    where: eq(replySignals.contactId, contactId),
+    orderBy: [desc(replySignals.createdAt)],
+  });
+}
+
 export async function createSequence(input: {
   actorUserId?: string | null;
   bodyTemplate: string;
+  dailySendCap?: number;
   delayDays?: number;
   description?: string | null;
   name: string;
+  sendWindowEndHour?: number;
+  sendWindowStartHour?: number;
   subjectTemplate: string;
 }) {
   const name = input.name.trim();
   const subjectTemplate = input.subjectTemplate.trim();
   const bodyTemplate = input.bodyTemplate.trim();
   const delayDays = Math.max(0, input.delayDays ?? 0);
+  const dailySendCap = sanitizeDailyCap(input.dailySendCap);
+  const sendWindowEndHour = sanitizeHour(input.sendWindowEndHour, 17);
+  const sendWindowStartHour = sanitizeHour(input.sendWindowStartHour, 8);
 
   if (!name) {
     throw new Error("Sequence name is required.");
@@ -352,8 +451,11 @@ export async function createSequence(input: {
   const [sequence] = await db
     .insert(sequences)
     .values({
+      dailySendCap,
       description: input.description?.trim() || null,
       name,
+      sendWindowEndHour,
+      sendWindowStartHour,
       status: "active",
     })
     .returning();
@@ -373,12 +475,209 @@ export async function createSequence(input: {
     entityType: "sequence",
     eventName: "sequence.created",
     metadata: {
+      dailySendCap,
       delayDays,
       name,
+      sendWindowEndHour,
+      sendWindowStartHour,
     },
   });
 
   return sequence.id;
+}
+
+export async function updateSequence(input: {
+  actorUserId?: string | null;
+  dailySendCap?: number;
+  description?: string | null;
+  name: string;
+  sendWindowEndHour?: number;
+  sendWindowStartHour?: number;
+  sequenceId: string;
+}) {
+  const existing = await db.query.sequences.findFirst({
+    where: eq(sequences.id, input.sequenceId),
+  });
+
+  if (!existing) {
+    throw new Error("Sequence not found.");
+  }
+
+  const name = input.name.trim();
+
+  if (!name) {
+    throw new Error("Sequence name is required.");
+  }
+
+  await db
+    .update(sequences)
+    .set({
+      dailySendCap: sanitizeDailyCap(input.dailySendCap),
+      description: input.description?.trim() || null,
+      name,
+      sendWindowEndHour: sanitizeHour(input.sendWindowEndHour, 17),
+      sendWindowStartHour: sanitizeHour(input.sendWindowStartHour, 8),
+      updatedAt: new Date(),
+    })
+    .where(eq(sequences.id, input.sequenceId));
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: input.sequenceId,
+    entityType: "sequence",
+    eventName: "sequence.updated",
+  });
+}
+
+export async function addSequenceStep(input: {
+  actorUserId?: string | null;
+  bodyTemplate: string;
+  delayDays?: number;
+  sequenceId: string;
+  subjectTemplate: string;
+  title: string;
+}) {
+  const existingSteps = await db.query.sequenceSteps.findMany({
+    where: eq(sequenceSteps.sequenceId, input.sequenceId),
+    orderBy: [desc(sequenceSteps.position)],
+    columns: {
+      position: true,
+    },
+  });
+
+  const position = (existingSteps[0]?.position ?? 0) + 1;
+  const title = input.title.trim() || `Step ${position}`;
+  const subjectTemplate = input.subjectTemplate.trim();
+  const bodyTemplate = input.bodyTemplate.trim();
+
+  if (!subjectTemplate || !bodyTemplate) {
+    throw new Error("Each step requires both subject and body.");
+  }
+
+  await db.insert(sequenceSteps).values({
+    bodyTemplate,
+    delayDays: Math.max(0, input.delayDays ?? 0),
+    position,
+    sequenceId: input.sequenceId,
+    subjectTemplate,
+    title,
+  });
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: input.sequenceId,
+    entityType: "sequence",
+    eventName: "sequence.step_added",
+    metadata: {
+      position,
+      title,
+    },
+  });
+}
+
+export async function updateSequenceStep(input: {
+  actorUserId?: string | null;
+  bodyTemplate: string;
+  delayDays?: number;
+  stepId: string;
+  subjectTemplate: string;
+  title: string;
+}) {
+  const step = await db.query.sequenceSteps.findFirst({
+    where: eq(sequenceSteps.id, input.stepId),
+  });
+
+  if (!step) {
+    throw new Error("Sequence step not found.");
+  }
+
+  const subjectTemplate = input.subjectTemplate.trim();
+  const bodyTemplate = input.bodyTemplate.trim();
+
+  if (!subjectTemplate || !bodyTemplate) {
+    throw new Error("Each step requires both subject and body.");
+  }
+
+  await db
+    .update(sequenceSteps)
+    .set({
+      bodyTemplate,
+      delayDays: Math.max(0, input.delayDays ?? 0),
+      subjectTemplate,
+      title: input.title.trim() || `Step ${step.position}`,
+      updatedAt: new Date(),
+    })
+    .where(eq(sequenceSteps.id, input.stepId));
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: step.sequenceId,
+    entityType: "sequence",
+    eventName: "sequence.step_updated",
+    metadata: {
+      stepId: input.stepId,
+    },
+  });
+}
+
+async function resequenceSteps(sequenceId: string) {
+  const steps = await db.query.sequenceSteps.findMany({
+    where: eq(sequenceSteps.sequenceId, sequenceId),
+    orderBy: [asc(sequenceSteps.position)],
+  });
+
+  for (const [index, step] of steps.entries()) {
+    const nextPosition = index + 1;
+
+    if (step.position === nextPosition) {
+      continue;
+    }
+
+    await db
+      .update(sequenceSteps)
+      .set({
+        position: nextPosition,
+        updatedAt: new Date(),
+      })
+      .where(eq(sequenceSteps.id, step.id));
+  }
+}
+
+export async function deleteSequenceStep(input: {
+  actorUserId?: string | null;
+  stepId: string;
+}) {
+  const step = await db.query.sequenceSteps.findFirst({
+    where: eq(sequenceSteps.id, input.stepId),
+  });
+
+  if (!step) {
+    throw new Error("Sequence step not found.");
+  }
+
+  const siblingCount = await db.query.sequenceSteps.findMany({
+    where: eq(sequenceSteps.sequenceId, step.sequenceId),
+    columns: {
+      id: true,
+    },
+  });
+
+  if (siblingCount.length <= 1) {
+    throw new Error("A sequence must keep at least one step.");
+  }
+
+  await db.delete(sequenceSteps).where(eq(sequenceSteps.id, input.stepId));
+  await resequenceSteps(step.sequenceId);
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: step.sequenceId,
+    entityType: "sequence",
+    eventName: "sequence.step_deleted",
+    metadata: {
+      stepId: step.id,
+    },
+  });
 }
 
 export async function enrollContactInSequence(input: {
@@ -479,7 +778,8 @@ export async function generateDraftForEnrollment(
     return null;
   }
 
-  const [contact, sequence, step, existingDraft] = await Promise.all([
+  const [contact, sequence, step, existingDraft, replySignalCount] =
+    await Promise.all([
     db.query.contacts.findFirst({
       where: eq(contacts.id, enrollment.contactId),
     }),
@@ -493,6 +793,7 @@ export async function generateDraftForEnrollment(
         eq(outboundMessages.status, "draft"),
       ),
     }),
+    getReplySignalCount(enrollment.contactId),
   ]);
 
   if (existingDraft) {
@@ -501,6 +802,20 @@ export async function generateDraftForEnrollment(
 
   if (!contact || !sequence) {
     throw new Error("Unable to load sequence enrollment context.");
+  }
+
+  if (replySignalCount > 0) {
+    await db
+      .update(sequenceEnrollments)
+      .set({
+        nextDueAt: null,
+        status: "stopped",
+        stopReason: "Stopped because a reply signal was recorded for this contact.",
+        updatedAt: new Date(),
+      })
+      .where(eq(sequenceEnrollments.id, enrollment.id));
+
+    return null;
   }
 
   if (!step) {
@@ -682,6 +997,153 @@ export async function approveOutboundDraft(input: {
   });
 }
 
+export async function retryOutboundMessage(input: {
+  actorUserId?: string | null;
+  messageId: string;
+}) {
+  const message = await db.query.outboundMessages.findFirst({
+    where: eq(outboundMessages.id, input.messageId),
+  });
+
+  if (!message || message.status !== "failed") {
+    throw new Error("Only failed outbound items can be retried.");
+  }
+
+  await approveOutboundDraft({
+    actorUserId: input.actorUserId,
+    body: message.finalBody,
+    messageId: message.id,
+    subject: message.finalSubject,
+  });
+}
+
+export async function cancelOutboundMessage(input: {
+  actorUserId?: string | null;
+  messageId: string;
+}) {
+  const message = await db.query.outboundMessages.findFirst({
+    where: eq(outboundMessages.id, input.messageId),
+  });
+
+  if (!message) {
+    throw new Error("Outbound item not found.");
+  }
+
+  if (
+    message.status !== "draft" &&
+    message.status !== "failed" &&
+    message.status !== "queued"
+  ) {
+    throw new Error("Only draft, failed, or queued items can be cancelled.");
+  }
+
+  await db
+    .update(outboundMessages)
+    .set({
+      lastError: "Cancelled by operator.",
+      status: "cancelled",
+      updatedAt: new Date(),
+    })
+    .where(eq(outboundMessages.id, input.messageId));
+
+  if (message.sequenceEnrollmentId) {
+    await db
+      .update(sequenceEnrollments)
+      .set({
+        nextDueAt: null,
+        status: "stopped",
+        stopReason: "Stopped because the operator cancelled the current step.",
+        updatedAt: new Date(),
+      })
+      .where(eq(sequenceEnrollments.id, message.sequenceEnrollmentId));
+  }
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: message.id,
+    entityType: "outbound_message",
+    eventName: "outbound.cancelled",
+  });
+}
+
+export async function recordReplySignal(input: {
+  actorUserId?: string | null;
+  contactId: string;
+  summary?: string | null;
+}) {
+  const contact = await db.query.contacts.findFirst({
+    where: eq(contacts.id, input.contactId),
+  });
+
+  if (!contact) {
+    throw new Error("Contact not found.");
+  }
+
+  await db.insert(replySignals).values({
+    contactId: contact.id,
+    sourceType: "manual",
+    summary: input.summary?.trim() || "Manual reply recorded by operator.",
+  });
+
+  const activeEnrollments = await db.query.sequenceEnrollments.findMany({
+    where: and(
+      eq(sequenceEnrollments.contactId, contact.id),
+      or(
+        eq(sequenceEnrollments.status, "active"),
+        eq(sequenceEnrollments.status, "paused"),
+      ),
+    ),
+    columns: {
+      id: true,
+    },
+  });
+
+  for (const enrollment of activeEnrollments) {
+    await db
+      .update(sequenceEnrollments)
+      .set({
+        nextDueAt: null,
+        status: "stopped",
+        stopReason: "Stopped because a reply signal was recorded for this contact.",
+        updatedAt: new Date(),
+      })
+      .where(eq(sequenceEnrollments.id, enrollment.id));
+  }
+
+  const activeMessages = await db.query.outboundMessages.findMany({
+    where: and(
+      eq(outboundMessages.contactId, contact.id),
+      or(
+        eq(outboundMessages.status, "draft"),
+        eq(outboundMessages.status, "queued"),
+      ),
+    ),
+    columns: {
+      id: true,
+    },
+  });
+
+  for (const message of activeMessages) {
+    await db
+      .update(outboundMessages)
+      .set({
+        lastError: "Cancelled because a reply signal was recorded.",
+        status: "cancelled",
+        updatedAt: new Date(),
+      })
+      .where(eq(outboundMessages.id, message.id));
+  }
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: contact.id,
+    entityType: "contact",
+    eventName: "contact.reply_recorded",
+  });
+
+  return contact.slug;
+}
+
 async function advanceEnrollmentAfterSend(message: typeof outboundMessages.$inferSelect) {
   if (!message.sequenceEnrollmentId) {
     return;
@@ -692,6 +1154,21 @@ async function advanceEnrollmentAfterSend(message: typeof outboundMessages.$infe
   });
 
   if (!enrollment) {
+    return;
+  }
+
+  const replySignalCount = await getReplySignalCount(enrollment.contactId);
+
+  if (replySignalCount > 0) {
+    await db
+      .update(sequenceEnrollments)
+      .set({
+        nextDueAt: null,
+        status: "stopped",
+        stopReason: "Stopped because a reply signal was recorded for this contact.",
+        updatedAt: new Date(),
+      })
+      .where(eq(sequenceEnrollments.id, enrollment.id));
     return;
   }
 
@@ -873,24 +1350,39 @@ export async function claimNextDueEnrollmentId() {
 }
 
 export async function claimNextQueuedOutboundMessageId() {
-  const message = await db.query.outboundMessages.findFirst({
+  const messages = await db.query.outboundMessages.findMany({
     where: eq(outboundMessages.status, "queued"),
     orderBy: [asc(outboundMessages.queuedAt)],
+    limit: 25,
   });
 
-  if (!message) {
-    return null;
+  for (const message of messages) {
+    const blockReason = await getSendPolicyBlockReason(message);
+
+    if (blockReason) {
+      await db
+        .update(outboundMessages)
+        .set({
+          lastError: blockReason,
+          updatedAt: new Date(),
+        })
+        .where(eq(outboundMessages.id, message.id));
+      continue;
+    }
+
+    await db
+      .update(outboundMessages)
+      .set({
+        lastError: null,
+        status: "sending",
+        updatedAt: new Date(),
+      })
+      .where(eq(outboundMessages.id, message.id));
+
+    return message.id;
   }
 
-  await db
-    .update(outboundMessages)
-    .set({
-      status: "sending",
-      updatedAt: new Date(),
-    })
-    .where(eq(outboundMessages.id, message.id));
-
-  return message.id;
+  return null;
 }
 
 export async function listSendCapableAccountsForUser(userId: string) {

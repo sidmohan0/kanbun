@@ -71,6 +71,13 @@
       "when": 1773071543523,
       "tag": "0009_exotic_wolfpack",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1773073156141,
+      "tag": "0010_smart_ultimates",
+      "breakpoints": true
     }
   ]
 }

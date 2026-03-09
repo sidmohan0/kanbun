@@ -23,7 +23,7 @@ Planning is complete and the repository bootstrap is underway. The current app i
 - a robust CSV import flow with file idempotency, draft preview and remapping, per-row edits and skip controls, paginated review, downloadable review reports, and dedicated worker processing into canonical contacts
 - Google OAuth connected-account scaffolding with worker-driven People API contact sync into the canonical contact model
 - Microsoft OAuth connected-account scaffolding with worker-driven Graph contact sync into the same canonical contact model
-- a first-pass sequence engine with durable enrollments, worker-generated review drafts, and queued outbound delivery through connected Gmail or Microsoft accounts
+- a multi-step sequence engine with durable enrollments, worker-generated review drafts, retry/cancel controls, manual reply-stop handling, and queued outbound delivery through connected Gmail or Microsoft accounts
 - ad hoc follow-up creation from the contact workspace into the Kanbun task queue
 - Todoist API-token task mirroring with worker-driven reconciliation back into Kanbun task state
 - baseline lint, typecheck, test, build, and CI setup
@@ -58,6 +58,7 @@ Set `TODOIST_API_TOKEN` to enable Todoist task mirroring.
 The app runs on port `7890` by default.
 Make sure `KANBUN_URL` matches the OAuth redirect origin you register with the providers.
 If you connected Google or Microsoft before outbound sending was added, reconnect once so the new send scopes are granted.
+Sequence sends currently obey per-sequence send windows and a per-account daily send cap.
 
 ## Core commands
 

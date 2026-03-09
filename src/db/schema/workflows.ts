@@ -186,9 +186,12 @@ export const sequences = pgTable(
     name: text("name").notNull(),
     status: sequenceStatusEnum("status").default("draft").notNull(),
     description: text("description"),
+    dailySendCap: integer("daily_send_cap").default(25).notNull(),
     sendMode: sequenceSendModeEnum("send_mode")
       .default("manual_review")
       .notNull(),
+    sendWindowEndHour: integer("send_window_end_hour").default(17).notNull(),
+    sendWindowStartHour: integer("send_window_start_hour").default(8).notNull(),
     ...timestamps,
   },
   (table) => [index("sequences_name_idx").on(table.name)],
@@ -357,6 +360,20 @@ export const outboundMessages = pgTable(
       table.sequenceStepId,
     ),
   ],
+);
+
+export const replySignals = pgTable(
+  "reply_signals",
+  {
+    id: idColumn(),
+    contactId: text("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    sourceType: text("source_type").notNull(),
+    summary: text("summary"),
+    ...timestamps,
+  },
+  (table) => [index("reply_signals_contact_id_idx").on(table.contactId)],
 );
 
 export const auditEvents = pgTable(

@@ -5,9 +5,16 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, getPersistentOwnerUserId } from "@/lib/auth";
 import { findContactById } from "@/lib/contacts";
 import {
+  addSequenceStep,
   approveOutboundDraft,
+  cancelOutboundMessage,
   createSequence,
+  deleteSequenceStep,
   enrollContactInSequence,
+  recordReplySignal,
+  retryOutboundMessage,
+  updateSequence,
+  updateSequenceStep,
 } from "@/lib/sequences";
 
 async function getAuditActorUserId() {
@@ -25,9 +32,14 @@ export async function createSequenceAction(formData: FormData) {
     await createSequence({
       actorUserId: await getAuditActorUserId(),
       bodyTemplate: String(formData.get("bodyTemplate") ?? ""),
+      dailySendCap: Number(String(formData.get("dailySendCap") ?? "25")),
       delayDays: Number(String(formData.get("delayDays") ?? "0")),
       description: String(formData.get("description") ?? ""),
       name: String(formData.get("name") ?? ""),
+      sendWindowEndHour: Number(String(formData.get("sendWindowEndHour") ?? "17")),
+      sendWindowStartHour: Number(
+        String(formData.get("sendWindowStartHour") ?? "8"),
+      ),
       subjectTemplate: String(formData.get("subjectTemplate") ?? ""),
     });
   } catch (error) {
@@ -38,6 +50,109 @@ export async function createSequenceAction(formData: FormData) {
 
   revalidatePath("/sequences");
   redirect("/sequences?created=1");
+}
+
+export async function updateSequenceAction(formData: FormData) {
+  const sequenceId = String(formData.get("sequenceId") ?? "");
+
+  if (!sequenceId) {
+    redirect("/sequences?error=missing-sequence");
+  }
+
+  try {
+    await updateSequence({
+      actorUserId: await getAuditActorUserId(),
+      dailySendCap: Number(String(formData.get("dailySendCap") ?? "25")),
+      description: String(formData.get("description") ?? ""),
+      name: String(formData.get("name") ?? ""),
+      sendWindowEndHour: Number(String(formData.get("sendWindowEndHour") ?? "17")),
+      sendWindowStartHour: Number(
+        String(formData.get("sendWindowStartHour") ?? "8"),
+      ),
+      sequenceId,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to update sequence.";
+    redirect(`/sequences?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/sequences");
+  redirect("/sequences?updated=1");
+}
+
+export async function addSequenceStepAction(formData: FormData) {
+  const sequenceId = String(formData.get("sequenceId") ?? "");
+
+  if (!sequenceId) {
+    redirect("/sequences?error=missing-sequence");
+  }
+
+  try {
+    await addSequenceStep({
+      actorUserId: await getAuditActorUserId(),
+      bodyTemplate: String(formData.get("bodyTemplate") ?? ""),
+      delayDays: Number(String(formData.get("delayDays") ?? "0")),
+      sequenceId,
+      subjectTemplate: String(formData.get("subjectTemplate") ?? ""),
+      title: String(formData.get("title") ?? ""),
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to add sequence step.";
+    redirect(`/sequences?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/sequences");
+  redirect("/sequences?step=added");
+}
+
+export async function updateSequenceStepAction(formData: FormData) {
+  const stepId = String(formData.get("stepId") ?? "");
+
+  if (!stepId) {
+    redirect("/sequences?error=missing-step");
+  }
+
+  try {
+    await updateSequenceStep({
+      actorUserId: await getAuditActorUserId(),
+      bodyTemplate: String(formData.get("bodyTemplate") ?? ""),
+      delayDays: Number(String(formData.get("delayDays") ?? "0")),
+      stepId,
+      subjectTemplate: String(formData.get("subjectTemplate") ?? ""),
+      title: String(formData.get("title") ?? ""),
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to update sequence step.";
+    redirect(`/sequences?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/sequences");
+  redirect("/sequences?step=updated");
+}
+
+export async function deleteSequenceStepAction(formData: FormData) {
+  const stepId = String(formData.get("stepId") ?? "");
+
+  if (!stepId) {
+    redirect("/sequences?error=missing-step");
+  }
+
+  try {
+    await deleteSequenceStep({
+      actorUserId: await getAuditActorUserId(),
+      stepId,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to delete sequence step.";
+    redirect(`/sequences?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/sequences");
+  redirect("/sequences?step=deleted");
 }
 
 export async function enrollContactInSequenceAction(formData: FormData) {
@@ -98,4 +213,79 @@ export async function approveOutboundDraftAction(formData: FormData) {
   revalidatePath("/sequences");
   revalidatePath("/contacts");
   redirect("/sequences?queued=1");
+}
+
+export async function retryOutboundMessageAction(formData: FormData) {
+  const messageId = String(formData.get("messageId") ?? "");
+
+  if (!messageId) {
+    redirect("/sequences?error=missing-message");
+  }
+
+  try {
+    await retryOutboundMessage({
+      actorUserId: await getAuditActorUserId(),
+      messageId,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to retry send.";
+    redirect(`/sequences?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/sequences");
+  redirect("/sequences?queued=1");
+}
+
+export async function cancelOutboundMessageAction(formData: FormData) {
+  const messageId = String(formData.get("messageId") ?? "");
+
+  if (!messageId) {
+    redirect("/sequences?error=missing-message");
+  }
+
+  try {
+    await cancelOutboundMessage({
+      actorUserId: await getAuditActorUserId(),
+      messageId,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to cancel outbound item.";
+    redirect(`/sequences?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/sequences");
+  revalidatePath("/contacts");
+  redirect("/sequences?cancelled=1");
+}
+
+export async function recordReplySignalAction(formData: FormData) {
+  const contactId = String(formData.get("contactId") ?? "");
+
+  if (!contactId) {
+    redirect("/contacts?error=missing-contact");
+  }
+
+  let contactSlug: string;
+
+  try {
+    contactSlug = await recordReplySignal({
+      actorUserId: await getAuditActorUserId(),
+      contactId,
+      summary: String(formData.get("summary") ?? ""),
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to record reply signal.";
+    const contact = await findContactById(contactId);
+    if (contact) {
+      redirect(`/contacts/${contact.slug}?error=${encodeURIComponent(message)}`);
+    }
+    redirect(`/contacts?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/sequences");
+  revalidatePath(`/contacts/${contactSlug}`);
+  redirect(`/contacts/${contactSlug}?reply=recorded`);
 }

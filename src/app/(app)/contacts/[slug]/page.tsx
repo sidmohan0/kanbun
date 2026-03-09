@@ -3,7 +3,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ArrowRight, GitMerge } from "lucide-react";
 import { createFollowUpTaskAction } from "@/app/actions/workflows";
-import { enrollContactInSequenceAction } from "@/app/actions/sequences";
+import {
+  enrollContactInSequenceAction,
+  recordReplySignalAction,
+} from "@/app/actions/sequences";
 import { DashboardPanel, SectionHeading } from "@/components/app/ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +14,7 @@ import { getContactBySlug } from "@/lib/contacts";
 import {
   listActiveSequencesForContact,
   listContactSequenceEnrollments,
+  listReplySignalsForContact,
 } from "@/lib/sequences";
 import { isTodoistApiTokenConfigured } from "@/lib/todoist";
 
@@ -40,6 +44,7 @@ export default async function ContactDetailPage({
   const { slug } = await params;
   const query = await searchParams;
   const followUpCreated = query.followup === "created";
+  const replyRecorded = query.reply === "recorded";
   const sequenceEnrolled = query.sequence === "enrolled";
   const error =
     typeof query.error === "string" ? decodeURIComponent(query.error) : null;
@@ -50,9 +55,10 @@ export default async function ContactDetailPage({
   }
 
   const todoistConnected = isTodoistApiTokenConfigured();
-  const [availableSequences, enrollments] = await Promise.all([
+  const [availableSequences, enrollments, replyHistory] = await Promise.all([
     listActiveSequencesForContact(contact.id),
     listContactSequenceEnrollments(contact.id),
+    listReplySignalsForContact(contact.id),
   ]);
 
   return (
@@ -127,6 +133,17 @@ export default async function ContactDetailPage({
                 Enroll in sequence
               </Button>
             </form>
+            <form action={recordReplySignalAction}>
+              <input type="hidden" name="contactId" value={contact.id} />
+              <input
+                type="hidden"
+                name="summary"
+                value="Manual reply recorded from the contact workspace."
+              />
+              <Button type="submit" variant="outline">
+                Record reply signal
+              </Button>
+            </form>
           </div>
         </div>
       </DashboardPanel>
@@ -147,6 +164,13 @@ export default async function ContactDetailPage({
         <div className="border-border/80 bg-primary/8 text-foreground rounded-2xl border px-4 py-3 text-sm">
           Contact enrolled in sequence. The worker will generate the first draft
           when it becomes due.
+        </div>
+      ) : null}
+
+      {replyRecorded ? (
+        <div className="border-border/80 bg-primary/8 text-foreground rounded-2xl border px-4 py-3 text-sm">
+          Reply signal recorded. Active sequence follow-up for this contact has
+          been stopped and pending drafts were cancelled.
         </div>
       ) : null}
 
@@ -215,6 +239,12 @@ export default async function ContactDetailPage({
                   {enrollments.length}
                 </span>
               </div>
+              <div className="bg-secondary/70 flex items-center justify-between rounded-xl px-3 py-3">
+                <span>Reply signals</span>
+                <span className="text-foreground font-medium">
+                  {replyHistory.length}
+                </span>
+              </div>
             </div>
           </DashboardPanel>
 
@@ -259,6 +289,35 @@ export default async function ContactDetailPage({
                         {enrollment.stopReason}
                       </p>
                     ) : null}
+                  </div>
+                ))
+              )}
+            </div>
+          </DashboardPanel>
+
+          <DashboardPanel>
+            <SectionHeading
+              eyebrow="Replies"
+              title="Stop-on-reply history"
+              description="Reply signals stop active sequence progression for this contact and cancel pending drafts that have not been sent yet."
+            />
+            <div className="space-y-3">
+              {replyHistory.length === 0 ? (
+                <p className="text-muted-foreground text-sm leading-7">
+                  No reply signals recorded yet.
+                </p>
+              ) : (
+                replyHistory.map((signal) => (
+                  <div
+                    key={signal.id}
+                    className="border-border/85 bg-background/75 rounded-2xl border px-4 py-4"
+                  >
+                    <p className="text-sm font-semibold text-foreground">
+                      {signal.summary || "Reply signal recorded"}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {signal.sourceType} · {signal.createdAt.toLocaleString()}
+                    </p>
                   </div>
                 ))
               )}
