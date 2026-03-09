@@ -287,6 +287,13 @@ export async function requestMicrosoftAccountSync(userId: string) {
     throw new Error("Microsoft account is not connected.");
   }
 
+  if (
+    account.status === "disconnected" ||
+    account.status === "reconnect_required"
+  ) {
+    throw new Error("Reconnect Microsoft before syncing contacts.");
+  }
+
   await db
     .update(connectedAccounts)
     .set({

@@ -296,6 +296,13 @@ export async function requestGoogleAccountSync(userId: string) {
     throw new Error("Google account is not connected.");
   }
 
+  if (
+    account.status === "disconnected" ||
+    account.status === "reconnect_required"
+  ) {
+    throw new Error("Reconnect Google before syncing contacts.");
+  }
+
   await db
     .update(connectedAccounts)
     .set({

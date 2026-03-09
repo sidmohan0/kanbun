@@ -27,6 +27,19 @@ export const metadata: Metadata = {
     "Manage connected accounts, operator preferences, and workspace controls.",
 };
 
+function pickPrimaryProviderAccount<
+  T extends { provider: string; status: string },
+>(accounts: T[], provider: string) {
+  return (
+    accounts.find(
+      (account) =>
+        account.provider === provider && account.status !== "disconnected",
+    ) ??
+    accounts.find((account) => account.provider === provider) ??
+    null
+  );
+}
+
 function todoistMirrorCount(metadata: unknown) {
   if (!metadata || typeof metadata !== "object") {
     return 0;
@@ -50,10 +63,8 @@ export default async function SettingsPage({
     listConnectedAccountsForUser(persistentOwnerUserId),
     getTodoistManagedAccountForUser(persistentOwnerUserId),
   ]);
-  const googleAccount =
-    accounts.find((account) => account.provider === "google") ?? null;
-  const microsoftAccount =
-    accounts.find((account) => account.provider === "microsoft") ?? null;
+  const googleAccount = pickPrimaryProviderAccount(accounts, "google");
+  const microsoftAccount = pickPrimaryProviderAccount(accounts, "microsoft");
   const googleConfigured = isGoogleOAuthConfigured();
   const microsoftConfigured = isMicrosoftOAuthConfigured();
   const todoistConfigured = isTodoistApiTokenConfigured();
@@ -86,7 +97,7 @@ export default async function SettingsPage({
             configured={googleConfigured}
             connectAction={startGoogleConnectAction}
             connectDescription="Connect Google to sync People contacts into Kanbun."
-            connectLabel="Connect Google"
+            connectLabel={googleAccount ? "Reconnect Google" : "Connect Google"}
             disconnectAction={disconnectGoogleAccountAction}
             disconnectLabel="Disconnect Google"
             metricLabel="Contacts synced"
@@ -100,7 +111,9 @@ export default async function SettingsPage({
             configured={microsoftConfigured}
             connectAction={startMicrosoftConnectAction}
             connectDescription="Connect Microsoft to sync Graph contacts into Kanbun."
-            connectLabel="Connect Microsoft"
+            connectLabel={
+              microsoftAccount ? "Reconnect Microsoft" : "Connect Microsoft"
+            }
             disconnectAction={disconnectMicrosoftAccountAction}
             disconnectLabel="Disconnect Microsoft"
             metricLabel="Contacts synced"

@@ -24,6 +24,10 @@ type IntegrationCardProps = {
   syncLabel: string;
 };
 
+function needsReconnect(status: string | null | undefined) {
+  return !status || status === "disconnected" || status === "reconnect_required";
+}
+
 function statusVariant(status: string) {
   if (status === "connected") {
     return "secondary";
@@ -62,6 +66,14 @@ export function IntegrationCard({
   syncAction,
   syncLabel,
 }: IntegrationCardProps) {
+  const showConnect =
+    Boolean(connectAction && connectLabel) &&
+    (!account || needsReconnect(account.status));
+  const showSync = Boolean(account) && !needsReconnect(account?.status);
+  const showDisconnect =
+    Boolean(account && disconnectAction && disconnectLabel) &&
+    account?.status !== "disconnected";
+
   return (
     <div className="rounded-2xl border border-border/85 bg-background/75 px-4 py-4">
       <div className="flex items-start justify-between gap-4">
@@ -108,12 +120,20 @@ export function IntegrationCard({
       ) : null}
 
       <div className="mt-4 flex flex-wrap gap-3">
-        {account ? (
+        {showConnect ? (
+          <form action={connectAction}>
+            <Button type="submit" disabled={!configured}>
+              {connectLabel}
+            </Button>
+          </form>
+        ) : null}
+
+        {showSync ? (
           <>
             <form action={syncAction}>
               <Button type="submit">{syncLabel}</Button>
             </form>
-            {disconnectAction && disconnectLabel ? (
+            {showDisconnect ? (
               <form action={disconnectAction}>
                 <Button type="submit" variant="outline">
                   {disconnectLabel}
@@ -121,10 +141,12 @@ export function IntegrationCard({
               </form>
             ) : null}
           </>
-        ) : connectAction && connectLabel ? (
-          <form action={connectAction}>
-            <Button type="submit" disabled={!configured}>
-              {connectLabel}
+        ) : null}
+
+        {!showSync && showDisconnect ? (
+          <form action={disconnectAction}>
+            <Button type="submit" variant="outline">
+              {disconnectLabel}
             </Button>
           </form>
         ) : null}
