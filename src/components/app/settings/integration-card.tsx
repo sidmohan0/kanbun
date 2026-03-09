@@ -2,14 +2,25 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 type ConnectedAccountLike = {
+  contactSyncFailureCategory?: string | null;
+  contactSyncLastError?: string | null;
+  contactSyncLastResultCount?: number;
+  contactSyncLastRunAt?: Date | null;
   contactSyncMode?: string | null;
+  contactSyncOperatorAction?: string | null;
+  contactSyncRetryAt?: Date | null;
   email: string | null;
   lastError: string | null;
   lastSuccessfulSyncAt: Date | null;
   missingScopes?: string[];
+  replySyncFailureCategory?: string | null;
+  replySyncLastCheckedCount?: number;
   replySyncLastDetectedCount?: number;
-  replySyncLastRunAt?: string | null;
+  replySyncLastError?: string | null;
+  replySyncLastRunAt?: Date | null;
   replySyncMode?: string | null;
+  replySyncOperatorAction?: string | null;
+  replySyncRetryAt?: Date | null;
   status: string;
 };
 

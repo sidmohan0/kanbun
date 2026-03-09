@@ -2,6 +2,11 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { connectedAccounts } from "@/db/schema";
 import {
+  getMetadataDate,
+  getMetadataNumber,
+  getMetadataString,
+} from "@/lib/provider-health";
+import {
   GOOGLE_CONTACTS_SCOPE,
   GOOGLE_REPLY_READ_SCOPE,
   GOOGLE_SEND_SCOPE,
@@ -9,24 +14,6 @@ import {
   MICROSOFT_REPLY_READ_SCOPE,
   MICROSOFT_SEND_SCOPE,
 } from "@/lib/provider-scopes";
-
-function getMetadataString(metadata: unknown, key: string) {
-  if (!metadata || typeof metadata !== "object") {
-    return null;
-  }
-
-  const value = (metadata as Record<string, unknown>)[key];
-  return typeof value === "string" ? value : null;
-}
-
-function getMetadataNumber(metadata: unknown, key: string) {
-  if (!metadata || typeof metadata !== "object") {
-    return 0;
-  }
-
-  const value = (metadata as Record<string, unknown>)[key];
-  return typeof value === "number" ? value : 0;
-}
 
 function missingScopes(account: typeof connectedAccounts.$inferSelect) {
   if (account.provider === "google") {
@@ -48,32 +35,62 @@ function missingScopes(account: typeof connectedAccounts.$inferSelect) {
   return [];
 }
 
+export function decorateConnectedAccount(
+  account: typeof connectedAccounts.$inferSelect,
+) {
+  const missing = missingScopes(account);
+
+  return {
+    ...account,
+    contactSyncFailureCategory: getMetadataString(
+      account.metadata,
+      "contactSyncFailureCategory",
+    ),
+    contactSyncLastError: getMetadataString(account.metadata, "contactSyncLastError"),
+    contactSyncLastResultCount: getMetadataNumber(
+      account.metadata,
+      "contactSyncLastResultCount",
+    ),
+    contactSyncLastRunAt: getMetadataDate(account.metadata, "contactSyncLastRunAt"),
+    contactSyncMode: getMetadataString(account.metadata, "contactSyncMode"),
+    contactSyncRetryAt: getMetadataDate(account.metadata, "contactSyncRetryAt"),
+    contactSyncOperatorAction: getMetadataString(
+      account.metadata,
+      "contactSyncOperatorAction",
+    ),
+    missingScopes: missing,
+    replySyncFailureCategory: getMetadataString(
+      account.metadata,
+      "replySyncFailureCategory",
+    ),
+    replySyncLastDetectedCount: getMetadataNumber(
+      account.metadata,
+      "replySyncLastDetectedCount",
+    ),
+    replySyncLastError: getMetadataString(account.metadata, "replySyncLastError"),
+    replySyncLastRunAt: getMetadataDate(account.metadata, "replySyncLastRunAt"),
+    replySyncLastCheckedCount: getMetadataNumber(
+      account.metadata,
+      "replySyncLastCheckedCount",
+    ),
+    replySyncMode: getMetadataString(account.metadata, "replySyncMode"),
+    replySyncRetryAt: getMetadataDate(account.metadata, "replySyncRetryAt"),
+    replySyncOperatorAction: getMetadataString(
+      account.metadata,
+      "replySyncOperatorAction",
+    ),
+    status:
+      account.status === "connected" && missing.length > 0
+        ? "reconnect_required"
+        : account.status,
+  };
+}
+
 export async function listConnectedAccountsForUser(userId: string) {
   const accounts = await db.query.connectedAccounts.findMany({
     where: eq(connectedAccounts.userId, userId),
     orderBy: [connectedAccounts.provider, desc(connectedAccounts.updatedAt)],
   });
 
-  return accounts.map((account) => {
-    const missing = missingScopes(account);
-
-    return {
-      ...account,
-      contactSyncMode: getMetadataString(account.metadata, "contactSyncMode"),
-      missingScopes: missing,
-      replySyncLastDetectedCount: getMetadataNumber(
-        account.metadata,
-        "replySyncLastDetectedCount",
-      ),
-      replySyncLastRunAt: getMetadataString(
-        account.metadata,
-        "replySyncLastRunAt",
-      ),
-      replySyncMode: getMetadataString(account.metadata, "replySyncMode"),
-      status:
-        account.status === "connected" && missing.length > 0
-          ? "reconnect_required"
-          : account.status,
-    };
-  });
+  return accounts.map(decorateConnectedAccount);
 }

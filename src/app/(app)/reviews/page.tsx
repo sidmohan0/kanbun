@@ -35,6 +35,10 @@ function providerLabel(provider: string) {
   return provider === "google" ? "Google" : "Microsoft";
 }
 
+function humanizeCategory(value: string | null | undefined) {
+  return value ? value.replaceAll("_", " ") : null;
+}
+
 export default async function ReviewsPage({
   searchParams,
 }: {
@@ -390,9 +394,39 @@ export default async function ReviewsPage({
                   {account.lastError ? (
                     <p className="mt-1 text-sm text-destructive">{account.lastError}</p>
                   ) : null}
-                  {account.replyScopeWarning ? (
+                  {account.missingScopes?.length ? (
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {account.replyScopeWarning}
+                      Missing scopes: {account.missingScopes.join(", ")}
+                    </p>
+                  ) : null}
+                  {account.contactSyncFailureCategory ? (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Contact sync: {humanizeCategory(account.contactSyncFailureCategory)}
+                    </p>
+                  ) : null}
+                  {account.replySyncFailureCategory ? (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Reply sync: {humanizeCategory(account.replySyncFailureCategory)}
+                    </p>
+                  ) : null}
+                  {account.contactSyncRetryAt ? (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Contact retry at {account.contactSyncRetryAt.toLocaleString()}
+                    </p>
+                  ) : null}
+                  {account.replySyncRetryAt ? (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Reply retry at {account.replySyncRetryAt.toLocaleString()}
+                    </p>
+                  ) : null}
+                  {account.contactSyncOperatorAction ? (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {account.contactSyncOperatorAction}
+                    </p>
+                  ) : null}
+                  {account.replySyncOperatorAction ? (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {account.replySyncOperatorAction}
                     </p>
                   ) : null}
                   <div className="mt-3">

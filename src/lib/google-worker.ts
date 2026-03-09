@@ -2,6 +2,10 @@ import { and, asc, desc, eq, isNotNull, or } from "drizzle-orm";
 import { db } from "@/db/client";
 import { connectedAccounts, outboundMessages } from "@/db/schema";
 import { syncGoogleContactsForAccount, syncGoogleRepliesForAccount } from "@/lib/google";
+import {
+  classifyProviderFailure,
+  getMetadataDate,
+} from "@/lib/provider-health";
 import { GOOGLE_REPLY_READ_SCOPE } from "@/lib/provider-scopes";
 
 type WorkerLogger = Pick<Console, "error" | "info">;
@@ -25,14 +29,18 @@ async function claimNextGoogleSyncAccountId() {
     return null;
   }
 
+  const retryAt = getMetadataDate(account.metadata, "contactSyncRetryAt");
+
+  if (retryAt && retryAt.getTime() > Date.now()) {
+    return null;
+  }
+
   await db
     .update(connectedAccounts)
     .set({
-      lastError: null,
       metadata: {
         ...((account.metadata as Record<string, unknown>) ?? {}),
         contactSyncLastRunAt: new Date().toISOString(),
-        contactSyncLastError: null,
       },
       syncRequestedAt: null,
       updatedAt: new Date(),
@@ -57,6 +65,7 @@ export async function processNextGoogleSync(logger: WorkerLogger = console) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Google sync failed.";
+    const classification = classifyProviderFailure(message);
     const account = await db.query.connectedAccounts.findFirst({
       where: eq(connectedAccounts.id, accountId),
       columns: {
@@ -70,13 +79,15 @@ export async function processNextGoogleSync(logger: WorkerLogger = console) {
         lastError: message,
         metadata: {
           ...((account?.metadata as Record<string, unknown>) ?? {}),
+          contactSyncFailureCategory: classification.category,
           contactSyncLastError: message,
           contactSyncLastRunAt: new Date().toISOString(),
+          contactSyncOperatorAction: classification.operatorAction,
+          contactSyncRetryAt: classification.retryDelayMs
+            ? new Date(Date.now() + classification.retryDelayMs).toISOString()
+            : null,
         },
-        status:
-          account?.status === "reconnect_required"
-            ? "reconnect_required"
-            : "degraded",
+        status: classification.accountStatus,
         updatedAt: new Date(),
       })
       .where(eq(connectedAccounts.id, accountId));
@@ -102,6 +113,12 @@ async function claimNextGoogleReplySyncAccountId() {
 
   for (const account of accounts) {
     if (!account.grantedScopes.includes(GOOGLE_REPLY_READ_SCOPE)) {
+      continue;
+    }
+
+    const retryAt = getMetadataDate(account.metadata, "replySyncRetryAt");
+
+    if (retryAt && retryAt.getTime() > Date.now()) {
       continue;
     }
 
@@ -160,12 +177,6 @@ export async function processNextGoogleReplySync(
 
   try {
     const result = await syncGoogleRepliesForAccount(accountId);
-    logger.info(
-      `[kanbun-worker] checked ${result.checkedCount} Gmail messages and detected ${result.detectedCount} replies for account ${accountId}`,
-    );
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Google reply sync failed.";
     const account = await db.query.connectedAccounts.findFirst({
       where: eq(connectedAccounts.id, accountId),
     });
@@ -173,11 +184,48 @@ export async function processNextGoogleReplySync(
     await db
       .update(connectedAccounts)
       .set({
+        lastError: null,
         metadata: {
           ...((account?.metadata as Record<string, unknown>) ?? {}),
+          replySyncFailureCategory: null,
+          replySyncLastCheckedCount: result.checkedCount,
+          replySyncLastDetectedCount: result.detectedCount,
+          replySyncLastError: null,
+          replySyncLastRunAt: new Date().toISOString(),
+          replySyncOperatorAction: null,
+          replySyncRetryAt: null,
+        },
+        status: "connected",
+        updatedAt: new Date(),
+      })
+      .where(eq(connectedAccounts.id, accountId));
+
+    logger.info(
+      `[kanbun-worker] checked ${result.checkedCount} Gmail messages and detected ${result.detectedCount} replies for account ${accountId}`,
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Google reply sync failed.";
+    const classification = classifyProviderFailure(message);
+    const account = await db.query.connectedAccounts.findFirst({
+      where: eq(connectedAccounts.id, accountId),
+    });
+
+    await db
+      .update(connectedAccounts)
+      .set({
+        lastError: message,
+        metadata: {
+          ...((account?.metadata as Record<string, unknown>) ?? {}),
+          replySyncFailureCategory: classification.category,
           replySyncLastError: message,
           replySyncLastRunAt: new Date().toISOString(),
+          replySyncOperatorAction: classification.operatorAction,
+          replySyncRetryAt: classification.retryDelayMs
+            ? new Date(Date.now() + classification.retryDelayMs).toISOString()
+            : null,
         },
+        status: classification.accountStatus,
         updatedAt: new Date(),
       })
       .where(eq(connectedAccounts.id, accountId));

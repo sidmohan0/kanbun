@@ -6,30 +6,9 @@ import {
   imports,
   tasks,
 } from "@/db/schema";
+import { decorateConnectedAccount } from "@/lib/connected-accounts";
 import { listOpenMergeReviews } from "@/lib/merge-reviews";
 import { listPendingOutboundApprovals } from "@/lib/sequences";
-import {
-  GOOGLE_REPLY_READ_SCOPE,
-  MICROSOFT_REPLY_READ_SCOPE,
-} from "@/lib/provider-scopes";
-
-function getReplyScopeWarning(
-  account: typeof connectedAccounts.$inferSelect,
-) {
-  if (account.provider === "google") {
-    return account.grantedScopes.includes(GOOGLE_REPLY_READ_SCOPE)
-      ? null
-      : "Reconnect Google to enable automatic reply detection.";
-  }
-
-  if (account.provider === "microsoft") {
-    return account.grantedScopes.includes(MICROSOFT_REPLY_READ_SCOPE)
-      ? null
-      : "Reconnect Microsoft to enable automatic reply detection.";
-  }
-
-  return null;
-}
 
 export async function listReviewInbox() {
   const [mergeReviews, outboundApprovals, degradedAccounts, degradedTasks, importIssues] =
@@ -38,8 +17,8 @@ export async function listReviewInbox() {
       listPendingOutboundApprovals(),
       db.query.connectedAccounts.findMany({
         where: or(
-          eq(connectedAccounts.status, "degraded"),
-          eq(connectedAccounts.status, "reconnect_required"),
+          eq(connectedAccounts.provider, "google"),
+          eq(connectedAccounts.provider, "microsoft"),
         ),
         orderBy: [desc(connectedAccounts.updatedAt)],
       }),
@@ -78,10 +57,17 @@ export async function listReviewInbox() {
     taskContacts.map((contact) => [contact.id, contact]),
   );
 
-  const accountsWithWarnings = degradedAccounts.map((account) => ({
-    ...account,
-    replyScopeWarning: getReplyScopeWarning(account),
-  }));
+  const accountsWithWarnings = degradedAccounts
+    .map(decorateConnectedAccount)
+    .filter(
+      (account) =>
+        account.status === "degraded" ||
+        account.status === "reconnect_required" ||
+        account.missingScopes.length > 0 ||
+        Boolean(account.lastError) ||
+        Boolean(account.contactSyncLastError) ||
+        Boolean(account.replySyncLastError),
+    );
 
   return {
     counts: {

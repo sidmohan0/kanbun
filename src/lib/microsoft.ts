@@ -642,12 +642,17 @@ export async function syncMicrosoftRepliesForAccount(accountId: string) {
     .set({
       metadata: {
         ...metadata,
+        replySyncFailureCategory: null,
+        replySyncLastCheckedCount: recentInboundMessages.length,
         replySyncCursorAt: new Date(newestTimestamp).toISOString(),
         replySyncLastDetectedCount: detectedCount,
         replySyncLastError: null,
         replySyncLastRunAt: new Date().toISOString(),
         replySyncMode: "thread",
+        replySyncOperatorAction: null,
+        replySyncRetryAt: null,
       },
+      status: "connected",
       updatedAt: new Date(),
     })
     .where(eq(connectedAccounts.id, account.id));
@@ -848,8 +853,13 @@ export async function syncMicrosoftContactsForAccount(accountId: string) {
       lastSyncedContactCount: syncedCount,
       metadata: {
         ...((account.metadata as Record<string, unknown>) ?? {}),
+        contactSyncFailureCategory: null,
         contactSyncCursorUpdatedAt: new Date().toISOString(),
+        contactSyncLastError: null,
+        contactSyncLastResultCount: syncedCount,
+        contactSyncOperatorAction: null,
         contactSyncMode: "incremental_delta",
+        contactSyncRetryAt: null,
       },
       status: "connected",
       syncCursor: nextDeltaLink,

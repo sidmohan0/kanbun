@@ -5,6 +5,10 @@ import {
   syncMicrosoftContactsForAccount,
   syncMicrosoftRepliesForAccount,
 } from "@/lib/microsoft";
+import {
+  classifyProviderFailure,
+  getMetadataDate,
+} from "@/lib/provider-health";
 import { MICROSOFT_REPLY_READ_SCOPE } from "@/lib/provider-scopes";
 
 type WorkerLogger = Pick<Console, "error" | "info">;
@@ -28,14 +32,18 @@ async function claimNextMicrosoftSyncAccountId() {
     return null;
   }
 
+  const retryAt = getMetadataDate(account.metadata, "contactSyncRetryAt");
+
+  if (retryAt && retryAt.getTime() > Date.now()) {
+    return null;
+  }
+
   await db
     .update(connectedAccounts)
     .set({
-      lastError: null,
       metadata: {
         ...((account.metadata as Record<string, unknown>) ?? {}),
         contactSyncLastRunAt: new Date().toISOString(),
-        contactSyncLastError: null,
       },
       syncRequestedAt: null,
       updatedAt: new Date(),
@@ -60,6 +68,7 @@ export async function processNextMicrosoftSync(logger: WorkerLogger = console) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Microsoft sync failed.";
+    const classification = classifyProviderFailure(message);
     const account = await db.query.connectedAccounts.findFirst({
       where: eq(connectedAccounts.id, accountId),
       columns: {
@@ -73,13 +82,15 @@ export async function processNextMicrosoftSync(logger: WorkerLogger = console) {
         lastError: message,
         metadata: {
           ...((account?.metadata as Record<string, unknown>) ?? {}),
+          contactSyncFailureCategory: classification.category,
           contactSyncLastError: message,
           contactSyncLastRunAt: new Date().toISOString(),
+          contactSyncOperatorAction: classification.operatorAction,
+          contactSyncRetryAt: classification.retryDelayMs
+            ? new Date(Date.now() + classification.retryDelayMs).toISOString()
+            : null,
         },
-        status:
-          account?.status === "reconnect_required"
-            ? "reconnect_required"
-            : "degraded",
+        status: classification.accountStatus,
         updatedAt: new Date(),
       })
       .where(eq(connectedAccounts.id, accountId));
@@ -108,6 +119,12 @@ async function claimNextMicrosoftReplySyncAccountId() {
 
   for (const account of accounts) {
     if (!account.grantedScopes.includes(MICROSOFT_REPLY_READ_SCOPE)) {
+      continue;
+    }
+
+    const retryAt = getMetadataDate(account.metadata, "replySyncRetryAt");
+
+    if (retryAt && retryAt.getTime() > Date.now()) {
       continue;
     }
 
@@ -166,12 +183,6 @@ export async function processNextMicrosoftReplySync(
 
   try {
     const result = await syncMicrosoftRepliesForAccount(accountId);
-    logger.info(
-      `[kanbun-worker] checked ${result.checkedCount} Outlook messages and detected ${result.detectedCount} replies for account ${accountId}`,
-    );
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Microsoft reply sync failed.";
     const account = await db.query.connectedAccounts.findFirst({
       where: eq(connectedAccounts.id, accountId),
     });
@@ -179,11 +190,48 @@ export async function processNextMicrosoftReplySync(
     await db
       .update(connectedAccounts)
       .set({
+        lastError: null,
         metadata: {
           ...((account?.metadata as Record<string, unknown>) ?? {}),
+          replySyncFailureCategory: null,
+          replySyncLastCheckedCount: result.checkedCount,
+          replySyncLastDetectedCount: result.detectedCount,
+          replySyncLastError: null,
+          replySyncLastRunAt: new Date().toISOString(),
+          replySyncOperatorAction: null,
+          replySyncRetryAt: null,
+        },
+        status: "connected",
+        updatedAt: new Date(),
+      })
+      .where(eq(connectedAccounts.id, accountId));
+
+    logger.info(
+      `[kanbun-worker] checked ${result.checkedCount} Outlook messages and detected ${result.detectedCount} replies for account ${accountId}`,
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Microsoft reply sync failed.";
+    const classification = classifyProviderFailure(message);
+    const account = await db.query.connectedAccounts.findFirst({
+      where: eq(connectedAccounts.id, accountId),
+    });
+
+    await db
+      .update(connectedAccounts)
+      .set({
+        lastError: message,
+        metadata: {
+          ...((account?.metadata as Record<string, unknown>) ?? {}),
+          replySyncFailureCategory: classification.category,
           replySyncLastError: message,
           replySyncLastRunAt: new Date().toISOString(),
+          replySyncOperatorAction: classification.operatorAction,
+          replySyncRetryAt: classification.retryDelayMs
+            ? new Date(Date.now() + classification.retryDelayMs).toISOString()
+            : null,
         },
+        status: classification.accountStatus,
         updatedAt: new Date(),
       })
       .where(eq(connectedAccounts.id, accountId));

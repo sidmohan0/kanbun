@@ -50,10 +50,22 @@ function todoistMirrorCount(metadata: unknown) {
 }
 
 function providerNotes(account: {
+  contactSyncFailureCategory?: string | null;
+  contactSyncLastError?: string | null;
+  contactSyncLastResultCount?: number;
+  contactSyncLastRunAt?: Date | null;
   contactSyncMode?: string | null;
+  contactSyncOperatorAction?: string | null;
+  contactSyncRetryAt?: Date | null;
+  missingScopes?: string[];
   replySyncLastDetectedCount?: number;
-  replySyncLastRunAt?: string | null;
+  replySyncFailureCategory?: string | null;
+  replySyncLastCheckedCount?: number;
+  replySyncLastError?: string | null;
+  replySyncLastRunAt?: Date | null;
   replySyncMode?: string | null;
+  replySyncOperatorAction?: string | null;
+  replySyncRetryAt?: Date | null;
 } | null) {
   if (!account) {
     return [];
@@ -65,14 +77,56 @@ function providerNotes(account: {
     notes.push(`Contact sync mode: ${account.contactSyncMode.replaceAll("_", " ")}`);
   }
 
+  if (account.contactSyncLastRunAt) {
+    notes.push(
+      `Last contact sync: ${account.contactSyncLastRunAt.toLocaleString()} (${account.contactSyncLastResultCount ?? 0} contacts touched)`,
+    );
+  }
+
+  if (account.contactSyncFailureCategory) {
+    notes.push(
+      `Contact sync health: ${account.contactSyncFailureCategory.replaceAll("_", " ")}`,
+    );
+  }
+
+  if (account.contactSyncRetryAt) {
+    notes.push(
+      `Contact sync retry scheduled for ${account.contactSyncRetryAt.toLocaleString()}`,
+    );
+  }
+
+  if (account.contactSyncOperatorAction) {
+    notes.push(account.contactSyncOperatorAction);
+  }
+
   if (account.replySyncMode) {
     notes.push(`Reply tracking mode: ${account.replySyncMode}`);
   }
 
   if (account.replySyncLastRunAt) {
     notes.push(
-      `Last reply scan: ${new Date(account.replySyncLastRunAt).toLocaleString()} (${account.replySyncLastDetectedCount ?? 0} detected)`,
+      `Last reply scan: ${account.replySyncLastRunAt.toLocaleString()} (${account.replySyncLastCheckedCount ?? 0} checked, ${account.replySyncLastDetectedCount ?? 0} detected)`,
     );
+  }
+
+  if (account.replySyncFailureCategory) {
+    notes.push(
+      `Reply sync health: ${account.replySyncFailureCategory.replaceAll("_", " ")}`,
+    );
+  }
+
+  if (account.replySyncRetryAt) {
+    notes.push(
+      `Reply sync retry scheduled for ${account.replySyncRetryAt.toLocaleString()}`,
+    );
+  }
+
+  if (account.replySyncOperatorAction) {
+    notes.push(account.replySyncOperatorAction);
+  }
+
+  if (account.missingScopes?.length) {
+    notes.push(`Reconnect required for missing provider scopes.`);
   }
 
   return notes;
