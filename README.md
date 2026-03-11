@@ -86,9 +86,12 @@ Those are only needed if you still want to run `pnpm db:seed-owner`. Google sign
 
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_GMAIL_PUSH_TOPIC`
+- `GOOGLE_GMAIL_WEBHOOK_TOKEN`
 - `MICROSOFT_CLIENT_ID`
 - `MICROSOFT_CLIENT_SECRET`
 - `MICROSOFT_TENANT_ID`
+- `MICROSOFT_WEBHOOK_CLIENT_STATE`
 - `TODOIST_API_TOKEN`
 
 ## OAuth Redirect URIs
@@ -97,6 +100,19 @@ Register these exact callback URLs in your provider apps when running locally:
 
 - Google sign-in and Gmail connect: `http://localhost:7890/api/auth/google/callback`
 - Microsoft: `http://localhost:7890/api/auth/microsoft/callback`
+
+Webhook endpoints:
+
+- Google Gmail push notifications: `https://YOUR_PUBLIC_KANBUN_URL/api/webhooks/google/gmail`
+- Microsoft Graph notifications: `https://YOUR_PUBLIC_KANBUN_URL/api/webhooks/microsoft/notifications`
+- Microsoft Graph lifecycle notifications: `https://YOUR_PUBLIC_KANBUN_URL/api/webhooks/microsoft/lifecycle`
+
+Notes:
+
+- Google contact sync remains People API pull-based; Gmail reply tracking can now be push-triggered through Gmail watch plus Pub/Sub.
+- Microsoft contact sync and reply tracking can now be webhook-triggered through Graph subscriptions.
+- Webhooks require `KANBUN_URL` to be a public HTTPS URL. `localhost` will continue to use polling fallback.
+- If you configure a Pub/Sub push subscription for Gmail, append `?token=YOUR_GOOGLE_GMAIL_WEBHOOK_TOKEN` to the push endpoint URL.
 
 If you connected Google or Microsoft before send or reply-detection scopes were added, reconnect once so the newer permissions are granted.
 
@@ -116,13 +132,17 @@ pnpm worker
 pnpm worker:once
 ```
 
+Provider fixture coverage is included in `pnpm test` through the webhook payload and outbound retry integration-style tests.
+
 ## Project Structure
 
 - [AGENTS.md](./AGENTS.md): agent workflow and repo operating rules
+- [CONTRIBUTING.md](./CONTRIBUTING.md): contributor workflow and expectations
 - [docs/README.md](./docs/README.md): documentation index
 - [docs/adr/README.md](./docs/adr/README.md): architectural decision records
 - [docs/product/README.md](./docs/product/README.md): product behavior and UX specs
 - [docs/plans/README.md](./docs/plans/README.md): implementation plans
+- [docs/references/README.md](./docs/references/README.md): deployment and operations references
 
 ## Contributor Notes
 
@@ -140,7 +160,6 @@ Auth model:
 
 The biggest remaining areas are:
 
-- outbound hardening and thread-aware reply tracking
 - stronger contact merge and duplicate resolution tooling
-- more provider reliability and observability
-- auth cleanup and open-source polish
+- more UI polish and operational observability
+- broader contributor onboarding polish and expanded deployment/runbook detail

@@ -43,6 +43,18 @@ type Enrollment = Awaited<
 type ReplySignal = Awaited<ReturnType<typeof listReplySignalsForContact>>[number];
 type TimelineEntry = Awaited<ReturnType<typeof listContactTimeline>>[number];
 
+function confidenceVariant(confidence: DuplicateCandidate["confidence"]) {
+  if (confidence === "high") {
+    return "destructive";
+  }
+
+  if (confidence === "medium") {
+    return "secondary";
+  }
+
+  return "outline";
+}
+
 function formatDueAt(value: Date | null) {
   if (!value) {
     return "No due date";
@@ -381,6 +393,32 @@ function ContactStatusPanel(props: {
   );
 }
 
+function FieldProvenancePanel(props: { contact: ContactWorkspaceContact }) {
+  return (
+    <DashboardPanel>
+      <SectionHeading
+        eyebrow="Trust"
+        title="Field provenance"
+        description="This is the current evidence behind the canonical values on the contact record."
+      />
+      <div className="space-y-3">
+        {props.contact.fieldProvenance.map((item) => (
+          <div
+            key={item.field}
+            className="rounded-2xl border border-border/85 bg-background/75 px-4 py-4"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-foreground">{item.label}</p>
+              <Badge variant="outline">{item.value}</Badge>
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">{item.detail}</p>
+          </div>
+        ))}
+      </div>
+    </DashboardPanel>
+  );
+}
+
 function ContactEnrollmentsPanel(props: {
   contactSlug: string;
   enrollments: Enrollment[];
@@ -507,6 +545,10 @@ function DuplicateCandidatesPanel(props: {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <Badge variant={confidenceVariant(candidate.confidence)}>
+                    {candidate.confidence} confidence
+                  </Badge>
+                  <Badge variant="secondary">{candidate.score} pts</Badge>
                   {candidate.reasons.map((reason) => (
                     <Badge key={`${candidate.id}-${reason}`} variant="outline">
                       {reason}
@@ -914,6 +956,7 @@ export async function ContactWorkspaceView(props: {
             enrollments={enrollments}
             replyHistory={replyHistory}
           />
+          <FieldProvenancePanel contact={contact} />
           <ContactEnrollmentsPanel
             contactSlug={contact.slug}
             enrollments={enrollments}

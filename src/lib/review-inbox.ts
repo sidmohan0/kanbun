@@ -66,7 +66,8 @@ export async function listReviewInbox() {
         account.missingScopes.length > 0 ||
         Boolean(account.lastError) ||
         Boolean(account.contactSyncLastError) ||
-        Boolean(account.replySyncLastError),
+        Boolean(account.replySyncLastError) ||
+        Boolean(account.outboundSendLastError),
     );
 
   return {

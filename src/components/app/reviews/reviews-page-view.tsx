@@ -32,6 +32,31 @@ function humanizeCategory(value: string | null | undefined) {
   return value ? value.replaceAll("_", " ") : null;
 }
 
+function outboundMetadata(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return {
+      blockedReason: null as string | null,
+      deliveryRetryAt: null as string | null,
+      failureCategory: null as string | null,
+    };
+  }
+
+  const metadata = value as Record<string, unknown>;
+
+  return {
+    blockedReason:
+      typeof metadata.blockedReason === "string" ? metadata.blockedReason : null,
+    deliveryRetryAt:
+      typeof metadata.deliveryRetryAt === "string"
+        ? metadata.deliveryRetryAt
+        : null,
+    failureCategory:
+      typeof metadata.failureCategory === "string"
+        ? metadata.failureCategory
+        : null,
+  };
+}
+
 function ReviewInboxHeader(props: {
   cancelled: boolean;
   dismissed: boolean;
@@ -134,11 +159,14 @@ function OutboundApprovalsPanel(props: {
         </p>
       ) : (
         <div className="space-y-4">
-          {props.approvals.map((draft) => (
-            <div
-              key={draft.id}
-              className="rounded-2xl border border-border/85 bg-background/75 p-4"
-            >
+          {props.approvals.map((draft) => {
+            const diagnostics = outboundMetadata(draft.metadata);
+
+            return (
+              <div
+                key={draft.id}
+                className="rounded-2xl border border-border/85 bg-background/75 p-4"
+              >
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline">{draft.status}</Badge>
                 {draft.connectedAccount ? (
@@ -160,6 +188,11 @@ function OutboundApprovalsPanel(props: {
                 <p className="text-sm text-foreground">{draft.finalSubject}</p>
                 {draft.lastError ? (
                   <p className="text-sm text-destructive">{draft.lastError}</p>
+                ) : null}
+                {diagnostics.failureCategory ? (
+                  <p className="text-sm text-muted-foreground">
+                    Failure class: {humanizeCategory(diagnostics.failureCategory)}
+                  </p>
                 ) : null}
               </div>
               <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr]">
@@ -205,6 +238,17 @@ function OutboundApprovalsPanel(props: {
                       draft.connectedAccount?.provider ??
                       "not selected"}
                   </p>
+                  {diagnostics.blockedReason ? (
+                    <p className="text-sm text-muted-foreground">
+                      {diagnostics.blockedReason}
+                    </p>
+                  ) : null}
+                  {diagnostics.deliveryRetryAt ? (
+                    <p className="text-sm text-muted-foreground">
+                      Retry after{" "}
+                      {new Date(diagnostics.deliveryRetryAt).toLocaleString()}
+                    </p>
+                  ) : null}
                   {draft.contact?.slug ? (
                     <Button
                       render={<Link href={`/contacts/${draft.contact.slug}`} />}
@@ -232,8 +276,9 @@ function OutboundApprovalsPanel(props: {
                   </form>
                 </div>
               </div>
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       )}
     </DashboardPanel>
@@ -410,6 +455,11 @@ function ConnectorIssuesPanel(props: {
                   Reply sync: {humanizeCategory(account.replySyncFailureCategory)}
                 </p>
               ) : null}
+              {account.outboundSendFailureCategory ? (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Outbound send: {humanizeCategory(account.outboundSendFailureCategory)}
+                </p>
+              ) : null}
               {account.contactSyncRetryAt ? (
                 <p className="mt-1 text-sm text-muted-foreground">
                   Contact retry at {account.contactSyncRetryAt.toLocaleString()}
@@ -420,6 +470,11 @@ function ConnectorIssuesPanel(props: {
                   Reply retry at {account.replySyncRetryAt.toLocaleString()}
                 </p>
               ) : null}
+              {account.outboundSendRetryAt ? (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Outbound retry at {account.outboundSendRetryAt.toLocaleString()}
+                </p>
+              ) : null}
               {account.contactSyncOperatorAction ? (
                 <p className="mt-1 text-sm text-muted-foreground">
                   {account.contactSyncOperatorAction}
@@ -428,6 +483,11 @@ function ConnectorIssuesPanel(props: {
               {account.replySyncOperatorAction ? (
                 <p className="mt-1 text-sm text-muted-foreground">
                   {account.replySyncOperatorAction}
+                </p>
+              ) : null}
+              {account.outboundSendOperatorAction ? (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {account.outboundSendOperatorAction}
                 </p>
               ) : null}
               <div className="mt-3">

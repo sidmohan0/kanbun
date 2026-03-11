@@ -21,6 +21,14 @@ import {
 } from "@/db/schema";
 import { sendGoogleMessage } from "@/lib/google";
 import { sendMicrosoftMessage } from "@/lib/microsoft";
+import { planOutboundAutoRetry } from "@/lib/outbound-retry";
+import {
+  applyProviderFailureMetadata,
+  applyProviderSuccessMetadata,
+  classifyOutboundProviderFailure,
+  deriveProviderAccountStatus,
+  getMetadataString,
+} from "@/lib/provider-health";
 import {
   GOOGLE_SEND_SCOPE,
   MICROSOFT_SEND_SCOPE,
@@ -36,6 +44,13 @@ function startOfToday() {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   return now;
+}
+
+function nextLocalHour(hour: number, dayOffset = 0) {
+  const next = new Date();
+  next.setHours(hour, 0, 0, 0);
+  next.setDate(next.getDate() + dayOffset);
+  return next;
 }
 
 function sanitizeHour(value: number | undefined, fallback: number) {
@@ -69,11 +84,21 @@ function isSendCapableAccount(
     return false;
   }
 
-  if (account.status !== "connected") {
+  if (account.status === "disconnected") {
     return false;
   }
 
   if (account.provider !== "google" && account.provider !== "microsoft") {
+    return false;
+  }
+
+  if (
+    getMetadataString(
+      account.metadata as Record<string, unknown> | null | undefined,
+      "outboundSendStatus",
+    ) ===
+    "reconnect_required"
+  ) {
     return false;
   }
 
@@ -148,14 +173,6 @@ function getMetadataNumber(
   return typeof value === "number" ? value : 0;
 }
 
-function getMetadataString(
-  metadata: Record<string, unknown> | null | undefined,
-  key: string,
-) {
-  const value = metadata?.[key];
-  return typeof value === "string" ? value : null;
-}
-
 function appendDraftRevision(
   metadata: Record<string, unknown> | null | undefined,
   input: {
@@ -187,81 +204,6 @@ function appendDraftRevision(
   };
 }
 
-function classifyOutboundFailure(errorMessage: string) {
-  const normalized = errorMessage.toLowerCase();
-
-  if (
-    normalized.includes("missing refresh token") ||
-    normalized.includes("invalid_grant") ||
-    normalized.includes("invalid credentials") ||
-    normalized.includes("(401)")
-  ) {
-    return {
-      accountStatus: "reconnect_required" as const,
-      category: "auth_reconnect_required",
-      retryable: false,
-    };
-  }
-
-  if (
-    normalized.includes("insufficient permission") ||
-    normalized.includes("insufficient permissions") ||
-    normalized.includes("insufficient authentication scopes") ||
-    normalized.includes("(403)")
-  ) {
-    return {
-      accountStatus: "reconnect_required" as const,
-      category: "permission_reconnect_required",
-      retryable: false,
-    };
-  }
-
-  if (
-    normalized.includes("(429)") ||
-    normalized.includes("rate limit") ||
-    normalized.includes("quota")
-  ) {
-    return {
-      accountStatus: "degraded" as const,
-      category: "rate_limited",
-      retryable: true,
-    };
-  }
-
-  if (
-    normalized.includes("(500)") ||
-    normalized.includes("(502)") ||
-    normalized.includes("(503)") ||
-    normalized.includes("(504)") ||
-    normalized.includes("timed out") ||
-    normalized.includes("timeout")
-  ) {
-    return {
-      accountStatus: "degraded" as const,
-      category: "temporary_provider_error",
-      retryable: true,
-    };
-  }
-
-  if (
-    normalized.includes("invalid recipient") ||
-    normalized.includes("recipient address rejected") ||
-    normalized.includes("primary email is required")
-  ) {
-    return {
-      accountStatus: null,
-      category: "invalid_recipient",
-      retryable: false,
-    };
-  }
-
-  return {
-    accountStatus: null,
-    category: "unknown",
-    retryable: true,
-  };
-}
-
 async function markConnectedAccountSendFailure(
   accountId: string | null | undefined,
   errorMessage: string,
@@ -283,23 +225,76 @@ async function markConnectedAccountSendFailure(
     return;
   }
 
-  const classification = classifyOutboundFailure(errorMessage);
-
-  if (!classification.accountStatus) {
+  const classification = classifyOutboundProviderFailure(errorMessage);
+  if (classification.category === "invalid_recipient") {
     return;
   }
+  const nextMetadata = applyProviderFailureMetadata(
+    (account.metadata as Record<string, unknown>) ?? {},
+    {
+      classification,
+      message: errorMessage,
+      operation: "outboundSend",
+      values: {
+        outboundSendLastMessageId: null,
+      },
+    },
+  );
 
   await db
     .update(connectedAccounts)
     .set({
       lastError: errorMessage,
-      metadata: {
-        ...((account.metadata as Record<string, unknown>) ?? {}),
-        outboundSendFailureCategory: classification.category,
-        outboundSendLastError: errorMessage,
-        outboundSendLastErrorAt: new Date().toISOString(),
+      metadata: nextMetadata,
+      status: deriveProviderAccountStatus({
+        metadata: nextMetadata,
+        rawStatus: classification.accountStatus,
+      }),
+      updatedAt: new Date(),
+    })
+    .where(eq(connectedAccounts.id, account.id));
+}
+
+async function markConnectedAccountSendSuccess(input: {
+  accountId: string | null | undefined;
+  messageId: string;
+}) {
+  if (!input.accountId) {
+    return;
+  }
+
+  const account = await db.query.connectedAccounts.findFirst({
+    where: eq(connectedAccounts.id, input.accountId),
+    columns: {
+      id: true,
+      metadata: true,
+      status: true,
+    },
+  });
+
+  if (!account) {
+    return;
+  }
+
+  const nextMetadata = applyProviderSuccessMetadata(
+    (account.metadata as Record<string, unknown>) ?? {},
+    {
+      operation: "outboundSend",
+      values: {
+        outboundSendLastMessageId: input.messageId,
       },
-      status: classification.accountStatus,
+    },
+  );
+
+  await db
+    .update(connectedAccounts)
+    .set({
+      lastError: null,
+      metadata: nextMetadata,
+      status: deriveProviderAccountStatus({
+        metadata: nextMetadata,
+        rawStatus: account.status,
+      }),
       updatedAt: new Date(),
     })
     .where(eq(connectedAccounts.id, account.id));
@@ -363,7 +358,7 @@ async function getSequenceForEnrollment(
   });
 }
 
-async function getSendPolicyBlockReason(
+async function getSendPolicyBlock(
   message: typeof outboundMessages.$inferSelect,
 ) {
   const sequence = message.sequenceId
@@ -378,10 +373,19 @@ async function getSendPolicyBlockReason(
   );
   const sendWindowEndHour = sanitizeHour(sequence?.sendWindowEndHour, 17);
   const dailySendCap = sanitizeDailyCap(sequence?.dailySendCap);
-  const hour = new Date().getHours();
+  const now = new Date();
+  const hour = now.getHours();
 
   if (hour < sendWindowStartHour || hour >= sendWindowEndHour) {
-    return `Waiting for send window (${String(sendWindowStartHour).padStart(2, "0")}:00-${String(sendWindowEndHour).padStart(2, "0")}:00 local time).`;
+    const retryAt =
+      hour < sendWindowStartHour
+        ? nextLocalHour(sendWindowStartHour)
+        : nextLocalHour(sendWindowStartHour, 1);
+
+    return {
+      reason: `Waiting for send window (${String(sendWindowStartHour).padStart(2, "0")}:00-${String(sendWindowEndHour).padStart(2, "0")}:00 local time).`,
+      retryAt,
+    };
   }
 
   if (!message.connectedAccountId) {
@@ -400,7 +404,10 @@ async function getSendPolicyBlockReason(
   });
 
   if (sentToday.length >= dailySendCap) {
-    return `Daily send cap reached (${dailySendCap}) for this sending account.`;
+    return {
+      reason: `Daily send cap reached (${dailySendCap}) for this sending account.`,
+      retryAt: nextLocalHour(sendWindowStartHour, 1),
+    };
   }
 
   return null;
@@ -1355,6 +1362,7 @@ export async function approveOutboundDraft(input: {
         }),
         blockedAt: null,
         blockedReason: null,
+        deliveryRetryAt: null,
         deliveryDiagnostic:
           getMetadataString(previousMetadata, "deliveryDiagnostic"),
         failureCategory: null,
@@ -1686,6 +1694,11 @@ export async function sendOutboundMessage(messageId: string) {
     })
     .where(eq(outboundMessages.id, message.id));
 
+  await markConnectedAccountSendSuccess({
+    accountId: message.connectedAccountId,
+    messageId: message.id,
+  });
+
   await advanceEnrollmentAfterSend(message);
 
   await recordAuditEvent({
@@ -1712,31 +1725,40 @@ export async function markOutboundMessageFailed(
   }
 
   const previousMetadata = (message.metadata as Record<string, unknown>) ?? {};
-  const classification = classifyOutboundFailure(errorMessage);
+  const classification = classifyOutboundProviderFailure(errorMessage);
+  const nextAttemptCount = getMetadataNumber(previousMetadata, "attemptCount") + 1;
+  const retryPlan = planOutboundAutoRetry({
+    attemptCount: nextAttemptCount,
+    classification,
+  });
+  const nextRetryAt = retryPlan.retryAt?.toISOString() ?? null;
+
   await db
     .update(outboundMessages)
     .set({
-      failedAt: new Date(),
+      failedAt: retryPlan.autoRetry ? null : new Date(),
       lastError: errorMessage,
       metadata: {
         ...previousMetadata,
-        attemptCount: getMetadataNumber(previousMetadata, "attemptCount") + 1,
+        attemptCount: nextAttemptCount,
         blockedAt: null,
         blockedReason: null,
-        deliveryState: "failed",
+        deliveryRetryAt: nextRetryAt,
+        deliveryState: retryPlan.autoRetry ? "retry_scheduled" : "failed",
         failureCategory: classification.category,
         lastAttemptAt: new Date().toISOString(),
         lastErrorAt: new Date().toISOString(),
-        retryable: classification.retryable,
+        retryable: retryPlan.retryable,
       },
-      status: "failed",
+      queuedAt: retryPlan.autoRetry ? new Date() : message.queuedAt,
+      status: retryPlan.autoRetry ? "queued" : "failed",
       updatedAt: new Date(),
     })
     .where(eq(outboundMessages.id, messageId));
 
   await markConnectedAccountSendFailure(message.connectedAccountId, errorMessage);
 
-  if (message.sequenceEnrollmentId) {
+  if (message.sequenceEnrollmentId && !retryPlan.autoRetry) {
     await db
       .update(sequenceEnrollments)
       .set({
@@ -1746,6 +1768,18 @@ export async function markOutboundMessageFailed(
         updatedAt: new Date(),
       })
       .where(eq(sequenceEnrollments.id, message.sequenceEnrollmentId));
+  }
+
+  if (retryPlan.autoRetry) {
+    await recordAuditEvent({
+      entityId: message.id,
+      entityType: "outbound_message",
+      eventName: "outbound.retry_scheduled",
+      metadata: {
+        failureCategory: classification.category,
+        retryAt: nextRetryAt,
+      },
+    });
   }
 }
 
@@ -1788,18 +1822,29 @@ export async function claimNextQueuedOutboundMessageId() {
   });
 
   for (const message of messages) {
-    const blockReason = await getSendPolicyBlockReason(message);
     const previousMetadata = (message.metadata as Record<string, unknown>) ?? {};
+    const deliveryRetryAt = getMetadataString(previousMetadata, "deliveryRetryAt");
 
-    if (blockReason) {
+    if (deliveryRetryAt) {
+      const retryAt = new Date(deliveryRetryAt);
+
+      if (!Number.isNaN(retryAt.getTime()) && retryAt.getTime() > Date.now()) {
+        continue;
+      }
+    }
+
+    const block = await getSendPolicyBlock(message);
+
+    if (block) {
       await db
         .update(outboundMessages)
         .set({
-          lastError: blockReason,
+          lastError: block.reason,
           metadata: {
             ...previousMetadata,
             blockedAt: new Date().toISOString(),
-            blockedReason: blockReason,
+            blockedReason: block.reason,
+            deliveryRetryAt: block.retryAt.toISOString(),
             deliveryState: "blocked",
           },
           updatedAt: new Date(),
@@ -1816,6 +1861,7 @@ export async function claimNextQueuedOutboundMessageId() {
           ...previousMetadata,
           blockedAt: null,
           blockedReason: null,
+          deliveryRetryAt: null,
           deliveryState: "sending",
         },
         status: "sending",

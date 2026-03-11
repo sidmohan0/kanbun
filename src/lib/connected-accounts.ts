@@ -2,6 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { connectedAccounts } from "@/db/schema";
 import {
+  deriveProviderAccountStatus,
   getMetadataDate,
   getMetadataNumber,
   getMetadataString,
@@ -39,8 +40,7 @@ export function decorateConnectedAccount(
   account: typeof connectedAccounts.$inferSelect,
 ) {
   const missing = missingScopes(account);
-
-  return {
+  const decorated = {
     ...account,
     contactSyncFailureCategory: getMetadataString(
       account.metadata,
@@ -52,13 +52,46 @@ export function decorateConnectedAccount(
       "contactSyncLastResultCount",
     ),
     contactSyncLastRunAt: getMetadataDate(account.metadata, "contactSyncLastRunAt"),
+    contactSyncLastSuccessAt: getMetadataDate(
+      account.metadata,
+      "contactSyncLastSuccessAt",
+    ),
     contactSyncMode: getMetadataString(account.metadata, "contactSyncMode"),
-    contactSyncRetryAt: getMetadataDate(account.metadata, "contactSyncRetryAt"),
     contactSyncOperatorAction: getMetadataString(
       account.metadata,
       "contactSyncOperatorAction",
     ),
+    contactSyncRetryAt: getMetadataDate(account.metadata, "contactSyncRetryAt"),
     missingScopes: missing,
+    outboundSendFailureCategory: getMetadataString(
+      account.metadata,
+      "outboundSendFailureCategory",
+    ),
+    outboundSendLastError: getMetadataString(
+      account.metadata,
+      "outboundSendLastError",
+    ),
+    outboundSendLastErrorAt: getMetadataDate(
+      account.metadata,
+      "outboundSendLastErrorAt",
+    ),
+    outboundSendLastMessageId: getMetadataString(
+      account.metadata,
+      "outboundSendLastMessageId",
+    ),
+    outboundSendLastRunAt: getMetadataDate(
+      account.metadata,
+      "outboundSendLastRunAt",
+    ),
+    outboundSendLastSuccessAt: getMetadataDate(
+      account.metadata,
+      "outboundSendLastSuccessAt",
+    ),
+    outboundSendOperatorAction: getMetadataString(
+      account.metadata,
+      "outboundSendOperatorAction",
+    ),
+    outboundSendRetryAt: getMetadataDate(account.metadata, "outboundSendRetryAt"),
     replySyncFailureCategory: getMetadataString(
       account.metadata,
       "replySyncFailureCategory",
@@ -73,16 +106,25 @@ export function decorateConnectedAccount(
       account.metadata,
       "replySyncLastCheckedCount",
     ),
+    replySyncLastSuccessAt: getMetadataDate(
+      account.metadata,
+      "replySyncLastSuccessAt",
+    ),
     replySyncMode: getMetadataString(account.metadata, "replySyncMode"),
     replySyncRetryAt: getMetadataDate(account.metadata, "replySyncRetryAt"),
     replySyncOperatorAction: getMetadataString(
       account.metadata,
       "replySyncOperatorAction",
     ),
-    status:
-      account.status === "connected" && missing.length > 0
-        ? "reconnect_required"
-        : account.status,
+  };
+
+  return {
+    ...decorated,
+    status: deriveProviderAccountStatus({
+      metadata: account.metadata as Record<string, unknown> | null | undefined,
+      missingScopes: missing,
+      rawStatus: account.status,
+    }),
   };
 }
 

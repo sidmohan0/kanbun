@@ -384,6 +384,7 @@ export async function syncTodoistTaskForTaskId(taskId: string) {
     await db
       .update(tasks)
       .set({
+        todoistCompletedAt: task.todoistItemId ? new Date() : task.todoistCompletedAt,
         todoistLastError: null,
         todoistSyncRequestedAt: null,
         todoistSyncStatus: task.todoistItemId ? "synced" : "not_mirrored",
@@ -407,12 +408,36 @@ export async function syncTodoistTaskForTaskId(taskId: string) {
     ...buildDuePayload(task.dueAt),
   };
   const requestId = crypto.randomUUID();
-  let remoteTask: TodoistTask;
+  let resolvedTodoistItemId = task.todoistItemId ? String(task.todoistItemId) : null;
 
-  if (task.todoistItemId) {
+  if (resolvedTodoistItemId && task.todoistCompletedAt) {
     try {
-      remoteTask = await todoistFetch<TodoistTask>(
-        `https://api.todoist.com/api/v1/tasks/${task.todoistItemId}`,
+      await todoistFetch<null>(
+        `https://api.todoist.com/api/v1/tasks/${resolvedTodoistItemId}/reopen`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "X-Request-Id": requestId,
+          },
+          method: "POST",
+        },
+        "Unable to reopen Todoist task",
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+
+      if (!message.includes("(404)")) {
+        throw error;
+      }
+
+      resolvedTodoistItemId = null;
+    }
+  }
+
+  if (resolvedTodoistItemId) {
+    try {
+      await todoistFetch<null>(
+        `https://api.todoist.com/api/v1/tasks/${resolvedTodoistItemId}`,
         {
           body: JSON.stringify(payload),
           headers: {
@@ -431,7 +456,7 @@ export async function syncTodoistTaskForTaskId(taskId: string) {
         throw error;
       }
 
-      remoteTask = await todoistFetch<TodoistTask>(
+      const remoteTask = await todoistFetch<TodoistTask>(
         "https://api.todoist.com/api/v1/tasks",
         {
           body: JSON.stringify(payload),
@@ -444,9 +469,11 @@ export async function syncTodoistTaskForTaskId(taskId: string) {
         },
         "Unable to create Todoist task",
       );
+
+      resolvedTodoistItemId = String(remoteTask.id);
     }
   } else {
-    remoteTask = await todoistFetch<TodoistTask>(
+    const remoteTask = await todoistFetch<TodoistTask>(
       "https://api.todoist.com/api/v1/tasks",
       {
         body: JSON.stringify(payload),
@@ -459,13 +486,15 @@ export async function syncTodoistTaskForTaskId(taskId: string) {
       },
       "Unable to create Todoist task",
     );
+
+    resolvedTodoistItemId = String(remoteTask.id);
   }
 
   await db
     .update(tasks)
     .set({
       todoistCompletedAt: null,
-      todoistItemId: String(remoteTask.id),
+      todoistItemId: resolvedTodoistItemId,
       todoistLastError: null,
       todoistSyncRequestedAt: null,
       todoistSyncStatus: "synced",
@@ -487,14 +516,14 @@ export async function syncTodoistTaskForTaskId(taskId: string) {
     entityType: "task",
     eventName: "task.todoist_mirrored",
     metadata: {
-      todoistItemId: String(remoteTask.id),
+      todoistItemId: resolvedTodoistItemId,
     },
   });
 
   return {
     mode: task.todoistItemId ? ("updated" as const) : ("created" as const),
     taskId: task.id,
-    todoistItemId: String(remoteTask.id),
+    todoistItemId: resolvedTodoistItemId,
   };
 }
 
@@ -568,7 +597,7 @@ export async function reconcileTodoistAccount(accountId: string) {
       continue;
     }
 
-    if (task.status === "open") {
+    if (task.status === "open" || task.status === "snoozed") {
       await db
         .update(tasks)
         .set({

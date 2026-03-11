@@ -1,9 +1,14 @@
 import { env } from "@/lib/env";
-import { processNextGoogleReplySync, processNextGoogleSync } from "@/lib/google-worker";
+import {
+  processNextGoogleReplySync,
+  processNextGoogleSync,
+  processNextGoogleWatchRenewal,
+} from "@/lib/google-worker";
 import { processNextImportBatch } from "@/lib/import-worker";
 import {
   processNextMicrosoftReplySync,
   processNextMicrosoftSync,
+  processNextMicrosoftSubscriptionRenewal,
 } from "@/lib/microsoft-worker";
 import {
   processNextOutboundSend,
@@ -41,9 +46,11 @@ export async function runWorker(options?: {
       const [
         processedGoogle,
         processedGoogleReplies,
+        processedGoogleWatchRenewal,
         processedImport,
         processedMicrosoft,
         processedMicrosoftReplies,
+        processedMicrosoftSubscriptionRenewal,
         processedOutboundSend,
         processedSequenceDraft,
         processedTodoistAccount,
@@ -52,9 +59,11 @@ export async function runWorker(options?: {
         await Promise.all([
           processNextGoogleSync(logger),
           processNextGoogleReplySync(logger),
+          processNextGoogleWatchRenewal(logger),
           processNextImportBatch(importBatchSize),
           processNextMicrosoftSync(logger),
           processNextMicrosoftReplySync(logger),
+          processNextMicrosoftSubscriptionRenewal(logger),
           processNextOutboundSend(logger),
           processNextSequenceDraft(logger),
           processNextTodoistAccountSync(logger),
@@ -68,9 +77,11 @@ export async function runWorker(options?: {
       if (
         !processedGoogle &&
         !processedGoogleReplies &&
+        !processedGoogleWatchRenewal &&
         !processedImport &&
         !processedMicrosoft &&
         !processedMicrosoftReplies &&
+        !processedMicrosoftSubscriptionRenewal &&
         !processedOutboundSend &&
         !processedSequenceDraft &&
         !processedTodoistAccount &&

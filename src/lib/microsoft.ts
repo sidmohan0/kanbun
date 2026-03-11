@@ -15,6 +15,10 @@ import { normalizeEmail } from "@/lib/csv";
 import { env } from "@/lib/env";
 import { upsertMergeReview } from "@/lib/merge-reviews";
 import {
+  applyProviderSuccessMetadata,
+  deriveProviderAccountStatus,
+} from "@/lib/provider-health";
+import {
   MICROSOFT_CONTACTS_SCOPE,
   MICROSOFT_REPLY_READ_SCOPE,
   MICROSOFT_SEND_SCOPE,
@@ -88,12 +92,35 @@ type MicrosoftDraftMessage = {
   internetMessageId?: string | null;
 };
 
+type MicrosoftSubscriptionResponse = {
+  expirationDateTime?: string;
+  id: string;
+  resource?: string;
+};
+
 function microsoftTenantAuthority() {
   return `https://login.microsoftonline.com/${env.MICROSOFT_TENANT_ID}`;
 }
 
 function microsoftRedirectUri() {
   return `${env.KANBUN_URL}/api/auth/microsoft/callback`;
+}
+
+function microsoftNotificationsUrl() {
+  return `${env.KANBUN_URL}/api/webhooks/microsoft/notifications`;
+}
+
+function microsoftLifecycleUrl() {
+  return `${env.KANBUN_URL}/api/webhooks/microsoft/lifecycle`;
+}
+
+export function getMicrosoftWebhookClientState() {
+  return env.MICROSOFT_WEBHOOK_CLIENT_STATE ?? env.APP_ENCRYPTION_KEY.slice(0, 32);
+}
+
+function hasPublicWebhookUrl() {
+  const hostname = new URL(env.KANBUN_URL).hostname;
+  return hostname !== "localhost" && hostname !== "127.0.0.1";
 }
 
 function buildStateCookieValue() {
@@ -203,6 +230,10 @@ async function ensureContactSource(params: {
 
 export function isMicrosoftOAuthConfigured() {
   return Boolean(env.MICROSOFT_CLIENT_ID && env.MICROSOFT_CLIENT_SECRET);
+}
+
+export function isMicrosoftWebhookConfigured() {
+  return isMicrosoftOAuthConfigured() && hasPublicWebhookUrl();
 }
 
 export async function createMicrosoftOAuthUrl() {
@@ -361,6 +392,214 @@ export async function requestMicrosoftAccountSync(userId: string) {
     .where(eq(connectedAccounts.id, account.id));
 
   return account.id;
+}
+
+async function upsertMicrosoftSubscription(input: {
+  accessToken: string;
+  changeType: string;
+  existingSubscriptionId?: string | null;
+  operation: "contactSync" | "replySync";
+  resource: string;
+}) {
+  const expirationDateTime = new Date(
+    Date.now() + 1000 * 60 * 60 * 24 * 2,
+  ).toISOString();
+
+  if (input.existingSubscriptionId) {
+    return microsoftFetch<MicrosoftSubscriptionResponse>(
+      `https://graph.microsoft.com/v1.0/subscriptions/${input.existingSubscriptionId}`,
+      {
+        body: JSON.stringify({
+          expirationDateTime,
+        }),
+        headers: {
+          Authorization: `Bearer ${input.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "PATCH",
+      },
+      `Unable to renew Microsoft ${input.operation} subscription`,
+    );
+  }
+
+  return microsoftFetch<MicrosoftSubscriptionResponse>(
+    "https://graph.microsoft.com/v1.0/subscriptions",
+    {
+      body: JSON.stringify({
+        changeType: input.changeType,
+        clientState: getMicrosoftWebhookClientState(),
+        expirationDateTime,
+        lifecycleNotificationUrl: microsoftLifecycleUrl(),
+        notificationUrl: microsoftNotificationsUrl(),
+        resource: input.resource,
+      }),
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+    `Unable to create Microsoft ${input.operation} subscription`,
+  );
+}
+
+export async function ensureMicrosoftGraphSubscriptions(accountId: string) {
+  if (!isMicrosoftWebhookConfigured()) {
+    return null;
+  }
+
+  const account = await db.query.connectedAccounts.findFirst({
+    where: eq(connectedAccounts.id, accountId),
+  });
+
+  if (!account || account.provider !== "microsoft") {
+    throw new Error("Connected Microsoft account not found.");
+  }
+
+  const accessToken = await getMicrosoftAccessToken(accountId);
+  const metadata = (account.metadata as Record<string, unknown>) ?? {};
+  const [contactSubscription, replySubscription] = await Promise.all([
+    account.grantedScopes.includes(MICROSOFT_CONTACTS_SCOPE)
+      ? upsertMicrosoftSubscription({
+          accessToken,
+          changeType: "created,updated,deleted",
+          existingSubscriptionId:
+            typeof metadata.microsoftContactSubscriptionId === "string"
+              ? metadata.microsoftContactSubscriptionId
+              : null,
+          operation: "contactSync",
+          resource: "me/contacts",
+        })
+      : null,
+    account.grantedScopes.includes(MICROSOFT_REPLY_READ_SCOPE)
+      ? upsertMicrosoftSubscription({
+          accessToken,
+          changeType: "created",
+          existingSubscriptionId:
+            typeof metadata.microsoftReplySubscriptionId === "string"
+              ? metadata.microsoftReplySubscriptionId
+              : null,
+          operation: "replySync",
+          resource: "me/mailFolders('Inbox')/messages",
+        })
+      : null,
+  ]);
+  const nextMetadata = {
+    ...metadata,
+    contactSyncMode: contactSubscription ? "incremental_delta_webhook" : metadata.contactSyncMode,
+    microsoftContactSubscriptionExpiresAt:
+      contactSubscription?.expirationDateTime ?? metadata.microsoftContactSubscriptionExpiresAt ?? null,
+    microsoftContactSubscriptionId:
+      contactSubscription?.id ?? metadata.microsoftContactSubscriptionId ?? null,
+    microsoftReplySubscriptionExpiresAt:
+      replySubscription?.expirationDateTime ?? metadata.microsoftReplySubscriptionExpiresAt ?? null,
+    microsoftReplySubscriptionId:
+      replySubscription?.id ?? metadata.microsoftReplySubscriptionId ?? null,
+    replySyncMode: replySubscription ? "webhook_thread_aware" : metadata.replySyncMode,
+  };
+
+  await db
+    .update(connectedAccounts)
+    .set({
+      lastError: null,
+      metadata: nextMetadata,
+      status: deriveProviderAccountStatus({
+        metadata: nextMetadata,
+        rawStatus: account.status,
+      }),
+      updatedAt: new Date(),
+    })
+    .where(eq(connectedAccounts.id, account.id));
+
+  return {
+    contactSubscription,
+    replySubscription,
+  };
+}
+
+export async function handleMicrosoftGraphNotification(input: {
+  kind: "contactSync" | "replySync";
+  subscriptionId: string;
+}) {
+  const accounts = await db.query.connectedAccounts.findMany({
+    where: eq(connectedAccounts.provider, "microsoft"),
+  });
+  const account = accounts.find((entry) => {
+    const metadata = (entry.metadata as Record<string, unknown>) ?? {};
+    return input.kind === "contactSync"
+      ? metadata.microsoftContactSubscriptionId === input.subscriptionId
+      : metadata.microsoftReplySubscriptionId === input.subscriptionId;
+  });
+
+  if (!account) {
+    return false;
+  }
+
+  const metadata = (account.metadata as Record<string, unknown>) ?? {};
+
+  await db
+    .update(connectedAccounts)
+    .set({
+      metadata: {
+        ...metadata,
+        ...(input.kind === "contactSync"
+          ? {
+              contactSyncLastNotificationAt: new Date().toISOString(),
+              contactSyncMode: "incremental_delta_webhook",
+            }
+          : {
+              replySyncDueAt: new Date().toISOString(),
+              replySyncLastNotificationAt: new Date().toISOString(),
+              replySyncMode: "webhook_thread_aware",
+            }),
+      },
+      syncRequestedAt:
+        input.kind === "contactSync" ? new Date() : account.syncRequestedAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(connectedAccounts.id, account.id));
+
+  return true;
+}
+
+export async function handleMicrosoftGraphLifecycleEvent(input: {
+  kind: "contactSync" | "replySync";
+  subscriptionId: string;
+}) {
+  const accounts = await db.query.connectedAccounts.findMany({
+    where: eq(connectedAccounts.provider, "microsoft"),
+  });
+  const account = accounts.find((entry) => {
+    const metadata = (entry.metadata as Record<string, unknown>) ?? {};
+    return input.kind === "contactSync"
+      ? metadata.microsoftContactSubscriptionId === input.subscriptionId
+      : metadata.microsoftReplySubscriptionId === input.subscriptionId;
+  });
+
+  if (!account) {
+    return false;
+  }
+
+  const metadata = (account.metadata as Record<string, unknown>) ?? {};
+
+  await db
+    .update(connectedAccounts)
+    .set({
+      metadata: {
+        ...metadata,
+        ...(input.kind === "contactSync"
+          ? {
+              microsoftContactSubscriptionExpiresAt: new Date().toISOString(),
+            }
+          : {
+              microsoftReplySubscriptionExpiresAt: new Date().toISOString(),
+            }),
+      },
+      updatedAt: new Date(),
+    })
+    .where(eq(connectedAccounts.id, account.id));
+
+  return true;
 }
 
 export async function disconnectMicrosoftAccount(userId: string) {
@@ -636,23 +875,25 @@ export async function syncMicrosoftRepliesForAccount(accountId: string) {
     recentInboundMessages
       .map((message) => message.receivedAt.getTime())
       .sort((left, right) => right - left)[0] ?? Date.now();
+  const nextMetadata = applyProviderSuccessMetadata(metadata, {
+    operation: "replySync",
+    values: {
+      replySyncCursorAt: new Date(newestTimestamp).toISOString(),
+      replySyncLastCheckedCount: recentInboundMessages.length,
+      replySyncLastDetectedCount: detectedCount,
+      replySyncMode: "thread_aware",
+    },
+  });
 
   await db
     .update(connectedAccounts)
     .set({
-      metadata: {
-        ...metadata,
-        replySyncFailureCategory: null,
-        replySyncLastCheckedCount: recentInboundMessages.length,
-        replySyncCursorAt: new Date(newestTimestamp).toISOString(),
-        replySyncLastDetectedCount: detectedCount,
-        replySyncLastError: null,
-        replySyncLastRunAt: new Date().toISOString(),
-        replySyncMode: "thread",
-        replySyncOperatorAction: null,
-        replySyncRetryAt: null,
-      },
-      status: "connected",
+      lastError: null,
+      metadata: nextMetadata,
+      status: deriveProviderAccountStatus({
+        metadata: nextMetadata,
+        rawStatus: account.status,
+      }),
       updatedAt: new Date(),
     })
     .where(eq(connectedAccounts.id, account.id));
@@ -845,23 +1086,29 @@ export async function syncMicrosoftContactsForAccount(accountId: string) {
     throw error;
   }
 
+  const nextMetadata = applyProviderSuccessMetadata(
+    (account.metadata as Record<string, unknown>) ?? {},
+    {
+      operation: "contactSync",
+      values: {
+        contactSyncCursorUpdatedAt: new Date().toISOString(),
+        contactSyncLastResultCount: syncedCount,
+        contactSyncMode: "incremental_delta",
+      },
+    },
+  );
+
   await db
     .update(connectedAccounts)
     .set({
       lastError: null,
       lastSuccessfulSyncAt: new Date(),
       lastSyncedContactCount: syncedCount,
-      metadata: {
-        ...((account.metadata as Record<string, unknown>) ?? {}),
-        contactSyncFailureCategory: null,
-        contactSyncCursorUpdatedAt: new Date().toISOString(),
-        contactSyncLastError: null,
-        contactSyncLastResultCount: syncedCount,
-        contactSyncOperatorAction: null,
-        contactSyncMode: "incremental_delta",
-        contactSyncRetryAt: null,
-      },
-      status: "connected",
+      metadata: nextMetadata,
+      status: deriveProviderAccountStatus({
+        metadata: nextMetadata,
+        rawStatus: account.status,
+      }),
       syncCursor: nextDeltaLink,
       syncRequestedAt: null,
       updatedAt: new Date(),

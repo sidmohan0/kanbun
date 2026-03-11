@@ -14,11 +14,22 @@ import {
 import { normalizeEmail, slugify } from "@/lib/csv";
 
 type ContactSourceType = "csv" | "google" | "manual" | "microsoft";
+type TaskStatus = "done" | "open" | "snoozed";
 
 type ListContactsOptions = {
   needsAttentionOnly?: boolean;
   query?: string;
   sourceType?: ContactSourceType | "all";
+};
+
+type ActiveContactRow = Awaited<ReturnType<typeof db.query.contacts.findMany>>[number];
+
+type DuplicateConfidence = "high" | "low" | "medium";
+
+type DuplicateAssessment = {
+  confidence: DuplicateConfidence;
+  reasons: string[];
+  score: number;
 };
 
 async function recordAuditEvent(input: {
@@ -49,6 +60,182 @@ function emailLocalPart(value: string | null | undefined) {
   }
 
   return email.split("@")[0] ?? null;
+}
+
+function confidenceFromScore(score: number): DuplicateConfidence {
+  if (score >= 70) {
+    return "high";
+  }
+
+  if (score >= 40) {
+    return "medium";
+  }
+
+  return "low";
+}
+
+function scoreDuplicateCandidate(
+  contact: Pick<
+    ActiveContactRow,
+    "company" | "displayName" | "id" | "primaryEmail" | "title"
+  >,
+  candidate: Pick<
+    ActiveContactRow,
+    "company" | "displayName" | "id" | "primaryEmail" | "title"
+  >,
+): DuplicateAssessment {
+  const reasons: string[] = [];
+  let score = 0;
+  const normalizedName = normalizeDisplayName(contact.displayName);
+  const candidateName = normalizeDisplayName(candidate.displayName);
+  const normalizedCompany = contact.company?.trim().toLowerCase() ?? null;
+  const candidateCompany = candidate.company?.trim().toLowerCase() ?? null;
+  const normalizedTitle = contact.title?.trim().toLowerCase() ?? null;
+  const candidateTitle = candidate.title?.trim().toLowerCase() ?? null;
+  const normalizedPrimaryEmail = normalizeEmail(contact.primaryEmail);
+  const candidatePrimaryEmail = normalizeEmail(candidate.primaryEmail);
+  const primaryLocalPart = emailLocalPart(contact.primaryEmail);
+  const candidateLocalPart = emailLocalPart(candidate.primaryEmail);
+
+  if (
+    normalizedPrimaryEmail &&
+    candidatePrimaryEmail &&
+    normalizedPrimaryEmail === candidatePrimaryEmail
+  ) {
+    reasons.push("Exact primary email match");
+    score += 100;
+  }
+
+  if (normalizedName && candidateName && normalizedName === candidateName) {
+    reasons.push("Same display name");
+    score += 35;
+  }
+
+  if (
+    primaryLocalPart &&
+    candidateLocalPart &&
+    primaryLocalPart === candidateLocalPart &&
+    normalizedPrimaryEmail !== candidatePrimaryEmail
+  ) {
+    reasons.push("Matching email local-part");
+    score += 24;
+  }
+
+  if (normalizedCompany && candidateCompany && normalizedCompany === candidateCompany) {
+    reasons.push("Same company");
+    score += 16;
+
+    if (normalizedTitle && candidateTitle && normalizedTitle === candidateTitle) {
+      reasons.push("Same title");
+      score += 18;
+    }
+
+    const contactFirstName = normalizedName.split(" ")[0] ?? "";
+    const candidateFirstName = candidateName.split(" ")[0] ?? "";
+
+    if (
+      contactFirstName &&
+      candidateFirstName &&
+      contactFirstName === candidateFirstName &&
+      normalizedName !== candidateName
+    ) {
+      reasons.push("Same company and first name");
+      score += 12;
+    }
+  }
+
+  if (
+    normalizedName &&
+    candidateName &&
+    normalizedName !== candidateName &&
+    (normalizedName.includes(candidateName) || candidateName.includes(normalizedName))
+  ) {
+    reasons.push("Nested display name match");
+    score += 15;
+  }
+
+  return {
+    confidence: confidenceFromScore(score),
+    reasons: Array.from(new Set(reasons)),
+    score,
+  };
+}
+
+function buildContactFieldProvenance(params: {
+  contact: Pick<
+    ActiveContactRow,
+    | "company"
+    | "displayName"
+    | "primaryEmail"
+    | "relationshipSummary"
+    | "title"
+  >;
+  identities: Array<{
+    kind: string;
+    normalizedValue: string | null;
+    sourceType: string;
+  }>;
+  sources: Array<{
+    sourceLabel: string | null;
+    sourceType: string;
+  }>;
+}) {
+  const sourceTypes = Array.from(
+    new Set(params.sources.map((source) => source.sourceType)),
+  );
+  const sourceSummary = sourceTypes.length
+    ? sourceTypes.map((sourceType) => sourceType.toUpperCase()).join(", ")
+    : "No supporting sources";
+  const primaryIdentity = params.identities.find(
+    (identity) =>
+      identity.kind === "email" &&
+      identity.normalizedValue === normalizeEmail(params.contact.primaryEmail),
+  );
+
+  return [
+    {
+      detail: params.contact.displayName
+        ? `Current name is supported by ${params.sources.length} source record${params.sources.length === 1 ? "" : "s"} across ${sourceSummary}.`
+        : "No current display name on record.",
+      field: "displayName",
+      label: "Display name",
+      value: params.contact.displayName ?? "Empty",
+    },
+    {
+      detail: primaryIdentity
+        ? `Primary email is directly anchored by a ${primaryIdentity.sourceType.toUpperCase()} identity record.`
+        : params.contact.primaryEmail
+          ? `Primary email is present on the canonical contact but has no matching identity anchor yet.`
+          : "No primary email on record.",
+      field: "primaryEmail",
+      label: "Primary email",
+      value: params.contact.primaryEmail ?? "Empty",
+    },
+    {
+      detail: params.contact.company
+        ? `Company is currently backed by ${sourceSummary}.`
+        : "No company on record.",
+      field: "company",
+      label: "Company",
+      value: params.contact.company ?? "Empty",
+    },
+    {
+      detail: params.contact.title
+        ? `Title is currently backed by ${sourceSummary}.`
+        : "No title on record.",
+      field: "title",
+      label: "Title",
+      value: params.contact.title ?? "Empty",
+    },
+    {
+      detail: params.contact.relationshipSummary
+        ? "Relationship summary is maintained in Kanbun and reflects manual editorial judgment."
+        : "No relationship summary on record.",
+      field: "relationshipSummary",
+      label: "Relationship summary",
+      value: params.contact.relationshipSummary ?? "Empty",
+    },
+  ] as const;
 }
 
 async function recalculatePrimaryEmail(contactId: string) {
@@ -120,9 +307,21 @@ export async function listContacts(options: ListContactsOptions = {}) {
             .map((source) => source.sourceType),
         ),
       );
+      const duplicateCandidates = rows.filter((candidate) => {
+        if (candidate.id === contact.id) {
+          return false;
+        }
+
+        return scoreDuplicateCandidate(contact, candidate).score >= 40;
+      });
+      const highConfidenceDuplicateCount = duplicateCandidates.filter(
+        (candidate) => scoreDuplicateCandidate(contact, candidate).confidence === "high",
+      ).length;
 
       return {
         ...contact,
+        duplicateCandidateCount: duplicateCandidates.length,
+        highConfidenceDuplicateCount,
         openMergeReviewCount: reviewCount,
         openTaskCount: dueTasks.length,
         nextDueAt: nextTask?.dueAt ?? null,
@@ -160,7 +359,8 @@ export async function listContacts(options: ListContactsOptions = {}) {
       if (
         options.needsAttentionOnly &&
         contact.openTaskCount === 0 &&
-        contact.openMergeReviewCount === 0
+        contact.openMergeReviewCount === 0 &&
+        contact.duplicateCandidateCount === 0
       ) {
         return false;
       }
@@ -202,6 +402,11 @@ export async function getContactBySlug(slug: string) {
 
   return {
     ...contact,
+    fieldProvenance: buildContactFieldProvenance({
+      contact,
+      identities,
+      sources,
+    }),
     mergeReviews,
     sources,
     identities,
@@ -223,67 +428,26 @@ export async function listPotentialDuplicateContacts(contactId: string) {
     orderBy: [asc(contacts.displayName)],
   });
 
-  const normalizedName = normalizeDisplayName(contact.displayName);
-  const primaryLocalPart = emailLocalPart(contact.primaryEmail);
-
   return candidates
     .filter((candidate) => candidate.id !== contact.id)
     .map((candidate) => {
-      const reasons: string[] = [];
-
-      if (
-        normalizedName &&
-        normalizeDisplayName(candidate.displayName) === normalizedName
-      ) {
-        reasons.push("Same display name");
-      }
-
-      if (
-        contact.company &&
-        candidate.company &&
-        contact.company.trim().toLowerCase() ===
-          candidate.company.trim().toLowerCase()
-      ) {
-        if (
-          contact.title &&
-          candidate.title &&
-          contact.title.trim().toLowerCase() ===
-            candidate.title.trim().toLowerCase()
-        ) {
-          reasons.push("Same company and title");
-        }
-
-        if (
-          normalizedName &&
-          normalizeDisplayName(candidate.displayName).includes(
-            normalizedName.split(" ")[0] ?? "",
-          )
-        ) {
-          reasons.push("Same company and similar name");
-        }
-      }
-
-      if (
-        primaryLocalPart &&
-        primaryLocalPart === emailLocalPart(candidate.primaryEmail) &&
-        contact.primaryEmail !== candidate.primaryEmail
-      ) {
-        reasons.push("Matching email local-part");
-      }
+      const assessment = scoreDuplicateCandidate(contact, candidate);
 
       return {
+        confidence: assessment.confidence,
         ...candidate,
-        reasons,
+        reasons: assessment.reasons,
+        score: assessment.score,
       };
     })
-    .filter((candidate) => candidate.reasons.length > 0)
-    .sort((left, right) => right.reasons.length - left.reasons.length);
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score);
 }
 
-export async function listOpenTasks() {
+export async function listTasks(status: TaskStatus | "all" = "open") {
   const taskRows = await db.query.tasks.findMany({
-    where: eq(tasks.status, "open"),
-    orderBy: [asc(tasks.dueAt), desc(tasks.createdAt)],
+    where: status === "all" ? undefined : eq(tasks.status, status),
+    orderBy: [asc(tasks.dueAt), desc(tasks.updatedAt), desc(tasks.createdAt)],
   });
 
   const contactIds = taskRows
@@ -310,6 +474,16 @@ export async function listOpenTasks() {
     ...task,
     contact: task.contactId ? (contactMap.get(task.contactId) ?? null) : null,
   }));
+}
+
+export async function listTaskBuckets() {
+  const allTasks = await listTasks("all");
+
+  return {
+    done: allTasks.filter((task) => task.status === "done"),
+    open: allTasks.filter((task) => task.status === "open"),
+    snoozed: allTasks.filter((task) => task.status === "snoozed"),
+  };
 }
 
 export async function createFollowUpTask(
@@ -341,6 +515,132 @@ export async function createFollowUpTask(
   });
 
   return contact.slug;
+}
+
+export async function listOpenTasks() {
+  return listTasks("open");
+}
+
+async function updateTaskState(input: {
+  actorUserId?: string | null;
+  dueAt?: Date | null;
+  status: TaskStatus;
+  taskId: string;
+}) {
+  const existing = await db.query.tasks.findFirst({
+    where: eq(tasks.id, input.taskId),
+  });
+
+  if (!existing) {
+    throw new Error("Task not found.");
+  }
+
+  const shouldQueueTodoistSync =
+    existing.todoistSyncStatus !== "not_mirrored" || Boolean(existing.todoistItemId);
+
+  await db
+    .update(tasks)
+    .set({
+      dueAt:
+        input.dueAt === undefined
+          ? existing.dueAt
+          : input.status === "done"
+            ? existing.dueAt
+            : input.dueAt,
+      status: input.status,
+      todoistSyncRequestedAt: shouldQueueTodoistSync ? new Date() : null,
+      todoistSyncStatus: shouldQueueTodoistSync ? "queued" : existing.todoistSyncStatus,
+      updatedAt: new Date(),
+    })
+    .where(eq(tasks.id, existing.id));
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    entityId: existing.id,
+    entityType: "task",
+    eventName: `task.${input.status}`,
+    metadata: {
+      dueAt:
+        input.dueAt instanceof Date ? input.dueAt.toISOString() : input.dueAt ?? null,
+      previousStatus: existing.status,
+      todoistQueued: shouldQueueTodoistSync,
+    },
+  });
+
+  return existing.id;
+}
+
+export async function completeTask(input: {
+  actorUserId?: string | null;
+  taskId: string;
+}) {
+  return updateTaskState({
+    actorUserId: input.actorUserId,
+    status: "done",
+    taskId: input.taskId,
+  });
+}
+
+export async function snoozeTask(input: {
+  actorUserId?: string | null;
+  days?: number;
+  taskId: string;
+}) {
+  const existing = await db.query.tasks.findFirst({
+    where: eq(tasks.id, input.taskId),
+    columns: {
+      dueAt: true,
+      id: true,
+    },
+  });
+
+  if (!existing) {
+    throw new Error("Task not found.");
+  }
+
+  const base = existing.dueAt ? new Date(existing.dueAt) : new Date();
+  const days = Math.max(1, input.days ?? 1);
+
+  base.setDate(base.getDate() + days);
+  base.setHours(9, 0, 0, 0);
+
+  return updateTaskState({
+    actorUserId: input.actorUserId,
+    dueAt: base,
+    status: "snoozed",
+    taskId: input.taskId,
+  });
+}
+
+export async function reopenTask(input: {
+  actorUserId?: string | null;
+  taskId: string;
+}) {
+  const existing = await db.query.tasks.findFirst({
+    where: eq(tasks.id, input.taskId),
+    columns: {
+      dueAt: true,
+      id: true,
+    },
+  });
+
+  if (!existing) {
+    throw new Error("Task not found.");
+  }
+
+  const dueAt = existing.dueAt ? new Date(existing.dueAt) : new Date();
+
+  if (dueAt.getTime() < Date.now()) {
+    dueAt.setDate(dueAt.getDate() + 1);
+    dueAt.setHours(9, 0, 0, 0);
+  }
+
+  return updateTaskState({
+    actorUserId: input.actorUserId,
+    dueAt,
+    status: "open",
+    taskId: input.taskId,
+  });
 }
 
 export async function createManualContact(input: {

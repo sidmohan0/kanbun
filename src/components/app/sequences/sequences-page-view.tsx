@@ -40,6 +40,7 @@ function outboundDiagnosticMetadata(value: unknown) {
       blockedReason: null as string | null,
       copyRevision: 0,
       deliveryDiagnostic: null as string | null,
+      deliveryRetryAt: null as string | null,
       deliveryState: null as string | null,
       failureCategory: null as string | null,
       retryable: true,
@@ -58,6 +59,10 @@ function outboundDiagnosticMetadata(value: unknown) {
     deliveryDiagnostic:
       typeof metadata.deliveryDiagnostic === "string"
         ? metadata.deliveryDiagnostic
+        : null,
+    deliveryRetryAt:
+      typeof metadata.deliveryRetryAt === "string"
+        ? metadata.deliveryRetryAt
         : null,
     deliveryState:
       typeof metadata.deliveryState === "string" ? metadata.deliveryState : null,
@@ -410,8 +415,6 @@ function SequenceEditorPanel(props: {
                     {sequence.status === "active" ? (
                       <Button
                         formAction={pauseSequenceAction}
-                        name="sequenceId"
-                        value={sequence.id}
                         type="submit"
                         variant="outline"
                       >
@@ -420,8 +423,6 @@ function SequenceEditorPanel(props: {
                     ) : (
                       <Button
                         formAction={resumeSequenceAction}
-                        name="sequenceId"
-                        value={sequence.id}
                         type="submit"
                         variant="outline"
                       >
@@ -453,8 +454,6 @@ function SequenceEditorPanel(props: {
                       {sequence.steps.length > 1 ? (
                         <Button
                           formAction={deleteSequenceStepAction}
-                          name="stepId"
-                          value={step.id}
                           type="submit"
                           variant="outline"
                         >
@@ -656,6 +655,9 @@ function ApprovalQueuePanel(props: {
                 {diagnostics.blockedReason && draft.status === "queued" ? (
                   <div className="rounded-xl border border-amber-300/40 bg-amber-100/50 px-3 py-3 text-sm text-amber-900">
                     Blocked for now: {diagnostics.blockedReason}
+                    {diagnostics.deliveryRetryAt
+                      ? ` Retry after ${new Date(diagnostics.deliveryRetryAt).toLocaleString()}.`
+                      : null}
                   </div>
                 ) : null}
 
@@ -668,6 +670,9 @@ function ApprovalQueuePanel(props: {
                     {Math.max(diagnostics.copyRevision, 1)}.{" "}
                     {diagnostics.failureCategory
                       ? `Failure class: ${diagnostics.failureCategory}. `
+                      : null}
+                    {diagnostics.deliveryRetryAt
+                      ? `Retry after ${new Date(diagnostics.deliveryRetryAt).toLocaleString()}. `
                       : null}
                     {diagnostics.deliveryDiagnostic ??
                       diagnostics.deliveryState ??

@@ -15,6 +15,10 @@ import { normalizeEmail } from "@/lib/csv";
 import { env } from "@/lib/env";
 import { upsertMergeReview } from "@/lib/merge-reviews";
 import {
+  applyProviderSuccessMetadata,
+  deriveProviderAccountStatus,
+} from "@/lib/provider-health";
+import {
   GOOGLE_CONTACTS_SCOPE,
   GOOGLE_REPLY_READ_SCOPE,
   GOOGLE_SEND_SCOPE,
@@ -106,8 +110,18 @@ type GmailSendResponse = {
   threadId?: string;
 };
 
+type GmailWatchResponse = {
+  expiration?: string;
+  historyId?: string;
+};
+
 function googleRedirectUri() {
   return `${env.KANBUN_URL}/api/auth/google/callback`;
+}
+
+function hasPublicWebhookUrl() {
+  const hostname = new URL(env.KANBUN_URL).hostname;
+  return hostname !== "localhost" && hostname !== "127.0.0.1";
 }
 
 function buildStateCookieValue() {
@@ -270,6 +284,10 @@ async function ensureContactSource(params: {
 
 export function isGoogleOAuthConfigured() {
   return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
+}
+
+export function isGooglePushWebhookConfigured() {
+  return Boolean(env.GOOGLE_GMAIL_PUSH_TOPIC && hasPublicWebhookUrl());
 }
 
 async function createGoogleAuthorizationUrl(input: {
@@ -499,6 +517,103 @@ export async function requestGoogleAccountSync(userId: string) {
     .where(eq(connectedAccounts.id, account.id));
 
   return account.id;
+}
+
+export async function ensureGoogleMailboxWatch(accountId: string) {
+  if (!isGooglePushWebhookConfigured()) {
+    return null;
+  }
+
+  const account = await db.query.connectedAccounts.findFirst({
+    where: eq(connectedAccounts.id, accountId),
+  });
+
+  if (!account || account.provider !== "google") {
+    throw new Error("Connected Google account not found.");
+  }
+
+  if (!account.grantedScopes.includes(GOOGLE_REPLY_READ_SCOPE)) {
+    return null;
+  }
+
+  const accessToken = await getGoogleAccessToken(accountId);
+  const watch = await googleFetch<GmailWatchResponse>(
+    "https://gmail.googleapis.com/gmail/v1/users/me/watch",
+    {
+      body: JSON.stringify({
+        labelFilterBehavior: "INCLUDE",
+        labelIds: ["INBOX"],
+        topicName: env.GOOGLE_GMAIL_PUSH_TOPIC!,
+      }),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+    "Unable to create Gmail push watch",
+  );
+
+  const metadata = applyProviderSuccessMetadata(
+    (account.metadata as Record<string, unknown>) ?? {},
+    {
+      operation: "replySync",
+      values: {
+        gmailWatchExpirationAt: watch.expiration ?? null,
+        gmailWatchLastHistoryId: watch.historyId ?? null,
+        gmailWatchLastRenewedAt: new Date().toISOString(),
+        gmailWatchTopic: env.GOOGLE_GMAIL_PUSH_TOPIC,
+        replySyncMode: "push_plus_poll",
+      },
+    },
+  );
+
+  await db
+    .update(connectedAccounts)
+    .set({
+      lastError: null,
+      metadata,
+      status: deriveProviderAccountStatus({
+        metadata,
+        rawStatus: account.status,
+      }),
+      updatedAt: new Date(),
+    })
+    .where(eq(connectedAccounts.id, account.id));
+
+  return watch;
+}
+
+export async function handleGoogleGmailPushNotification(input: {
+  emailAddress: string;
+  historyId: string;
+}) {
+  const googleAccounts = await db.query.connectedAccounts.findMany({
+    where: eq(connectedAccounts.provider, "google"),
+  });
+  const account = googleAccounts.find(
+    (entry) => entry.email?.toLowerCase() === input.emailAddress.toLowerCase(),
+  );
+
+  if (!account) {
+    return false;
+  }
+
+  await db
+    .update(connectedAccounts)
+    .set({
+      metadata: {
+        ...((account.metadata as Record<string, unknown>) ?? {}),
+        gmailWatchLastHistoryId: input.historyId,
+        gmailWatchLastNotificationAt: new Date().toISOString(),
+        replySyncDueAt: new Date().toISOString(),
+        replySyncMode: "push_plus_poll",
+      },
+      updatedAt: new Date(),
+    })
+    .where(eq(connectedAccounts.id, account.id));
+
+  return true;
 }
 
 export async function disconnectGoogleAccount(userId: string) {
@@ -826,23 +941,25 @@ export async function syncGoogleRepliesForAccount(accountId: string) {
     recentInboundMessages
       .map((message) => message.receivedAt.getTime())
       .sort((left, right) => right - left)[0] ?? Date.now();
+  const nextMetadata = applyProviderSuccessMetadata(metadata, {
+    operation: "replySync",
+    values: {
+      replySyncCursorAt: new Date(newestTimestamp).toISOString(),
+      replySyncLastCheckedCount: recentInboundMessages.length,
+      replySyncLastDetectedCount: detectedCount,
+      replySyncMode: "thread_aware",
+    },
+  });
 
   await db
     .update(connectedAccounts)
     .set({
-      metadata: {
-        ...metadata,
-        replySyncFailureCategory: null,
-        replySyncLastCheckedCount: recentInboundMessages.length,
-        replySyncCursorAt: new Date(newestTimestamp).toISOString(),
-        replySyncLastDetectedCount: detectedCount,
-        replySyncLastError: null,
-        replySyncLastRunAt: new Date().toISOString(),
-        replySyncMode: "thread",
-        replySyncOperatorAction: null,
-        replySyncRetryAt: null,
-      },
-      status: "connected",
+      lastError: null,
+      metadata: nextMetadata,
+      status: deriveProviderAccountStatus({
+        metadata: nextMetadata,
+        rawStatus: account.status,
+      }),
       updatedAt: new Date(),
     })
     .where(eq(connectedAccounts.id, account.id));
@@ -1050,23 +1167,30 @@ export async function syncGoogleContactsForAccount(accountId: string) {
 
     throw error;
   }
+
+  const nextMetadata = applyProviderSuccessMetadata(
+    (account.metadata as Record<string, unknown>) ?? {},
+    {
+      operation: "contactSync",
+      values: {
+        contactSyncCursorUpdatedAt: new Date().toISOString(),
+        contactSyncLastResultCount: syncedCount,
+        contactSyncMode: account.syncCursor ? "incremental" : "full",
+      },
+    },
+  );
+
   await db
     .update(connectedAccounts)
     .set({
       lastError: null,
       lastSuccessfulSyncAt: new Date(),
       lastSyncedContactCount: syncedCount,
-      status: "connected",
-      metadata: {
-        ...((account.metadata as Record<string, unknown>) ?? {}),
-        contactSyncFailureCategory: null,
-        contactSyncCursorUpdatedAt: new Date().toISOString(),
-        contactSyncLastError: null,
-        contactSyncLastResultCount: syncedCount,
-        contactSyncOperatorAction: null,
-        contactSyncMode: "incremental",
-        contactSyncRetryAt: null,
-      },
+      status: deriveProviderAccountStatus({
+        metadata: nextMetadata,
+        rawStatus: account.status,
+      }),
+      metadata: nextMetadata,
       syncCursor: nextSyncToken ?? null,
       syncRequestedAt: null,
       updatedAt: new Date(),

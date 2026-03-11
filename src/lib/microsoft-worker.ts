@@ -2,17 +2,25 @@ import { and, asc, desc, eq, isNotNull, or } from "drizzle-orm";
 import { db } from "@/db/client";
 import { connectedAccounts, outboundMessages } from "@/db/schema";
 import {
+  ensureMicrosoftGraphSubscriptions,
+  isMicrosoftWebhookConfigured,
   syncMicrosoftContactsForAccount,
   syncMicrosoftRepliesForAccount,
 } from "@/lib/microsoft";
 import {
+  applyProviderFailureMetadata,
   classifyProviderFailure,
+  deriveProviderAccountStatus,
   getMetadataDate,
 } from "@/lib/provider-health";
-import { MICROSOFT_REPLY_READ_SCOPE } from "@/lib/provider-scopes";
+import {
+  MICROSOFT_CONTACTS_SCOPE,
+  MICROSOFT_REPLY_READ_SCOPE,
+} from "@/lib/provider-scopes";
 
 type WorkerLogger = Pick<Console, "error" | "info">;
 const REPLY_SYNC_INTERVAL_MS = 1000 * 60 * 10;
+const SUBSCRIPTION_RENEWAL_WINDOW_MS = 1000 * 60 * 60 * 6;
 
 async function claimNextMicrosoftSyncAccountId() {
   const account = await db.query.connectedAccounts.findFirst({
@@ -76,21 +84,23 @@ export async function processNextMicrosoftSync(logger: WorkerLogger = console) {
         status: true,
       },
     });
+    const nextMetadata = applyProviderFailureMetadata(
+      (account?.metadata as Record<string, unknown>) ?? {},
+      {
+        classification,
+        message,
+        operation: "contactSync",
+      },
+    );
     await db
       .update(connectedAccounts)
       .set({
         lastError: message,
-        metadata: {
-          ...((account?.metadata as Record<string, unknown>) ?? {}),
-          contactSyncFailureCategory: classification.category,
-          contactSyncLastError: message,
-          contactSyncLastRunAt: new Date().toISOString(),
-          contactSyncOperatorAction: classification.operatorAction,
-          contactSyncRetryAt: classification.retryDelayMs
-            ? new Date(Date.now() + classification.retryDelayMs).toISOString()
-            : null,
-        },
-        status: classification.accountStatus,
+        metadata: nextMetadata,
+        status: deriveProviderAccountStatus({
+          metadata: nextMetadata,
+          rawStatus: classification.accountStatus,
+        }),
         updatedAt: new Date(),
       })
       .where(eq(connectedAccounts.id, accountId));
@@ -183,29 +193,6 @@ export async function processNextMicrosoftReplySync(
 
   try {
     const result = await syncMicrosoftRepliesForAccount(accountId);
-    const account = await db.query.connectedAccounts.findFirst({
-      where: eq(connectedAccounts.id, accountId),
-    });
-
-    await db
-      .update(connectedAccounts)
-      .set({
-        lastError: null,
-        metadata: {
-          ...((account?.metadata as Record<string, unknown>) ?? {}),
-          replySyncFailureCategory: null,
-          replySyncLastCheckedCount: result.checkedCount,
-          replySyncLastDetectedCount: result.detectedCount,
-          replySyncLastError: null,
-          replySyncLastRunAt: new Date().toISOString(),
-          replySyncOperatorAction: null,
-          replySyncRetryAt: null,
-        },
-        status: "connected",
-        updatedAt: new Date(),
-      })
-      .where(eq(connectedAccounts.id, accountId));
-
     logger.info(
       `[kanbun-worker] checked ${result.checkedCount} Outlook messages and detected ${result.detectedCount} replies for account ${accountId}`,
     );
@@ -217,27 +204,128 @@ export async function processNextMicrosoftReplySync(
       where: eq(connectedAccounts.id, accountId),
     });
 
+    const nextMetadata = applyProviderFailureMetadata(
+      (account?.metadata as Record<string, unknown>) ?? {},
+      {
+        classification,
+        message,
+        operation: "replySync",
+      },
+    );
     await db
       .update(connectedAccounts)
       .set({
         lastError: message,
-        metadata: {
-          ...((account?.metadata as Record<string, unknown>) ?? {}),
-          replySyncFailureCategory: classification.category,
-          replySyncLastError: message,
-          replySyncLastRunAt: new Date().toISOString(),
-          replySyncOperatorAction: classification.operatorAction,
-          replySyncRetryAt: classification.retryDelayMs
-            ? new Date(Date.now() + classification.retryDelayMs).toISOString()
-            : null,
-        },
-        status: classification.accountStatus,
+        metadata: nextMetadata,
+        status: deriveProviderAccountStatus({
+          metadata: nextMetadata,
+          rawStatus: classification.accountStatus,
+        }),
         updatedAt: new Date(),
       })
       .where(eq(connectedAccounts.id, accountId));
 
     logger.error(
       `[kanbun-worker] Microsoft reply sync failed for ${accountId}`,
+      error,
+    );
+  }
+
+  return true;
+}
+
+async function claimNextMicrosoftSubscriptionRenewalAccountId() {
+  if (!isMicrosoftWebhookConfigured()) {
+    return null;
+  }
+
+  const accounts = await db.query.connectedAccounts.findMany({
+    where: and(
+      eq(connectedAccounts.provider, "microsoft"),
+      or(
+        eq(connectedAccounts.status, "connected"),
+        eq(connectedAccounts.status, "degraded"),
+        eq(connectedAccounts.status, "reconnect_required"),
+      ),
+    ),
+    orderBy: [desc(connectedAccounts.updatedAt)],
+  });
+
+  for (const account of accounts) {
+    const contactExpiresAt = getMetadataDate(
+      account.metadata,
+      "microsoftContactSubscriptionExpiresAt",
+    );
+    const replyExpiresAt = getMetadataDate(
+      account.metadata,
+      "microsoftReplySubscriptionExpiresAt",
+    );
+    const needsContactRenewal =
+      account.grantedScopes.includes(MICROSOFT_CONTACTS_SCOPE) &&
+      (!contactExpiresAt ||
+        contactExpiresAt.getTime() - Date.now() <= SUBSCRIPTION_RENEWAL_WINDOW_MS);
+    const needsReplyRenewal =
+      account.grantedScopes.includes(MICROSOFT_REPLY_READ_SCOPE) &&
+      (!replyExpiresAt ||
+        replyExpiresAt.getTime() - Date.now() <= SUBSCRIPTION_RENEWAL_WINDOW_MS);
+
+    if (needsContactRenewal || needsReplyRenewal) {
+      return account.id;
+    }
+  }
+
+  return null;
+}
+
+export async function processNextMicrosoftSubscriptionRenewal(
+  logger: WorkerLogger = console,
+) {
+  const accountId = await claimNextMicrosoftSubscriptionRenewalAccountId();
+
+  if (!accountId) {
+    return false;
+  }
+
+  try {
+    await ensureMicrosoftGraphSubscriptions(accountId);
+    logger.info(
+      `[kanbun-worker] renewed Microsoft Graph subscriptions for account ${accountId}`,
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to renew Microsoft Graph subscriptions.";
+    const classification = classifyProviderFailure(message);
+    const account = await db.query.connectedAccounts.findFirst({
+      where: eq(connectedAccounts.id, accountId),
+    });
+    const nextMetadata = applyProviderFailureMetadata(
+      (account?.metadata as Record<string, unknown>) ?? {},
+      {
+        classification,
+        message,
+        operation: "replySync",
+        values: {
+          microsoftSubscriptionRenewalErrorAt: new Date().toISOString(),
+        },
+      },
+    );
+    await db
+      .update(connectedAccounts)
+      .set({
+        lastError: message,
+        metadata: nextMetadata,
+        status: deriveProviderAccountStatus({
+          metadata: nextMetadata,
+          rawStatus: classification.accountStatus,
+        }),
+        updatedAt: new Date(),
+      })
+      .where(eq(connectedAccounts.id, accountId));
+
+    logger.error(
+      `[kanbun-worker] Microsoft subscription renewal failed for ${accountId}`,
       error,
     );
   }

@@ -98,12 +98,13 @@ export default async function ContactsPage({
                   contacts.filter(
                     (contact) =>
                       contact.openTaskCount > 0 ||
-                      contact.openMergeReviewCount > 0,
+                      contact.openMergeReviewCount > 0 ||
+                      contact.duplicateCandidateCount > 0,
                   ).length
                 }
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
-                Contacts tied to follow-up work or merge-review decisions.
+                Contacts tied to follow-up work, merge-review decisions, or duplicate candidates.
               </p>
             </div>
           </div>
@@ -304,6 +305,18 @@ export default async function ContactsPage({
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
+                  {contact.duplicateCandidateCount > 0 ? (
+                    <Badge
+                      variant={
+                        contact.highConfidenceDuplicateCount > 0
+                          ? "destructive"
+                          : "outline"
+                      }
+                    >
+                      {contact.duplicateCandidateCount} duplicate
+                      {contact.duplicateCandidateCount === 1 ? "" : "s"}
+                    </Badge>
+                  ) : null}
                   {contact.openMergeReviewCount > 0 ? (
                     <Badge variant="outline">
                       {contact.openMergeReviewCount} review

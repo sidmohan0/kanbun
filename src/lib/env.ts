@@ -15,9 +15,12 @@ const envSchema = z.object({
   APP_ENCRYPTION_KEY: z.string().min(32),
   GOOGLE_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+  GOOGLE_GMAIL_PUSH_TOPIC: z.string().min(1).optional(),
+  GOOGLE_GMAIL_WEBHOOK_TOKEN: z.string().min(1).optional(),
   MICROSOFT_CLIENT_ID: z.string().min(1).optional(),
   MICROSOFT_CLIENT_SECRET: z.string().min(1).optional(),
   MICROSOFT_TENANT_ID: z.string().min(1).default("common"),
+  MICROSOFT_WEBHOOK_CLIENT_STATE: z.string().min(1).optional(),
   TODOIST_API_TOKEN: z.string().min(1).optional(),
 });
 
@@ -43,9 +46,14 @@ const parsed = envSchema.safeParse({
     "replace-with-32-plus-char-random-string",
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || undefined,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || undefined,
+  GOOGLE_GMAIL_PUSH_TOPIC: process.env.GOOGLE_GMAIL_PUSH_TOPIC || undefined,
+  GOOGLE_GMAIL_WEBHOOK_TOKEN:
+    process.env.GOOGLE_GMAIL_WEBHOOK_TOKEN || undefined,
   MICROSOFT_CLIENT_ID: process.env.MICROSOFT_CLIENT_ID || undefined,
   MICROSOFT_CLIENT_SECRET: process.env.MICROSOFT_CLIENT_SECRET || undefined,
   MICROSOFT_TENANT_ID: process.env.MICROSOFT_TENANT_ID || "common",
+  MICROSOFT_WEBHOOK_CLIENT_STATE:
+    process.env.MICROSOFT_WEBHOOK_CLIENT_STATE || undefined,
   TODOIST_API_TOKEN: process.env.TODOIST_API_TOKEN || undefined,
 });
 

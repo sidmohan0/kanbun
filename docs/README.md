@@ -11,10 +11,12 @@ The repository documentation is the source of truth for product intent, architec
 
 ## Current focus
 
-The project is in pre-code planning with two completed documentation layers:
+The project now has working product code plus the planning layers that shaped it:
 
 - architecture decisions in the [ADR index](./adr/README.md)
-- first-phase workflow specs in the [product docs](./product/README.md)
+- workflow and UX behavior in the [product docs](./product/README.md)
+- implementation sequencing in the [plans index](./plans/README.md)
+- operator and deployment references in [references/](./references/README.md)
 
 Recommended reading order:
 
@@ -23,6 +25,8 @@ Recommended reading order:
 3. [Product docs index](./product/README.md)
 4. [Frontend Foundation Spec](./product/frontend-foundation-spec.md)
 5. [Initial Bootstrap and First Vertical Slice](./plans/0001-initial-bootstrap-and-first-vertical-slice.md)
+6. [Deployment Reference](./references/deployment.md)
+7. [Operations Runbook](./references/operations-runbook.md)
 
 ## Documentation rules
 

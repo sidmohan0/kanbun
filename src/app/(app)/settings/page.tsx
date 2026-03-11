@@ -54,15 +54,25 @@ function providerNotes(account: {
   contactSyncLastError?: string | null;
   contactSyncLastResultCount?: number;
   contactSyncLastRunAt?: Date | null;
+  contactSyncLastSuccessAt?: Date | null;
   contactSyncMode?: string | null;
   contactSyncOperatorAction?: string | null;
   contactSyncRetryAt?: Date | null;
   missingScopes?: string[];
+  outboundSendFailureCategory?: string | null;
+  outboundSendLastError?: string | null;
+  outboundSendLastErrorAt?: Date | null;
+  outboundSendLastMessageId?: string | null;
+  outboundSendLastRunAt?: Date | null;
+  outboundSendLastSuccessAt?: Date | null;
+  outboundSendOperatorAction?: string | null;
+  outboundSendRetryAt?: Date | null;
   replySyncLastDetectedCount?: number;
   replySyncFailureCategory?: string | null;
   replySyncLastCheckedCount?: number;
   replySyncLastError?: string | null;
   replySyncLastRunAt?: Date | null;
+  replySyncLastSuccessAt?: Date | null;
   replySyncMode?: string | null;
   replySyncOperatorAction?: string | null;
   replySyncRetryAt?: Date | null;
@@ -123,6 +133,34 @@ function providerNotes(account: {
 
   if (account.replySyncOperatorAction) {
     notes.push(account.replySyncOperatorAction);
+  }
+
+  if (account.outboundSendLastRunAt) {
+    notes.push(
+      `Last outbound send check: ${account.outboundSendLastRunAt.toLocaleString()}${account.outboundSendLastMessageId ? ` (message ${account.outboundSendLastMessageId.slice(0, 8)})` : ""}`,
+    );
+  }
+
+  if (account.outboundSendLastSuccessAt) {
+    notes.push(
+      `Last successful send: ${account.outboundSendLastSuccessAt.toLocaleString()}`,
+    );
+  }
+
+  if (account.outboundSendFailureCategory) {
+    notes.push(
+      `Outbound send health: ${account.outboundSendFailureCategory.replaceAll("_", " ")}`,
+    );
+  }
+
+  if (account.outboundSendRetryAt) {
+    notes.push(
+      `Outbound retry suggested after ${account.outboundSendRetryAt.toLocaleString()}`,
+    );
+  }
+
+  if (account.outboundSendOperatorAction) {
+    notes.push(account.outboundSendOperatorAction);
   }
 
   if (account.missingScopes?.length) {
