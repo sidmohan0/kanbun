@@ -218,6 +218,7 @@ export async function countOpenMergeReviews() {
 
 export async function resolveMergeReview(params: {
   actorUserId?: string | null;
+  bulkDecision?: "current" | "proposed";
   decisions: Partial<Record<ReviewField, "current" | "proposed">>;
   reviewId: string;
 }) {
@@ -242,9 +243,12 @@ export async function resolveMergeReview(params: {
   }
 
   const nextValues: Partial<FieldValueMap> = {};
+  const resolvedDecisions: Partial<Record<ReviewField, "current" | "proposed">> = {};
 
   for (const field of review.conflictFields as ReviewField[]) {
-    const decision = params.decisions[field] ?? "current";
+    const decision =
+      params.decisions[field] ?? params.bulkDecision ?? "current";
+    resolvedDecisions[field] = decision;
     nextValues[field] =
       decision === "proposed"
         ? normalizeFieldValue(review.proposedValues[field] ?? null)
@@ -265,7 +269,7 @@ export async function resolveMergeReview(params: {
   await db
     .update(contactMergeReviews)
     .set({
-      resolution: params.decisions,
+      resolution: resolvedDecisions,
       resolvedAt: new Date(),
       status: "resolved",
       updatedAt: new Date(),
@@ -279,7 +283,8 @@ export async function resolveMergeReview(params: {
     eventName: "merge_review.resolved",
     metadata: {
       contactId: review.contactId,
-      decisions: params.decisions,
+      bulkDecision: params.bulkDecision ?? null,
+      decisions: resolvedDecisions,
     },
   });
 

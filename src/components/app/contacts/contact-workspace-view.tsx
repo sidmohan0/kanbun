@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   getContactBySlug,
+  getContactMergeImpact,
   listContactTimeline,
   listPotentialDuplicateContacts,
 } from "@/lib/contacts";
@@ -37,6 +38,9 @@ type AvailableSequence = Awaited<
 type DuplicateCandidate = Awaited<
   ReturnType<typeof listPotentialDuplicateContacts>
 >[number];
+type MergeImpact = NonNullable<
+  Awaited<ReturnType<typeof getContactMergeImpact>>
+>;
 type Enrollment = Awaited<
   ReturnType<typeof listContactSequenceEnrollments>
 >[number];
@@ -53,6 +57,10 @@ function confidenceVariant(confidence: DuplicateCandidate["confidence"]) {
   }
 
   return "outline";
+}
+
+function impactPillLabel(label: string, value: number) {
+  return `${value} ${label}`;
 }
 
 function formatDueAt(value: Date | null) {
@@ -511,7 +519,10 @@ function ContactEnrollmentsPanel(props: {
 
 function DuplicateCandidatesPanel(props: {
   contact: ContactWorkspaceContact;
-  duplicateCandidates: DuplicateCandidate[];
+  duplicateCandidates: Array<{
+    candidate: DuplicateCandidate;
+    mergeImpact: MergeImpact | null;
+  }>;
 }) {
   return (
     <DashboardPanel>
@@ -526,7 +537,7 @@ function DuplicateCandidatesPanel(props: {
             No duplicate candidates detected for this contact right now.
           </p>
         ) : (
-          props.duplicateCandidates.map((candidate) => (
+          props.duplicateCandidates.map(({ candidate, mergeImpact }) => (
             <div
               key={candidate.id}
               className="rounded-2xl border border-border/85 bg-background/75 px-4 py-4"
@@ -556,6 +567,25 @@ function DuplicateCandidatesPanel(props: {
                   ))}
                 </div>
               </div>
+              {mergeImpact ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge variant="secondary">
+                    {impactPillLabel("identities", mergeImpact.source.impact.identities)}
+                  </Badge>
+                  <Badge variant="secondary">
+                    {impactPillLabel("sources", mergeImpact.source.impact.sources)}
+                  </Badge>
+                  <Badge variant="secondary">
+                    {impactPillLabel("tasks", mergeImpact.source.impact.tasks)}
+                  </Badge>
+                  <Badge variant="secondary">
+                    {impactPillLabel(
+                      "enrollments",
+                      mergeImpact.source.impact.enrollments,
+                    )}
+                  </Badge>
+                </div>
+              ) : null}
               <div className="mt-3 flex flex-wrap gap-3">
                 <form action={mergeContactsAction}>
                   <input
@@ -573,6 +603,10 @@ function DuplicateCandidatesPanel(props: {
                     name="targetContactId"
                     value={props.contact.id}
                   />
+                  <label className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
+                    <input type="checkbox" name="confirmMerge" value="yes" />
+                    Confirm merge and move linked history into this contact
+                  </label>
                   <Button type="submit" variant="outline">
                     Merge into this contact
                   </Button>
@@ -873,6 +907,15 @@ function ContactSplitPanel(props: { contact: ContactWorkspaceContact }) {
           </div>
         </div>
 
+        <p className="text-sm text-muted-foreground">
+          Safety rule: the source contact must keep at least one identity or source
+          anchor after the split.
+        </p>
+
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <input type="checkbox" name="confirmSplit" value="yes" />
+          Confirm split and move the selected identities and sources
+        </label>
         <Button type="submit" variant="outline">
           Create split contact
         </Button>
@@ -939,6 +982,15 @@ export async function ContactWorkspaceView(props: {
       listReplySignalsForContact(contact.id),
       listContactTimeline(contact.id),
     ]);
+  const duplicateCandidatesWithImpact = await Promise.all(
+    duplicateCandidates.map(async (candidate) => ({
+      candidate,
+      mergeImpact: await getContactMergeImpact({
+        sourceContactId: candidate.id,
+        targetContactId: contact.id,
+      }),
+    })),
+  );
 
   return (
     <div className="space-y-6">
@@ -961,10 +1013,10 @@ export async function ContactWorkspaceView(props: {
             contactSlug={contact.slug}
             enrollments={enrollments}
           />
-          <DuplicateCandidatesPanel
-            contact={contact}
-            duplicateCandidates={duplicateCandidates}
-          />
+        <DuplicateCandidatesPanel
+          contact={contact}
+          duplicateCandidates={duplicateCandidatesWithImpact}
+        />
           <ReplyHistoryPanel replyHistory={replyHistory} />
           <MergeReviewsPanel contact={contact} />
           <FollowUpTasksPanel contact={contact} />

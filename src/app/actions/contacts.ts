@@ -82,6 +82,7 @@ export async function updateContactAction(formData: FormData) {
 export async function mergeContactsAction(formData: FormData) {
   const sourceContactId = String(formData.get("sourceContactId") ?? "");
   const targetContactId = String(formData.get("targetContactId") ?? "");
+  const confirmed = String(formData.get("confirmMerge") ?? "") === "yes";
   const returnTo = getReturnTo(formData, "/contacts");
 
   if (!sourceContactId || !targetContactId) {
@@ -93,6 +94,7 @@ export async function mergeContactsAction(formData: FormData) {
   try {
     slug = await mergeContacts({
       actorUserId: await getAuditActorUserId(),
+      confirmed,
       sourceContactId,
       targetContactId,
     });
@@ -109,6 +111,7 @@ export async function mergeContactsAction(formData: FormData) {
 
 export async function splitContactAction(formData: FormData) {
   const sourceContactId = String(formData.get("sourceContactId") ?? "");
+  const confirmed = String(formData.get("confirmSplit") ?? "") === "yes";
   const returnTo = getReturnTo(formData, "/contacts");
   const identityIds = formData
     .getAll("identityIds")
@@ -129,6 +132,7 @@ export async function splitContactAction(formData: FormData) {
     const created = await splitContact({
       actorUserId: await getAuditActorUserId(),
       company: String(formData.get("company") ?? ""),
+      confirmed,
       displayName: String(formData.get("displayName") ?? ""),
       identityIds,
       primaryEmail: String(formData.get("primaryEmail") ?? ""),

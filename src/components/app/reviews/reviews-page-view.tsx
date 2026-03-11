@@ -321,6 +321,9 @@ function MergeReviewsPanel(props: {
                   <p className="text-sm text-muted-foreground">
                     {review.contact?.primaryEmail ?? "No primary email"}
                   </p>
+                  <p className="text-sm text-muted-foreground">
+                    {review.sourceLabel ?? review.sourceRef}
+                  </p>
                 </div>
                 <p className="text-sm text-muted-foreground">
                   Last seen {review.lastSeenAt.toLocaleString()}
@@ -383,6 +386,22 @@ function MergeReviewsPanel(props: {
 
                 <div className="flex flex-wrap gap-3">
                   <Button type="submit">Resolve review</Button>
+                  <Button
+                    type="submit"
+                    name="bulkDecision"
+                    value="proposed"
+                    variant="outline"
+                  >
+                    Use proposed for all
+                  </Button>
+                  <Button
+                    type="submit"
+                    name="bulkDecision"
+                    value="current"
+                    variant="outline"
+                  >
+                    Keep current for all
+                  </Button>
                   {review.contact?.slug ? (
                     <Button
                       render={<Link href={`/contacts/${review.contact.slug}`} />}

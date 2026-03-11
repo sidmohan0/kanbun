@@ -35,10 +35,15 @@ export async function resolveMergeReviewAction(formData: FormData) {
   ) as Partial<
     Record<"company" | "displayName" | "primaryEmail" | "title", "current" | "proposed">
   >;
+  const bulkDecision = String(formData.get("bulkDecision") ?? "");
 
   try {
     await resolveMergeReview({
       actorUserId: await getAuditActorUserId(),
+      bulkDecision:
+        bulkDecision === "current" || bulkDecision === "proposed"
+          ? bulkDecision
+          : undefined,
       decisions,
       reviewId,
     });

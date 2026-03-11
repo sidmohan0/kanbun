@@ -32,6 +32,16 @@ type DuplicateAssessment = {
   score: number;
 };
 
+type ContactImpactSummary = {
+  enrollments: number;
+  identities: number;
+  mergeReviews: number;
+  outboundMessages: number;
+  replySignals: number;
+  sources: number;
+  tasks: number;
+};
+
 async function recordAuditEvent(input: {
   actorUserId?: string | null;
   entityId: string;
@@ -432,12 +442,24 @@ export async function listPotentialDuplicateContacts(contactId: string) {
     .filter((candidate) => candidate.id !== contact.id)
     .map((candidate) => {
       const assessment = scoreDuplicateCandidate(contact, candidate);
+      const sharedSignals = Array.from(
+        new Set(
+          [
+            assessment.reasons.includes("Exact primary email match")
+              ? "email"
+              : null,
+            assessment.reasons.includes("Same company") ? "company" : null,
+            assessment.reasons.includes("Same display name") ? "name" : null,
+          ].filter((value): value is string => Boolean(value)),
+        ),
+      );
 
       return {
         confidence: assessment.confidence,
         ...candidate,
         reasons: assessment.reasons,
         score: assessment.score,
+        sharedSignals,
       };
     })
     .filter((candidate) => candidate.score > 0)
@@ -483,6 +505,103 @@ export async function listTaskBuckets() {
     done: allTasks.filter((task) => task.status === "done"),
     open: allTasks.filter((task) => task.status === "open"),
     snoozed: allTasks.filter((task) => task.status === "snoozed"),
+  };
+}
+
+async function buildContactImpactSummary(contactId: string): Promise<ContactImpactSummary> {
+  const [
+    identityRows,
+    sourceRows,
+    taskRows,
+    mergeReviewRows,
+    replyRows,
+    outboundRows,
+    enrollmentRows,
+  ] = await Promise.all([
+    db.query.contactIdentities.findMany({
+      where: eq(contactIdentities.contactId, contactId),
+      columns: { id: true },
+    }),
+    db.query.contactSources.findMany({
+      where: eq(contactSources.contactId, contactId),
+      columns: { id: true },
+    }),
+    db.query.tasks.findMany({
+      where: eq(tasks.contactId, contactId),
+      columns: { id: true },
+    }),
+    db.query.contactMergeReviews.findMany({
+      where: eq(contactMergeReviews.contactId, contactId),
+      columns: { id: true },
+    }),
+    db.query.replySignals.findMany({
+      where: eq(replySignals.contactId, contactId),
+      columns: { id: true },
+    }),
+    db.query.outboundMessages.findMany({
+      where: eq(outboundMessages.contactId, contactId),
+      columns: { id: true },
+    }),
+    db.query.sequenceEnrollments.findMany({
+      where: eq(sequenceEnrollments.contactId, contactId),
+      columns: { id: true },
+    }),
+  ]);
+
+  return {
+    enrollments: enrollmentRows.length,
+    identities: identityRows.length,
+    mergeReviews: mergeReviewRows.length,
+    outboundMessages: outboundRows.length,
+    replySignals: replyRows.length,
+    sources: sourceRows.length,
+    tasks: taskRows.length,
+  };
+}
+
+export async function getContactMergeImpact(input: {
+  sourceContactId: string;
+  targetContactId: string;
+}) {
+  const [source, target] = await Promise.all([
+    db.query.contacts.findFirst({
+      where: eq(contacts.id, input.sourceContactId),
+      columns: {
+        displayName: true,
+        id: true,
+        primaryEmail: true,
+        slug: true,
+      },
+    }),
+    db.query.contacts.findFirst({
+      where: eq(contacts.id, input.targetContactId),
+      columns: {
+        displayName: true,
+        id: true,
+        primaryEmail: true,
+        slug: true,
+      },
+    }),
+  ]);
+
+  if (!source || !target) {
+    return null;
+  }
+
+  const [sourceImpact, targetImpact] = await Promise.all([
+    buildContactImpactSummary(source.id),
+    buildContactImpactSummary(target.id),
+  ]);
+
+  return {
+    source: {
+      ...source,
+      impact: sourceImpact,
+    },
+    target: {
+      ...target,
+      impact: targetImpact,
+    },
   };
 }
 
@@ -791,11 +910,16 @@ export async function updateContact(input: {
 
 export async function mergeContacts(input: {
   actorUserId?: string | null;
+  confirmed?: boolean;
   sourceContactId: string;
   targetContactId: string;
 }) {
   if (input.sourceContactId === input.targetContactId) {
     throw new Error("Choose two different contacts to merge.");
+  }
+
+  if (!input.confirmed) {
+    throw new Error("Confirm the merge before moving contact history.");
   }
 
   const [source, target] = await Promise.all([
@@ -936,6 +1060,7 @@ export async function mergeContacts(input: {
 export async function splitContact(input: {
   actorUserId?: string | null;
   company?: string | null;
+  confirmed?: boolean;
   displayName: string;
   identityIds: string[];
   primaryEmail?: string | null;
@@ -950,6 +1075,10 @@ export async function splitContact(input: {
 
   if (!source) {
     throw new Error("Source contact not found.");
+  }
+
+  if (!input.confirmed) {
+    throw new Error("Confirm the split before moving identities and sources.");
   }
 
   if (input.identityIds.length === 0 && input.sourceIds.length === 0) {
@@ -985,6 +1114,24 @@ export async function splitContact(input: {
 
   if (ownedIdentityIds.length === 0 && ownedSourceIds.length === 0) {
     throw new Error("No movable identities or sources were selected.");
+  }
+
+  const sourceIdentityCount = await db.query.contactIdentities.findMany({
+    where: eq(contactIdentities.contactId, source.id),
+    columns: { id: true },
+  });
+  const sourceSourceCount = await db.query.contactSources.findMany({
+    where: eq(contactSources.contactId, source.id),
+    columns: { id: true },
+  });
+
+  if (
+    ownedIdentityIds.length === sourceIdentityCount.length &&
+    ownedSourceIds.length === sourceSourceCount.length
+  ) {
+    throw new Error(
+      "Split would move every identity and source away from the current contact. Leave at least one anchor on the source contact.",
+    );
   }
 
   const [created] = await db
