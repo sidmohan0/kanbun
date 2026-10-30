@@ -38,7 +38,11 @@ pnpm --silent verify docs --json --output artifacts/verification
 ```
 
 Each run creates a unique directory under `artifacts/verification/`, or the directory supplied with
-`--output`. Reports record the command, toolchain, source identity, executed checks, outcomes, and
+`--output`. Commands write and validate their live logs and receipt in a container-local temporary
+directory; completed evidence is then exported to that run directory. Receipt paths address the
+exported logs. An export failure fails verification and preserves a failure receipt and logs in the
+container-local `recoveryDirectory` returned by the command.
+Reports record the command, toolchain, source identity, executed checks, outcomes, and
 per-command logs. An uncommitted repository has no commit SHA; the receipt reports that state rather
 than inventing one. A failed prerequisite, command, documentation check, or report write fails the run.
 Skipped or unexecuted checks do not count as successful verification.
@@ -90,7 +94,13 @@ available; offline app-asset loading requires a separate product capability and 
 
 Run `pnpm test:recovery` directly or use `pnpm verify recovery` for a verification receipt. Playwright
 JSON and HTML reports, failure traces, and failed-test server state are retained under
-`artifacts/recovery/`. Each test has its own database, origin, and Vite cache. CI installs Chromium
+`artifacts/recovery/`. The recovery runner keeps live browser artifacts in a unique container-local
+temporary directory, then exports the completed reports and attachments after Playwright exits.
+This avoids transient trace writes on shared host mounts. Test failures still export their evidence;
+missing reports or failed exports fail the command. If export fails, the runner prints the retained
+container-local directory for recovery. Filter cases with, for example,
+`pnpm --filter @kanbun/verifier test:recovery app.spec.ts`.
+Each test has its own database, origin, and Vite cache. CI installs Chromium
 and its system dependencies before running the complete verifier, then uploads recovery evidence
 on success or failure. The verifier itself does not install browsers.
 
