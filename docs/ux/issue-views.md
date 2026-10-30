@@ -41,14 +41,18 @@ after React commits the working-set count and all 5,000 issue rows. Seeding, col
 initial account/context resolution, and initial module loading are excluded. These are local
 Chromium acceptance observations, not a production latency guarantee or a timing-based CI gate.
 
-| Version                                       | Bootstrap to paint | Bootstrap HTTP | Encoded bootstrap body | Actual DOM issue rows | One-second target |
-| --------------------------------------------- | -----------------: | -------------: | ---------------------: | --------------------: | ----------------- |
-| Existing title-only list                      |           656.3 ms |        78.9 ms |          422,520 bytes |                 5,000 | Pass              |
-| Separate status, priority, and assignee cells |         1,371.1 ms |        87.4 ms |          425,002 bytes |                 5,000 | Miss              |
-| Compact metadata summary in title cell        |           720.6 ms |        70.1 ms |          421,051 bytes |                 5,000 | Pass              |
+| Version                                                             | Bootstrap to paint | Bootstrap HTTP | Encoded bootstrap body | Actual DOM issue rows | One-second target |
+| ------------------------------------------------------------------- | -----------------: | -------------: | ---------------------: | --------------------: | ----------------- |
+| Existing title-only list                                            |           656.3 ms |        78.9 ms |          422,520 bytes |                 5,000 | Pass              |
+| Separate status, priority, and assignee cells                       |         1,371.1 ms |        87.4 ms |          425,002 bytes |                 5,000 | Miss              |
+| Compact metadata summary in title cell                              |           720.6 ms |        70.1 ms |          421,051 bytes |                 5,000 | Pass              |
+| Standalone title and metadata spans, integrated full recovery suite |           818.4 ms |        80.5 ms |          430,660 bytes |                 5,000 | Pass              |
 
 Fixture identifiers, timestamps, and generated rows differ between runs, accounting for small
-response-size differences. The final row summary removes 15,000 additional table cells while
+response-size differences. The final integrated observation ran with the recovery suite's two browser workers. Its standalone
+title span preserves exact title discovery while the adjacent metadata span supplies the accessible
+properties summary; the DOM node count stays unchanged from the compact variant. The final row
+summary removes 15,000 additional table cells while
 retaining every property. No pagination cap or virtualization was required. The browser scale test
 retains its structured receipt and verifies the full working-set row count; each subsequent run
 reports whether its observed rendering time meets the specification target.

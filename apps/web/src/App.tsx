@@ -133,11 +133,9 @@ function IssueRow({
             aria-describedby={`issue-properties-${issue.id}`}
             onClick={edit}
           >
-            <span>
-              {issue.title}
-              <span className="row-properties" id={`issue-properties-${issue.id}`}>
-                {`Status: ${stateName} · Priority: ${["None", "Urgent", "High", "Medium", "Low"][issue.priority]} · Assignee: ${assigneeName}`}
-              </span>
+            <span>{issue.title}</span>
+            <span className="row-properties" id={`issue-properties-${issue.id}`}>
+              {`Status: ${stateName} · Priority: ${["None", "Urgent", "High", "Medium", "Low"][issue.priority]} · Assignee: ${assigneeName}`}
             </span>
             <span className="edit-hint" aria-hidden="true">
               Edit
