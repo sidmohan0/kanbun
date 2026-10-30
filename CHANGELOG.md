@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added private scheduled workspace backups with full directory, SQL engine state, collaborative bodies, verified manifests, and restoration into fresh isolated namespaces.
+
 - Added shareable issue details and collaborative descriptions with durable Yjs storage, offline recovery, attributed mirror events, and private-team authorization checks.
 
 - Moved the protected application deployment hostname to kanbun.ai while retaining the existing workspace and account directory.

@@ -3,8 +3,9 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createTestHarness, type Unstable_RawConfig } from "wrangler";
-import type { D1Database } from "@cloudflare/workers-types";
+import type { D1Database, R2Bucket, DurableObjectNamespace } from "@cloudflare/workers-types";
 import type { BootstrapResponse, WorkspaceContext } from "@kanbun/sync";
+import type { BodyBackup, StoredDocumentBackup } from "../src/backup-format";
 
 export type PreviewConnection = {
   messages: unknown[];
@@ -28,11 +29,22 @@ export async function startPreviewRuntime({
   name = "Preview owner",
   workspaceId = "019a0000-0000-7000-8000-000000009000",
   localDev = false,
-}: { ownerEmail?: string; subject?: string; name?: string; workspaceId?: string; localDev?: boolean } = {}) {
+  backups = false,
+  isolatedRestore = false,
+}: {
+  ownerEmail?: string;
+  subject?: string;
+  name?: string;
+  workspaceId?: string;
+  localDev?: boolean;
+  backups?: boolean;
+  isolatedRestore?: boolean;
+} = {}) {
   const root = fileURLToPath(new URL("..", import.meta.url));
   const instance = randomUUID().slice(0, 8);
   const certWorker = `preview-test-certs-${instance}`;
   const assetWorker = `preview-test-assets-${instance}`;
+  const backupWorker = `preview-test-backup-control-${instance}`;
   const local = JSON.parse(await readFile(new URL("../wrangler.json", import.meta.url), "utf8")) as Unstable_RawConfig;
   const issuer = "https://test-access.cloudflareaccess.com";
   const audience = "protected-preview-test-audience";
@@ -68,7 +80,9 @@ export async function startPreviewRuntime({
             PREVIEW_WORKSPACE_ID: workspaceId,
             PREVIEW_WORKSPACE_NAME: "Private preview",
             APP_ORIGIN: appOrigin,
+            ...(isolatedRestore ? { BACKUP_RESTORE_ISOLATED: "true" } : {}),
           },
+          ...(backups ? { r2_buckets: [{ binding: "BACKUPS", bucket_name: `preview-test-backups-${instance}` }] } : {}),
           d1_databases: [
             {
               binding: "ACCOUNTS",
@@ -94,12 +108,52 @@ export async function startPreviewRuntime({
         },
       },
       { config: { name: assetWorker, main: "test/assets-worker.ts", compatibility_date: "2026-10-29" } },
+      ...(backups
+        ? [
+            {
+              config: {
+                name: backupWorker,
+                main: "test/backup-control-worker.ts",
+                compatibility_date: "2026-10-29",
+                durable_objects: {
+                  bindings: [
+                    { name: "WORKSPACES", class_name: "WorkspaceDO", script_name: `kanbun-preview-test-${instance}` },
+                  ],
+                },
+              },
+            },
+          ]
+        : []),
     ],
   });
   try {
     const { url } = await harness.listen();
     await harness.getWorker().applyD1Migrations("ACCOUNTS");
-    const environment = await harness.getWorker<{ ACCOUNTS: D1Database }>().getEnv();
+    const environment = await harness
+      .getWorker<{ ACCOUNTS: D1Database; BACKUPS?: R2Bucket; DOCUMENTS: DurableObjectNamespace }>()
+      .getEnv();
+    const documentRpc = (body: BodyBackup) =>
+      environment.DOCUMENTS.getByName(JSON.stringify([workspaceId, body.issueId, body.incarnation])) as unknown as {
+        restoreSnapshot(
+          workspaceId: string,
+          issueId: string,
+          incarnation: string,
+          value: StoredDocumentBackup,
+        ): Promise<string>;
+        snapshot(workspaceId: string, issueId: string, incarnation: string): Promise<StoredDocumentBackup | null>;
+      };
+    const backupRpc = async (action: "backup" | "restore", key?: string) => {
+      const response = await harness
+        .getWorker(backupWorker)
+        .fetch("http://fixture/", { method: "POST", body: JSON.stringify({ action, workspaceId, key }) });
+      const result = (await response.json()) as {
+        ok: boolean;
+        error?: string;
+        value: { key: string; mainSeq: number; eventSeq: number };
+      };
+      if (!result.ok) throw new Error(result.error);
+      return result.value;
+    };
     const request = async (path: string, init: RequestInit = {}, assertion?: string | null) => {
       const headers = new Headers(init.headers);
       if (assertion !== null) headers.set("Cf-Access-Jwt-Assertion", assertion ?? (await token()));
@@ -113,6 +167,83 @@ export async function startPreviewRuntime({
       workspaceId,
       token,
       fetch: request,
+      backup: () => backupRpc("backup"),
+      restoreBackup: (key: string) => backupRpc("restore", key),
+      primeDocument: (body: BodyBackup) =>
+        documentRpc(body).restoreSnapshot(workspaceId, body.issueId, body.incarnation, body.state),
+      readDocument: (body: BodyBackup) => documentRpc(body).snapshot(workspaceId, body.issueId, body.incarnation),
+      async occupyRestoreTarget() {
+        const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
+        const now = new Date().toISOString();
+        await storage.exec(
+          "INSERT INTO organization (id,created_at,updated_at,name,url_key,allowed_auth_services) VALUES (?,?,?,'Existing isolated data','existing','[\"email\"]')",
+          workspaceId,
+          now,
+          now,
+        );
+      },
+      async backupKeys() {
+        if (!environment.BACKUPS) throw new Error("Fixture backup bucket is unavailable");
+        return (await environment.BACKUPS.list({ prefix: `workspaces/${workspaceId}/` })).objects.map(
+          (object) => object.key,
+        );
+      },
+      async exportBackup(key: string) {
+        if (!environment.BACKUPS) throw new Error("Fixture backup bucket is unavailable");
+        const manifest = await environment.BACKUPS.get(key);
+        if (!manifest) throw new Error("Fixture backup manifest is missing");
+        const data = await manifest.text();
+        const parts = (JSON.parse(data) as { parts: { key: string }[] }).parts;
+        const objects = [{ key, data }];
+        for (const part of parts) {
+          const stored = await environment.BACKUPS.get(part.key);
+          if (!stored) throw new Error("Fixture backup part is missing");
+          objects.push({ key: part.key, data: await stored.text() });
+        }
+        return objects;
+      },
+      async importBackup(objects: { key: string; data: string }[]) {
+        if (!environment.BACKUPS) throw new Error("Fixture backup bucket is unavailable");
+        for (const object of objects) await environment.BACKUPS.put(object.key, object.data);
+      },
+      async backupTables() {
+        const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
+        const schema = await storage.exec("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name");
+        const result: Record<string, Record<string, unknown>[]> = {};
+        for (const row of schema) {
+          const name = String(row["name"]);
+          if (
+            (name.startsWith("sqlite_") && name !== "sqlite_sequence") ||
+            name.startsWith("__cf_") ||
+            name.startsWith("_cf_") ||
+            name.startsWith("__miniflare_")
+          )
+            continue;
+          const rows = await storage.exec('SELECT * FROM "' + name.replaceAll('"', '""') + '"');
+          result[name] =
+            name === "sqlite_sequence"
+              ? rows.filter(
+                  (row) =>
+                    !String(row["name"]).startsWith("__miniflare_") &&
+                    !String(row["name"]).startsWith("__cf_") &&
+                    !String(row["name"]).startsWith("_cf_"),
+                )
+              : rows;
+        }
+        return result;
+      },
+      async nextEventSequence(sequence: number) {
+        const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
+        await storage.exec("UPDATE sqlite_sequence SET seq = ? WHERE name = 'event_log'", sequence - 1);
+      },
+      async failDocumentPublication(enabled: boolean) {
+        const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
+        await storage.exec(
+          enabled
+            ? "CREATE TRIGGER test_fail_document BEFORE UPDATE OF description ON issue BEGIN SELECT RAISE(ABORT, 'fixture mirror failure'); END"
+            : "DROP TRIGGER test_fail_document",
+        );
+      },
       async context() {
         const response = await request("/api/context");
         if (!response.ok) throw new Error(`Preview context failed (${response.status}): ${await response.text()}`);

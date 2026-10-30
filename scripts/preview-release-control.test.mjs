@@ -15,7 +15,15 @@ test("code-only releases keep rollback safe while schema and storage changes req
     () => assertCompatibleSchema("packages/model/migrations/workspace/new.sql", config, config),
     /separate compatible rollout/,
   );
-  for (const key of ["migrations", "d1_databases", "durable_objects", "vars", "routes"]) {
+  for (const key of [
+    "migrations",
+    "d1_databases",
+    "durable_objects",
+    "r2_buckets",
+    "version_metadata",
+    "vars",
+    "routes",
+  ]) {
     assert.throws(() => assertCompatibleSchema("", config, { ...config, [key]: [] }), /separate compatible rollout/);
   }
 });

@@ -68,5 +68,14 @@
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
+  },
+  "r2_buckets": [
+    {
+      "binding": "BACKUPS",
+      "bucket_name": "kanbun-preview-backups"
+    }
+  ],
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA"
   }
 }

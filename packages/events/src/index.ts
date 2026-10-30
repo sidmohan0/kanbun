@@ -137,12 +137,25 @@ const issueDescribedIntent = z.strictObject({
   type: z.literal("IssueDescribed"),
   payload: issueDescribedPayloadSchema,
 });
+const snapshotTakenIntent = z.strictObject({
+  entityType: z.literal("organization"),
+  entityId: id,
+  teamId: z.null(),
+  scopeUserId: z.null(),
+  type: z.literal("SnapshotTaken"),
+  payload: z.strictObject({
+    snapshotId: z.string().min(1),
+    sourceSeq: z.number().int().nonnegative(),
+    contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+  }),
+});
 
 /** A decision carries business meaning; the execution boundary supplies provenance. */
 export const pendingEventSchema = z.discriminatedUnion("type", [
   issueCreatedIntent,
   issueTitledIntent,
   issueDescribedIntent,
+  snapshotTakenIntent,
   branchCreatedIntent,
   branchMergedIntent,
   branchConflictResolvedIntent,
@@ -172,6 +185,7 @@ export const eventSchema = z.discriminatedUnion("type", [
   issueCreatedIntent.extend(envelope),
   issueTitledIntent.extend(envelope),
   issueDescribedIntent.extend(envelope),
+  snapshotTakenIntent.extend(envelope),
   branchCreatedIntent.extend(envelope),
   branchMergedIntent.extend(envelope),
   branchConflictResolvedIntent.extend(envelope),
