@@ -554,7 +554,7 @@ export const workspace = {
       await refresh();
     } catch (failure) {
       if (failure instanceof MembershipError && (failure.status === 401 || failure.status === 403))
-        blockAuthentication(failure.message);
+        blockAuthentication(undefined, failure.status === 403);
       throw failure;
     }
   },
