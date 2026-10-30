@@ -14,6 +14,7 @@ export default defineConfig([
     "**/.wrangler/",
     "artifacts/recovery/",
     "artifacts/deployment/",
+    "artifacts/preview-health/",
     "artifacts/verification/",
     "artifacts/docs-drift/",
     "_to_delete/",

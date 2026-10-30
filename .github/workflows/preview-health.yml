@@ -1,0 +1,47 @@
+name: Preview health
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+# Use the deployment lock so a routine release cannot race the observed version.
+concurrency:
+  group: kanbun-preview-deployment
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/devcontainer
+      - name: Check preview health
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./scripts/devcontainer.sh exec --remote-env CI=true --remote-env "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN" --remote-env "GITHUB_TOKEN=$GITHUB_TOKEN" node scripts/preview-health.mjs
+      - name: Publish health summary
+        if: always()
+        run: |
+          if [ -f artifacts/preview-health/summary.md ]; then
+            cat artifacts/preview-health/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '# Preview health\n\nThe container or check produced no receipt. Inspect this workflow run and [the recovery runbook](https://github.com/sidmohan0/kanbun/blob/main/docs/operations.md).\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Preserve health evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: preview-health-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/preview-health/
+          if-no-files-found: warn

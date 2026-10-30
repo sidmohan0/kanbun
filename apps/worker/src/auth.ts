@@ -51,6 +51,7 @@ export const hostedPrincipalSchema = z.strictObject({
   issuer: z.string().url(),
   subject: z.string().min(1).max(512),
   expiresAt: z.number().int().positive().safe(),
+  admissionId: z.string().nullable(),
 });
 export type HostedPrincipal = z.infer<typeof hostedPrincipalSchema>;
 export const principalHeader = "X-Kanbun-Principal";
@@ -118,7 +119,7 @@ export async function verifyAccess(request: Request, env: AuthEnvironment): Prom
   } catch {
     throw new RequestError("Cloudflare Access token is invalid or expired", 401);
   }
-  if (identity.email !== config.ownerEmail) throw new RequestError("This preview is restricted to its owner", 403);
+  identity.email = identity.email.toLowerCase();
   return identity;
 }
 

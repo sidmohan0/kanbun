@@ -178,12 +178,17 @@ describe("reviewing and merging workspace branches", () => {
         ],
         branchId,
       );
-      const legacySemanticSeq = server.store.get("issue", PRIVATE_ISSUE)?.updatedSeq;
+      const previousSemanticSeq = server.store.get("issue", PRIVATE_ISSUE)?.updatedSeq;
       push(server, "main", [
         command(3, "issueUpdate", rename(MAIN_ISSUE, "Main semantic title")),
         command(4, "issueUpdate", { id: PRIVATE_ISSUE, patch: { title: "Main legacy title", priority: 3 } }),
       ]);
-      expect(server.store.get("issue", PRIVATE_ISSUE)?.updatedSeq).toBe(legacySemanticSeq);
+      expect(server.store.get("issue", PRIVATE_ISSUE)!.updatedSeq).toBeGreaterThan(previousSemanticSeq!);
+      const semanticSeq = server.store.get("issue", PRIVATE_ISSUE)?.updatedSeq;
+      push(server, "legacy-remainder", [
+        command(1, "issueUpdate", { id: PRIVATE_ISSUE, patch: { dueDate: "2026-12-01" } }),
+      ]);
+      expect(server.store.get("issue", PRIVATE_ISSUE)?.updatedSeq).toBe(semanticSeq);
       const preview = server.previewBranch(ALICE, branchId);
       expect(preview.conflicts).toEqual(
         expect.arrayContaining([

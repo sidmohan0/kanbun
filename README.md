@@ -44,18 +44,20 @@ Current workspace packages:
 
 The local Worker runs the existing engine in a SQLite-backed `WorkspaceDO`, with HTTP sync and
 branch APIs. Runtime tests and browser recovery checks use actual `workerd`; fast engine tests and
-the seed still use `node:sqlite`. The web app lists, creates, and renames issues with IndexedDB-backed
-offline recovery, automatic cross-browser updates, and visible sync/rejection state. See the
+the seed still use `node:sqlite`. The web app lists, creates, and renames issues, with
+[status, priority, assignee, labels, and reversible archive controls](docs/ux/issue-properties.md).
+IndexedDB-backed offline recovery, automatic cross-browser updates, and visible sync/rejection
+state apply to these issue changes. See the
 [local issue flow](docs/ux/issues.md). A [protected hosted preview](docs/hosted-preview.md) uses
-Cloudflare Access, actual user/workspace context, and a D1 directory. Native sign-in and public
+Cloudflare Access, actual user/workspace context, and a D1 directory. Owners manage
+[targeted invitations and membership](docs/ux/workspace-members.md); native sign-in and public
 onboarding remain planned. [Issue details](docs/ux/issue-details.md) add collaborative descriptions
 in a separate SQLite DocumentDO, with Yjs merging and durable browser recovery. See
 [local Worker development](docs/local-worker.md).
 
-Issue creation, title-only updates, and document publication record `IssueCreated`, `IssueTitled`,
-and `IssueDescribed` events and apply
-shared reducers. Their recorded history can reproduce the same projections in memory and SQLite.
-Other mutations still use the original patch-based path during the incremental migration. See
+Issue creation, human property changes, labels, archive, and document publication record semantic
+events and apply shared reducers. Their recorded history can reproduce the supported projections
+in memory and SQLite. Other mutations retain a legacy path during the incremental migration. See
 [semantic event replay](docs/event-replay.md) for the supported scope and invariants.
 
 The same create/rename flow also supports [durable workspace branches](docs/workspace-branches.md).

@@ -244,8 +244,8 @@ export async function startPreviewRuntime({
             : "DROP TRIGGER test_fail_document",
         );
       },
-      async context() {
-        const response = await request("/api/context");
+      async context(assertion?: string) {
+        const response = await request("/api/context", {}, assertion);
         if (!response.ok) throw new Error(`Preview context failed (${response.status}): ${await response.text()}`);
         return response.json() as Promise<WorkspaceContext>;
       },
@@ -329,6 +329,23 @@ export async function startPreviewRuntime({
           state === "archived" ? new Date().toISOString() : null,
           state === "downgraded" ? "user" : "owner",
           account.id,
+        );
+      },
+      async expireInvitation(id: string) {
+        await environment.ACCOUNTS.prepare("UPDATE invites SET expires_at = ? WHERE id = ?")
+          .bind("2020-01-01T00:00:00.000Z", id)
+          .run();
+      },
+      async setMemberState(userId: string, active: boolean) {
+        const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
+        await storage.exec('UPDATE "user" SET active = ? WHERE id = ?', active ? 1 : 0, userId);
+      },
+      async failMemberAdmission(enabled: boolean) {
+        const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
+        await storage.exec(
+          enabled
+            ? "CREATE TRIGGER test_member_admission BEFORE INSERT ON user WHEN NEW.role = 'user' BEGIN SELECT RAISE(ABORT, 'fixture member projection failure'); END"
+            : "DROP TRIGGER test_member_admission",
         );
       },
       async wake() {

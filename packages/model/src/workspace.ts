@@ -246,6 +246,8 @@ export const user = sqliteTable(
     avatarBackgroundColor: text("avatar_background_color").notNull(),
     initials: text("initials").notNull(),
     active: bool("active").notNull().default(true),
+    /** Directory admission version, not a credential; changes only after an explicit invitation. */
+    directoryAdmissionId: text("directory_admission_id"),
     role: text("role").$type<UserRole>().notNull().default("user"),
     guest: bool("guest").notNull().default(false),
     timezone: text("timezone"),
@@ -456,6 +458,10 @@ export const issue = sqliteTable(
     boardOrder: text("board_order").notNull(),
     subIssueSortOrder: text("sub_issue_sort_order"),
     stateId: text("state_id").notNull(),
+    /** Latest explicit human assertion; null allows the baseline to supply the effective state. */
+    assertedStateId: text("asserted_state_id"),
+    /** Preserved/default baseline until observation-based derivation is implemented. */
+    derivedStateId: text("derived_state_id"),
     assigneeId: text("assignee_id"),
     creatorId: text("creator_id"),
     delegateId: text("delegate_id"),

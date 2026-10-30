@@ -16,9 +16,19 @@ import {
   type AuthEnvironment,
   type HostedPrincipal,
 } from "./auth";
-import { activeOwner, admitOwner, type DirectoryEnvironment } from "./directory";
+import {
+  activeMember,
+  admitMember,
+  acceptInvitation,
+  inspectInvitation,
+  listMembership,
+  createInvitation,
+  revokeInvitation,
+  removeMembership,
+  type DirectoryEnvironment,
+} from "./directory";
 import { localActors, seedWorkspace } from "./local";
-import { preparePreview } from "./preview";
+import { preparePreview, projectMembershipRemoval } from "./preview";
 import { DocumentDO, documentName } from "./document";
 import {
   applyRestore,
@@ -29,6 +39,7 @@ import {
   prepareRestore,
 } from "./backups";
 export { DocumentDO } from "./document";
+import { internalFailure } from "./reporting";
 import {
   activityQuery,
   body,
@@ -61,6 +72,10 @@ export interface Env extends AuthEnvironment, DirectoryEnvironment {
 const routes = new Map<string, string>(
   Object.entries({
     "/api/context": "GET",
+    "/api/members": "GET",
+    "/api/invitations": "POST",
+    "/api/invitations/revoke": "POST",
+    "/api/members/remove": "POST",
     "/__local/seed": "POST",
     "/sync/bootstrap": "GET",
     "/sync/connect": "GET",
@@ -118,6 +133,8 @@ function localContext(actor: z.infer<typeof localPrincipalSchema>["actor"]): Wor
   const alice = actor.id === localActors.alice.id;
   return {
     mode: "local",
+    role: alice ? "owner" : "member",
+    admissionId: null,
     workspaceId: "local",
     workspaceName: "Local workspace",
     actor,
@@ -145,8 +162,7 @@ function failure(error: unknown): Response {
       error.code === "forbidden" ? 403 : error.code === "not_found" ? 404 : error.code === "conflict" ? 409 : 400;
     return json({ error: error.message, code: error.code }, status);
   }
-  console.error("Workspace request failed", error);
-  return json({ error: "Internal workspace error" }, 500);
+  return internalFailure(error);
 }
 
 /** The authority is reached through the edge Worker's private binding, never a public DO URL. */
@@ -327,8 +343,8 @@ export class WorkspaceDO extends DurableObject<Env> {
     this.requireWorkspace(principal.workspaceId);
     if (principal.mode !== mode(this.env)) throw new RequestError("Workspace identity is unavailable", 403);
     const context =
-      principal.mode === "hosted" ? await activeOwner(this.env, principal) : localContext(principal.actor);
-    if (principal.mode === "hosted") preparePreview(server, this.driver, context);
+      principal.mode === "hosted" ? await activeMember(this.env, principal) : localContext(principal.actor);
+    if (principal.mode === "hosted") preparePreview(server, this.driver, context, principal.admissionId);
     this.requireActiveMember(server, context.actor);
     return context;
   }
@@ -406,6 +422,8 @@ export class WorkspaceDO extends DurableObject<Env> {
       clientId: input.clientId,
       branchId: input.branchId,
     });
+    if (input.admissionId !== undefined && (identity.mode !== "hosted" || input.admissionId !== identity.admissionId))
+      throw new RequestError("Workspace admission has changed; reload this page", 403);
     const seq = await this.authorizeSocket(server, identity);
     const pair = new WebSocketPair();
     const socket = pair[1];
@@ -529,6 +547,59 @@ export class WorkspaceDO extends DurableObject<Env> {
       }
       if (url.pathname === "/sync/connect") return await this.upgradeSocket(request, server, url);
       if (url.pathname === "/sync/document") return await this.document(request, server, url);
+      if (url.pathname.startsWith("/api/") && url.pathname !== "/api/context") {
+        if (mode(this.env) !== "hosted") return json({ error: "Not found" }, 404);
+        const input =
+          request.method === "GET"
+            ? query(z.strictObject({}), url)
+            : await body(z.record(z.string(), z.unknown()), request);
+        const context = await this.requestContext(request, server);
+        if (context.role !== "owner") throw new RequestError("Only the workspace owner may manage members", 403);
+        const principal = readPrincipal(request);
+        if (url.pathname === "/api/members") {
+          const result = await listMembership(this.env, principal);
+          await this.requestContext(request, server);
+          return json({
+            ...result,
+            members: result.members.map((member) => {
+              const local = server.store.get("user", member.userId);
+              return {
+                ...member,
+                active: member.active && (local === undefined || (local.active && !local.archivedAt)),
+              };
+            }),
+          });
+        }
+        if (url.pathname === "/api/invitations") {
+          const value = z
+            .strictObject({
+              email: z.email().transform((email) => email.toLowerCase()),
+              expiresAt: z.iso.datetime({ offset: true }).nullable().optional(),
+            })
+            .parse(input);
+          const expiresAt = value.expiresAt ? new Date(value.expiresAt).toISOString() : null;
+          return json(await createInvitation(this.env, principal, value.email, expiresAt));
+        }
+        if (url.pathname === "/api/invitations/revoke") {
+          const { id } = z.strictObject({ id: z.uuidv7() }).parse(input);
+          await revokeInvitation(this.env, principal, id);
+          return json({ ok: true });
+        }
+        const { userId } = z.strictObject({ userId: z.uuidv7() }).parse(input);
+        const removal = await removeMembership(this.env, principal, userId);
+        for (const socket of this.ctx.getWebSockets()) {
+          const identity = socketIdentity.safeParse(socket.deserializeAttachment());
+          if (
+            identity.success &&
+            identity.data.mode === "hosted" &&
+            identity.data.actor.id === userId &&
+            identity.data.admissionId === removal.admissionId
+          )
+            this.closeSocket(socket, 1008, "Workspace access is no longer available");
+        }
+        projectMembershipRemoval(server, removal);
+        return json({ ok: true });
+      }
       // Read a streaming body before the final membership/expiry check.
       if (url.pathname === "/sync/push") {
         const input = await body(pushBody, request);
@@ -626,8 +697,22 @@ export default {
           return json({ error: "Isolated restore is not complete" }, 503);
       }
       if (request.method === "POST" || url.pathname === "/sync/connect") requireHostedOrigin(request, env);
-      if (url.pathname === "/api/context" || syncRoute(url.pathname)) {
-        const principal = await admitOwner(env, identity);
+      if (url.pathname === "/api/invitations/inspect" || url.pathname === "/api/invitations/accept") {
+        if (request.method !== "POST") return json({ error: "Method not allowed" }, 405, { allow: "POST" });
+        query(z.strictObject({}), url);
+        const { token } = await body(z.strictObject({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }), request);
+        if (url.pathname.endsWith("/inspect")) return json(await inspectInvitation(env, identity, token));
+        const principal = await acceptInvitation(env, identity, token);
+        const target = new URL("/api/context", url);
+        return env.WORKSPACES.getByName(principal.workspaceId).fetch(
+          forwardedRequest(new Request(target, { headers: request.headers }), principal),
+        );
+      }
+      if (url.pathname.startsWith("/api/") || syncRoute(url.pathname)) {
+        const principal = await admitMember(env, identity);
+        const expected = request.headers.get("X-Kanbun-Admission");
+        if (expected !== null && expected !== principal.admissionId)
+          throw new RequestError("Workspace admission has changed; reload this page", 403);
         return env.WORKSPACES.getByName(principal.workspaceId).fetch(forwardedRequest(request, principal));
       }
       return env.ASSETS ? env.ASSETS.fetch(request) : json({ error: "Not found" }, 404);

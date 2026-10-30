@@ -36,6 +36,20 @@
       "when": 1793388991796,
       "tag": "0004_modern_machine_man",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793389719089,
+      "tag": "0005_careless_young_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793390519851,
+      "tag": "0006_yielding_patriot",
+      "breakpoints": true
     }
   ]
 }

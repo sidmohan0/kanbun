@@ -27,6 +27,8 @@ export const issueCreatedPayloadSchema = z.strictObject({
   boardOrder: id,
   subIssueSortOrder: nullableId,
   stateId: id,
+  assertedStateId: nullableId.optional(),
+  derivedStateId: id.optional(),
   assigneeId: nullableId,
   creatorId: id,
   parentId: nullableId,
@@ -149,6 +151,61 @@ const snapshotTakenIntent = z.strictObject({
     contentHash: z.string().regex(/^[a-f0-9]{64}$/),
   }),
 });
+const issuePrioritizedIntent = z.strictObject({
+  ...subject,
+  type: z.literal("IssuePrioritized"),
+  payload: z.strictObject({ priority: issueCreatedPayloadSchema.shape.priority }),
+});
+const humanAssertedStatusIntent = z.strictObject({
+  ...subject,
+  type: z.literal("HumanAssertedStatus"),
+  payload: z.strictObject({
+    stateId: nullableId,
+    derivedStateId: id,
+    effectiveStateId: id,
+    boardOrder: id,
+    startedAt: nullableTimestamp,
+    completedAt: nullableTimestamp,
+    canceledAt: nullableTimestamp,
+    triagedAt: nullableTimestamp,
+    startedTriageAt: nullableTimestamp,
+  }),
+});
+const issueAssignedIntent = z.strictObject({
+  ...subject,
+  type: z.literal("IssueAssigned"),
+  payload: z.strictObject({ assigneeId: id }),
+});
+const issueUnassignedIntent = z.strictObject({
+  ...subject,
+  type: z.literal("IssueUnassigned"),
+  payload: z.strictObject({}),
+});
+const subscriberAddedIntent = z.strictObject({
+  ...subject,
+  type: z.literal("SubscriberAdded"),
+  payload: z.strictObject({ id, userId: id }),
+});
+const labelAddedIntent = z.strictObject({
+  ...subject,
+  type: z.literal("LabelAdded"),
+  payload: z.strictObject({ labelId: id, linkId: id }),
+});
+const labelRemovedIntent = z.strictObject({
+  ...subject,
+  type: z.literal("LabelRemoved"),
+  payload: z.strictObject({ labelId: id, linkId: id }),
+});
+const issueArchivedIntent = z.strictObject({
+  ...subject,
+  type: z.literal("IssueArchived"),
+  payload: z.strictObject({}),
+});
+const issueRestoredIntent = z.strictObject({
+  ...subject,
+  type: z.literal("IssueRestored"),
+  payload: z.strictObject({ from: z.literal("archive") }),
+});
 
 /** A decision carries business meaning; the execution boundary supplies provenance. */
 export const pendingEventSchema = z.discriminatedUnion("type", [
@@ -156,6 +213,15 @@ export const pendingEventSchema = z.discriminatedUnion("type", [
   issueTitledIntent,
   issueDescribedIntent,
   snapshotTakenIntent,
+  issuePrioritizedIntent,
+  humanAssertedStatusIntent,
+  issueAssignedIntent,
+  issueUnassignedIntent,
+  subscriberAddedIntent,
+  labelAddedIntent,
+  labelRemovedIntent,
+  issueArchivedIntent,
+  issueRestoredIntent,
   branchCreatedIntent,
   branchMergedIntent,
   branchConflictResolvedIntent,
@@ -186,6 +252,15 @@ export const eventSchema = z.discriminatedUnion("type", [
   issueTitledIntent.extend(envelope),
   issueDescribedIntent.extend(envelope),
   snapshotTakenIntent.extend(envelope),
+  issuePrioritizedIntent.extend(envelope),
+  humanAssertedStatusIntent.extend(envelope),
+  issueAssignedIntent.extend(envelope),
+  issueUnassignedIntent.extend(envelope),
+  subscriberAddedIntent.extend(envelope),
+  labelAddedIntent.extend(envelope),
+  labelRemovedIntent.extend(envelope),
+  issueArchivedIntent.extend(envelope),
+  issueRestoredIntent.extend(envelope),
   branchCreatedIntent.extend(envelope),
   branchMergedIntent.extend(envelope),
   branchConflictResolvedIntent.extend(envelope),

@@ -26,6 +26,8 @@ describe("protected owner preview in workerd", () => {
     try {
       expect(await (await local.fetch("/api/context")).json()).toEqual({
         mode: "local",
+        role: "owner",
+        admissionId: null,
         workspaceId: "local",
         workspaceName: "Local workspace",
         actor: { id: "user-alice", type: "user" },

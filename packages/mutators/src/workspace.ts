@@ -13,6 +13,8 @@ export const memberSyncArgs = z.object({
   email: z.string().email(),
   role: role.optional(),
   active: z.boolean().optional(),
+  directoryAdmissionId: nullable(id).optional(),
+  archivedAt: nullable(iso).optional(),
   avatarUrl: nullable(z.string().url()).optional(),
   timezone: nullable(z.string()).optional(),
 });
@@ -31,6 +33,10 @@ function memberSyncRun(ctx: MutatorContext, args: z.infer<typeof memberSyncArgs>
     .map((p) => p[0]!.toUpperCase())
     .join("");
   if (existing) {
+    if (args.directoryAdmissionId && args.directoryAdmissionId !== existing.directoryAdmissionId) {
+      for (const membership of ctx.store.list("teamMembership", { userId: args.id }))
+        ctx.store.delete("teamMembership", membership.id);
+    }
     ctx.store.patch("user", args.id, {
       name: args.name,
       displayName: existing.displayName || args.name,
@@ -38,6 +44,9 @@ function memberSyncRun(ctx: MutatorContext, args: z.infer<typeof memberSyncArgs>
       initials,
       role: args.role ?? existing.role,
       active: args.active ?? existing.active,
+      archivedAt: args.archivedAt === undefined ? existing.archivedAt : args.archivedAt,
+      directoryAdmissionId:
+        args.directoryAdmissionId === undefined ? existing.directoryAdmissionId : args.directoryAdmissionId,
       avatarUrl: args.avatarUrl === undefined ? existing.avatarUrl : args.avatarUrl,
       timezone: args.timezone === undefined ? existing.timezone : args.timezone,
       updatedAt: ctx.now,
@@ -56,6 +65,7 @@ function memberSyncRun(ctx: MutatorContext, args: z.infer<typeof memberSyncArgs>
     role: args.role ?? "user",
     guest: args.role === "guest",
     active: args.active ?? true,
+    directoryAdmissionId: args.directoryAdmissionId ?? null,
     timezone: args.timezone ?? null,
     createdAt: ctx.now,
     updatedAt: ctx.now,

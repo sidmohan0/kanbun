@@ -1,8 +1,8 @@
 # Semantic issue event replay
 
-The first semantic event slice covers issue creation and title-only updates. `issueCreate` decides
-an `IssueCreated` event; `issueUpdate` with only `patch.title` decides `IssueTitled`. The existing
-command names and argument shapes remain available to sync clients and generated tools.
+The semantic issue slices cover creation, titles, human status assertions, priority, assignment,
+labels, archive, and collaborative description publication. The existing command names and
+argument shapes remain available to sync clients and generated tools.
 
 Decisions read configuration, validate permissions and arguments, and return typed facts without
 writing projections. `@kanbun/events` validates the closed event vocabulary and its envelopes.
@@ -54,9 +54,32 @@ event metadata and is not an issue projection column.
 
 Issue `createdSeq` and `updatedSeq` identify semantic creation and the latest semantic update.
 The migration preserves existing rows with zero sequence metadata and does not invent historical
-events. Other issue updates, including mixed title-and-other-field updates, remain on the legacy
-path and do not advance semantic sequence metadata. The event log therefore reconstructs the
-supported create/rename flow, rather than the entire workspace history at this stage.
+events. Supported property changes advance semantic sequence metadata even in a mixed-field
+command. Unmigrated fields retain the legacy path, so the log still cannot reconstruct the entire
+workspace history at this stage.
+
+## Human issue controls
+
+`issueUpdate` emits granular `IssueTitled`, `HumanAssertedStatus`, `IssuePrioritized`,
+`IssueAssigned`/`IssueUnassigned`, and assignment `SubscriberAdded` facts. `issueLabelsSet` emits
+`LabelAdded`/`LabelRemoved`, including single-select replacement removals. `issueArchive` emits
+`IssueArchived` or `IssueRestored` from archive. Their finalized payloads carry ordering values,
+transition timestamps, and link identifiers; reducers do not generate clocks or identifiers.
+
+`assertedStateId` stores a person's explicit selection, `derivedStateId` stores the current baseline,
+and `stateId` is the effective assertion-or-baseline. `issueAssertStatus` with a null state clears
+the override. The additive migration initializes baselines from existing effective states without
+inventing historical assertions. This slice does not implement evidence ranking, observers, or
+automatic assertion expiry. Existing agent status changes retain their legacy behavior.
+
+Valid mixed updates remain one atomic command. A transitional `beforeEvents` hook applies only the
+unmigrated remainder before the finalized event reducers, inside the same authority savepoint or
+client scratch overlay. A failure rolls back both paths. Existing team moves preserve their legacy
+state-mapping behavior and keep the new status references coherent; workflow-state deletion also
+remaps baseline and assertion references. Direct description writes remain forbidden.
+
+The new controls are main-only. Durable branches continue to support creation and title changes;
+this slice does not broaden their merge vocabulary.
 
 ## Verification
 

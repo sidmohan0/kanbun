@@ -74,6 +74,21 @@ describe("private coherent workspace backups in workerd", () => {
     try {
       await initialBackup(source);
       const { context, teamId, issueId, incarnation } = await createIssue(source);
+      const memberIdentity = {
+        sub: "backup-member-subject",
+        email: "backup-member@example.com",
+        name: "Backup member",
+      };
+      const invitationResponse = await source.fetch("/api/invitations", post({ email: memberIdentity.email }));
+      expect(invitationResponse.status).toBe(200);
+      const invitation = (await invitationResponse.json()) as { token: string };
+      const accepted = await source.fetch(
+        "/api/invitations/accept",
+        post({ token: invitation.token }),
+        await source.token(memberIdentity),
+      );
+      expect(accepted.status).toBe(200);
+      const memberContext = await accepted.json();
       const description = "Recover the shared Yjs body and its exact workspace mirror. 日本語";
       expect((await writeBody(source, issueId, incarnation, description)).status).toBe(200);
       const branchId = uuidv7();
@@ -146,6 +161,16 @@ describe("private coherent workspace backups in workerd", () => {
       await target.importBackup(objects);
       expect((await target.fetch("/api/context", {}, null)).status).toBe(401);
       expect((await target.fetch("/api/context")).status).toBe(503);
+      expect((await target.fetch("/api/members")).status).toBe(503);
+      expect(
+        (
+          await target.fetch(
+            "/api/invitations/accept",
+            post({ token: invitation.token }),
+            await target.token(memberIdentity),
+          )
+        ).status,
+      ).toBe(503);
       expect(await target.directoryCounts()).toEqual({ accounts: 0, workspaces: 0, members: 0 });
       expect(await target.restoreBackup(receipt.key)).toMatchObject({
         key: receipt.key,
@@ -166,6 +191,12 @@ describe("private coherent workspace backups in workerd", () => {
         ).toEqual(table.rows);
       }
       expect(await target.context()).toMatchObject({ actor: context.actor, workspaceId: source.workspaceId });
+      expect(await target.context(await target.token(memberIdentity))).toEqual(memberContext);
+      expect((await target.fetch("/api/members", {}, await target.token(memberIdentity))).status).toBe(403);
+      expect(
+        (await target.fetch("/api/context", {}, await target.token({ ...memberIdentity, sub: "wrong-subject" })))
+          .status,
+      ).toBe(403);
       const body = await target.fetch(`/sync/document?${new URLSearchParams({ issueId, incarnation })}`);
       const archivedBodies = JSON.parse(objects.find((object) => object.key.endsWith("/documents.json"))!.data) as {
         issueId: string;
