@@ -1,4 +1,5 @@
 import { ACTOR_TYPES, modelNames } from "@kanbun/model";
+import { DEFAULT_EVENT_PAGE_SIZE } from "@kanbun/sync";
 import { z } from "zod";
 
 const nonempty = z.string().min(1);
@@ -24,7 +25,10 @@ export const branchQuery = z.strictObject({ branchId: z.uuidv7() });
 export const eventsQuery = z.strictObject({
   since: querySequence.default(0),
   entityId: nonempty.optional(),
-  limit: querySequence.pipe(z.number().min(1).max(5000)).default(500),
+  issueId: nonempty.optional(),
+  before: querySequence.pipe(z.number().positive()).optional(),
+  order: z.enum(["asc", "desc"]).default("asc"),
+  limit: querySequence.pipe(z.number().min(1).max(5000)).default(DEFAULT_EVENT_PAGE_SIZE),
   ...selectedBranch,
 });
 export const activityQuery = z.strictObject({

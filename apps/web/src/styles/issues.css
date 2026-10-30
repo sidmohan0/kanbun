@@ -1048,3 +1048,78 @@ td {
     padding: 20px;
   }
 }
+.issue-discussion {
+  display: grid;
+  gap: 2rem;
+  margin-top: 2rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1.5rem;
+}
+.issue-discussion h3 {
+  font-size: 1rem;
+  margin: 0 0 1rem;
+}
+.comment-card {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.comment-card .comment-card {
+  margin-left: 1.25rem;
+  border-left: 2px solid var(--border);
+  padding-left: 1rem;
+}
+.comment-meta,
+.comment-actions {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.comment-meta {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+.comment-meta strong {
+  color: var(--text);
+}
+.comment-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.issue-discussion textarea {
+  width: 100%;
+  min-height: 6rem;
+  resize: vertical;
+  margin: 0.5rem 0;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: 400 var(--text-md) / 1.7 var(--font-ui);
+}
+.comment-compose,
+.comment-reply {
+  margin-top: 1rem;
+}
+.field-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.issue-activity {
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.75rem;
+}
+.issue-activity li {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+.issue-activity time {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}

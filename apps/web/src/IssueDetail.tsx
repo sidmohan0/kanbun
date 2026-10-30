@@ -3,6 +3,7 @@ import type { Row } from "@kanbun/model";
 import type { WorkspaceContext } from "@kanbun/sync";
 import { descriptionSession } from "./description";
 import { IssueProperties } from "./IssueProperties";
+import { IssueDiscussion } from "./IssueDiscussion";
 import type { WorkspaceSnapshot } from "./workspace";
 
 export function IssueDetail({
@@ -57,6 +58,7 @@ export function IssueDetail({
           )}
         </div>
       )}
+      <IssueDiscussion issue={issue} context={context} snapshot={workspaceSnapshot} />
     </section>
   );
 }

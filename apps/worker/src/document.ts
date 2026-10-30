@@ -1,14 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
 import * as Y from "yjs";
 import type { Actor } from "@kanbun/sync";
+import { validateDocumentBackup, type StoredDocumentBackup } from "./backup-format";
+import { documentName } from "./document-identity";
+export { documentName } from "./document-identity";
 
 export type DocumentSnapshot = { update: string; mirror: string; contentState: string };
 type StoredDocument = DocumentSnapshot & { editor: Actor };
-type DocumentEnvironment = { DOCUMENTS: DurableObjectNamespace<DocumentDO> };
-
-export function documentName(workspaceId: string, issueId: string, incarnation: string) {
-  return JSON.stringify([workspaceId, issueId, incarnation]);
-}
+type DocumentEnvironment = { DOCUMENTS: DurableObjectNamespace<DocumentDO>; BACKUP_RESTORE_ISOLATED?: string };
 
 export function encodeUpdate(update: Uint8Array): string {
   let binary = "";
@@ -31,6 +30,51 @@ function decodeUpdate(encoded: string): Uint8Array {
 export class DocumentDO extends DurableObject<DocumentEnvironment> {
   private operation: Promise<unknown> = Promise.resolve();
 
+  private requireIdentity(workspaceId: string, issueId: string, incarnation: string) {
+    if (
+      this.ctx.id.toString() !==
+      this.env.DOCUMENTS.idFromName(documentName(workspaceId, issueId, incarnation)).toString()
+    )
+      throw new Error("Document identity does not match its authority");
+  }
+
+  /** Private namespace RPC. Reading a never-opened body does not initialize or edit it. */
+  snapshot(workspaceId: string, issueId: string, incarnation: string): Promise<StoredDocumentBackup | null> {
+    const operation = this.operation
+      .catch(() => {})
+      .then(async () => {
+        this.requireIdentity(workspaceId, issueId, incarnation);
+        const state = await this.ctx.storage.get<StoredDocument>("document");
+        return state ? validateDocumentBackup(state) : null;
+      });
+    this.operation = operation;
+    return operation;
+  }
+
+  /** Recovery is allowed only in an explicitly isolated deployment and an unused body. */
+  restoreSnapshot(
+    workspaceId: string,
+    issueId: string,
+    incarnation: string,
+    value: StoredDocumentBackup,
+  ): Promise<string> {
+    const operation = this.operation
+      .catch(() => {})
+      .then(async () => {
+        if (this.env.BACKUP_RESTORE_ISOLATED !== "true") throw new Error("Isolated restore is not enabled");
+        this.requireIdentity(workspaceId, issueId, incarnation);
+        const state = await validateDocumentBackup(value);
+        return this.ctx.storage.transaction(async (transaction) => {
+          if ((await transaction.get("document")) !== undefined)
+            throw new Error("Document restore target is not empty");
+          await transaction.put("document", state);
+          return state.contentState;
+        });
+      });
+    this.operation = operation;
+    return operation;
+  }
+
   synchronize(
     workspaceId: string,
     issueId: string,
@@ -47,11 +91,7 @@ export class DocumentDO extends DurableObject<DocumentEnvironment> {
           if (expiresAt !== undefined && expiresAt <= Date.now()) throw new Error("Document authorization expired");
         };
         requireUnexpired();
-        if (
-          this.ctx.id.toString() !==
-          this.env.DOCUMENTS.idFromName(documentName(workspaceId, issueId, incarnation)).toString()
-        )
-          throw new Error("Document identity does not match its authority");
+        this.requireIdentity(workspaceId, issueId, incarnation);
         if (editor.type !== "user") throw new Error("Only people may edit collaborative descriptions");
         const previous = await this.ctx.storage.get<StoredDocument>("document");
         const doc = new Y.Doc();

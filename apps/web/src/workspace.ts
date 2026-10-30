@@ -1,6 +1,7 @@
+import { eventSchema } from "@kanbun/events";
 import { uuidv7, type Row } from "@kanbun/model";
 import { mutators } from "@kanbun/mutators";
-import { isPoke, type Mutation, type Transport, type WorkspaceContext } from "@kanbun/sync";
+import { isPoke, issueIncarnation, type Mutation, type Transport, type WorkspaceContext } from "@kanbun/sync";
 import ReconnectingWebSocket from "partysocket/ws";
 import {
   IndexedDbPersister,
@@ -19,6 +20,10 @@ export type WorkspaceSnapshot = {
   pending: number;
   pendingIssueIds: string[];
   issues: Row<"issue">[];
+  comments: Row<"comment">[];
+  knownMembers: Row<"user">[];
+  knownAgents: Row<"agent">[];
+  pendingCommentIds: string[];
   teams: Row<"team">[];
   workflowStates: Row<"workflowState">[];
   members: Row<"user">[];
@@ -57,6 +62,10 @@ let snapshot: WorkspaceSnapshot = {
   pending: 0,
   pendingIssueIds: [],
   issues: [],
+  comments: [],
+  knownMembers: [],
+  knownAgents: [],
+  pendingCommentIds: [],
   teams: [],
   workflowStates: [],
   members: [],
@@ -75,8 +84,9 @@ const compare = (left: string, right: string) => (left < right ? -1 : left > rig
 function issueId(mutation: Mutation): string | null {
   const args = mutation.args;
   if (args === null || typeof args !== "object") return null;
-  if ("id" in args && typeof args.id === "string") return args.id;
-  return "issueId" in args && typeof args.issueId === "string" ? args.issueId : null;
+  if ("issueId" in args && typeof args.issueId === "string") return args.issueId;
+  if (!("id" in args) || typeof args.id !== "string") return null;
+  return mutation.name.startsWith("comment") ? (client?.get("comment", args.id)?.issueId ?? null) : args.id;
 }
 
 function publish() {
@@ -106,6 +116,23 @@ function publish() {
     pendingIssueIds: authenticationRequired
       ? []
       : [...new Set(pending.map(issueId).filter((id): id is string => id !== null))],
+    comments: authenticationRequired ? [] : (client?.list("comment").filter((comment) => !comment.archivedAt) ?? []),
+    knownMembers: authenticationRequired ? [] : (client?.list("user") ?? []),
+    knownAgents: authenticationRequired ? [] : (client?.list("agent") ?? []),
+    pendingCommentIds: authenticationRequired
+      ? []
+      : [
+          ...new Set(
+            pending
+              .filter((mutation) => mutation.name.startsWith("comment"))
+              .flatMap((mutation) => {
+                const args = mutation.args;
+                return args !== null && typeof args === "object" && "id" in args && typeof args.id === "string"
+                  ? [args.id]
+                  : [];
+              }),
+          ),
+        ],
     issues:
       (authenticationRequired ? undefined : client)
         ?.list("issue")
@@ -165,23 +192,25 @@ function blockAuthentication(message = "Your session is no longer authorized. Si
   publish();
 }
 
+async function workspaceFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  if (authenticationRequired) throw new Error(error ?? "Authentication required");
+  const headers = new Headers(init?.headers);
+  if (context?.admissionId) headers.set("X-Kanbun-Admission", context.admissionId);
+  const response = await fetch(input, { ...init, headers, redirect: "manual" });
+  if (
+    context?.mode === "hosted" &&
+    (response.status === 401 ||
+      response.status === 403 ||
+      response.type === "opaqueredirect" ||
+      (response.status >= 300 && response.status < 400))
+  )
+    blockAuthentication();
+  if (authenticationRequired) throw new Error(error ?? "Authentication required");
+  return response;
+}
+
 function workspaceTransport(): Transport {
-  const transport = httpTransport(location.origin, async (input, init) => {
-    if (authenticationRequired) throw new Error(error ?? "Authentication required");
-    const headers = new Headers(init?.headers);
-    if (context?.admissionId) headers.set("X-Kanbun-Admission", context.admissionId);
-    const response = await fetch(input, { ...init, headers, redirect: "manual" });
-    if (
-      context?.mode === "hosted" &&
-      (response.status === 401 ||
-        response.status === 403 ||
-        response.type === "opaqueredirect" ||
-        (response.status >= 300 && response.status < 400))
-    )
-      blockAuthentication();
-    if (authenticationRequired) throw new Error(error ?? "Authentication required");
-    return response;
-  });
+  const transport = httpTransport(location.origin, workspaceFetch);
   return {
     ...transport,
     async push(request) {
@@ -255,7 +284,15 @@ async function initialize() {
   });
   client.subscribe("issue", changed);
   client.subscribe("team", changed);
-  for (const model of ["workflowState", "user", "issueLabel", "issueLabelLink", "teamMembership"] as const)
+  for (const model of [
+    "workflowState",
+    "user",
+    "issueLabel",
+    "issueLabelLink",
+    "teamMembership",
+    "comment",
+    "agent",
+  ] as const)
     client.subscribe(model, changed);
   client.subscribeStatus(changed);
   try {
@@ -486,6 +523,49 @@ export const workspace = {
   archiveIssue(id: string, archived: boolean): void {
     const active = editableClient();
     active.mutate("issueArchive", { id, archived });
+    publish();
+    flush(active);
+  },
+  async loadComments(issueId: string): Promise<void> {
+    const active = editableClient();
+    await active.load("comment", issueId);
+    publish();
+  },
+  async issueEvents(issueId: string, options: { before?: number; since?: number; signal?: AbortSignal } = {}) {
+    const query = new URLSearchParams({ issueId, order: "desc" });
+    if (options.before !== undefined) query.set("before", String(options.before));
+    if (options.since !== undefined) query.set("since", String(options.since));
+    const response = await workspaceFetch(`/sync/events?${query}`, {
+      cache: "no-store",
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+    if (!response.ok) throw new Error("Issue activity could not be loaded. Try again when connected.");
+    return eventSchema.array().parse(await response.json());
+  },
+  postComment(issueId: string, body: string, parentId?: string): void {
+    const active = editableClient();
+    const issue = active.get("issue", issueId);
+    if (!issue || issue.number <= 0) throw new Error("Wait for issue creation to finish syncing before commenting.");
+    active.mutate("commentCreate", {
+      id: uuidv7(),
+      issueId,
+      issueIncarnation: issueIncarnation(issue),
+      body,
+      subscriptionId: uuidv7(),
+      ...(parentId ? { parentId } : {}),
+    });
+    publish();
+    flush(active);
+  },
+  editComment(id: string, body: string): void {
+    const active = editableClient();
+    active.mutate("commentUpdate", { id, body });
+    publish();
+    flush(active);
+  },
+  resolveComment(id: string, resolved: boolean): void {
+    const active = editableClient();
+    active.mutate("commentResolve", { id, resolved });
     publish();
     flush(active);
   },

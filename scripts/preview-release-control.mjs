@@ -2,7 +2,7 @@
 export function assertCompatibleSchema(changedMigrations, previous, next) {
   if (
     changedMigrations ||
-    ["migrations", "d1_databases", "durable_objects", "vars", "routes"].some(
+    ["migrations", "d1_databases", "durable_objects", "r2_buckets", "version_metadata", "vars", "routes"].some(
       (key) => JSON.stringify(previous[key]) !== JSON.stringify(next[key]),
     )
   )

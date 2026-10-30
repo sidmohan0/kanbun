@@ -502,6 +502,7 @@ export class SyncClient<M extends MutatorMap> {
     }
     this.loaded.add(key);
     this.rebase([model]);
+    await this.persist();
   }
   isLoaded(model: ModelName, parentId: string): boolean {
     return this.loaded.has(`${model}/${parentId}`);
