@@ -1,0 +1,325 @@
+import { useState, type FormEvent } from "react";
+import { WORKFLOW_STATE_TYPES, type Row, type WorkflowStateType } from "@kanbun/model";
+import { DEFAULT_STATES } from "@kanbun/mutators";
+import { workspace, type WorkspaceSnapshot } from "./workspace";
+import "./styles/teams.css";
+
+const categoryName: Record<WorkflowStateType, string> = {
+  triage: "Triage",
+  backlog: "Backlog",
+  unstarted: "Todo",
+  started: "In progress",
+  completed: "Done",
+  canceled: "Canceled",
+};
+const message = (failure: unknown) => (failure instanceof Error ? failure.message : "This change could not be saved.");
+
+function StateRow({
+  state,
+  first,
+  last,
+  move,
+  failed,
+}: {
+  state: Row<"workflowState">;
+  first: boolean;
+  last: boolean;
+  move(direction: number): void;
+  failed(failure: unknown): void;
+}) {
+  const [name, setName] = useState(state.name);
+  function save(event: FormEvent) {
+    event.preventDefault();
+    try {
+      workspace.renameWorkflowState(state.id, name.trim());
+    } catch (failure) {
+      failed(failure);
+    }
+  }
+  return (
+    <li className="workflow-state-row">
+      <form onSubmit={save}>
+        <label htmlFor={`state-${state.id}`}>Name for {state.name}</label>
+        <input
+          id={`state-${state.id}`}
+          value={name}
+          maxLength={40}
+          required
+          onChange={(event) => setName(event.target.value)}
+        />
+        <button className="button quiet compact" disabled={!name.trim() || name.trim() === state.name}>
+          Save status
+        </button>
+      </form>
+      <div className="workflow-order">
+        <button
+          className="button quiet compact"
+          aria-label={`Move ${state.name} up`}
+          disabled={first}
+          onClick={() => move(-1)}
+        >
+          ↑
+        </button>
+        <button
+          className="button quiet compact"
+          aria-label={`Move ${state.name} down`}
+          disabled={last}
+          onClick={() => move(1)}
+        >
+          ↓
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function TeamEditor({
+  team,
+  states,
+  failed,
+}: {
+  team: Row<"team">;
+  states: Row<"workflowState">[];
+  failed(failure: unknown): void;
+}) {
+  const [name, setName] = useState(team.name);
+  const [description, setDescription] = useState(team.description ?? "");
+  const [stateName, setStateName] = useState("");
+  const [stateType, setStateType] = useState<WorkflowStateType>("started");
+  const [defaultState, setDefaultState] = useState(team.defaultIssueStateId ?? "");
+  function save(event: FormEvent) {
+    event.preventDefault();
+    try {
+      workspace.updateTeam(team.id, {
+        name: name.trim(),
+        displayName: name.trim(),
+        description: description.trim() || null,
+        ...(defaultState ? { defaultIssueStateId: defaultState } : {}),
+      });
+    } catch (failure) {
+      failed(failure);
+    }
+  }
+  function createState(event: FormEvent) {
+    event.preventDefault();
+    try {
+      const color = DEFAULT_STATES.find((state) => state.type === stateType)!.color;
+      workspace.createWorkflowState(team.id, stateName.trim(), stateType, color);
+      setStateName("");
+    } catch (failure) {
+      failed(failure);
+    }
+  }
+  function move(type: WorkflowStateType, stateId: string, direction: number) {
+    const ordered = states.filter((state) => state.type === type).map((state) => state.id);
+    const index = ordered.indexOf(stateId);
+    const other = index + direction;
+    if (index < 0 || other < 0 || other >= ordered.length) return;
+    [ordered[index], ordered[other]] = [ordered[other]!, ordered[index]!];
+    try {
+      workspace.reorderWorkflowStates(team.id, type, ordered);
+    } catch (failure) {
+      failed(failure);
+    }
+  }
+  return (
+    <section className="team-editor" aria-label={`Settings for ${team.name}`}>
+      <h2>
+        {team.name} <span className="team-key">{team.key}</span>
+      </h2>
+      <p>
+        {team.visibility === "private"
+          ? "Private team. Existing membership restrictions still apply."
+          : "Available to everyone in this workspace."}
+      </p>
+      <form className="team-form" onSubmit={save}>
+        <label htmlFor="team-name">Team name</label>
+        <input id="team-name" value={name} required maxLength={80} onChange={(event) => setName(event.target.value)} />
+        <label htmlFor="team-description">Team description</label>
+        <textarea id="team-description" value={description} onChange={(event) => setDescription(event.target.value)} />
+        <label htmlFor="default-status">Default status for new issues</label>
+        <select id="default-status" value={defaultState} onChange={(event) => setDefaultState(event.target.value)}>
+          {states.map((state) => (
+            <option key={state.id} value={state.id}>
+              {state.name}
+            </option>
+          ))}
+        </select>
+        <button className="button primary" disabled={!name.trim()}>
+          Save team settings
+        </button>
+      </form>
+      <h3>Workflow statuses</h3>
+      <p>
+        Categories keep their meaning. Rename statuses or change their order within a category without changing existing
+        issues.
+      </p>
+      {WORKFLOW_STATE_TYPES.map((type) => {
+        const category = states.filter((state) => state.type === type);
+        return category.length ? (
+          <section className="workflow-category" key={type} aria-label={`${categoryName[type]} statuses`}>
+            <h4>{categoryName[type]}</h4>
+            <ol>
+              {category.map((state, index) => (
+                <StateRow
+                  key={`${state.id}:${state.name}`}
+                  state={state}
+                  first={index === 0}
+                  last={index === category.length - 1}
+                  failed={failed}
+                  move={(direction) => move(type, state.id, direction)}
+                />
+              ))}
+            </ol>
+          </section>
+        ) : null;
+      })}
+      <form className="team-form" onSubmit={createState}>
+        <h3>Add a status</h3>
+        <label htmlFor="new-status-name">New status name</label>
+        <input
+          id="new-status-name"
+          value={stateName}
+          required
+          maxLength={40}
+          onChange={(event) => setStateName(event.target.value)}
+        />
+        <label htmlFor="status-category">Status category</label>
+        <select
+          id="status-category"
+          value={stateType}
+          onChange={(event) => setStateType(event.target.value as WorkflowStateType)}
+        >
+          {WORKFLOW_STATE_TYPES.map((type) => (
+            <option key={type} value={type}>
+              {categoryName[type]}
+            </option>
+          ))}
+        </select>
+        <button className="button primary" disabled={!stateName.trim()}>
+          Add status
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function WorkspaceName({ name }: { name: string }) {
+  const [draft, setDraft] = useState(name);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await workspace.renameWorkspace(draft.trim());
+    } catch (failure) {
+      setError(message(failure));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <form className="team-form team-create" onSubmit={(event) => void save(event)} aria-label="Workspace name settings">
+      <h2>Workspace</h2>
+      <p>Rename this workspace without changing its address, people or issues. An internet connection is required.</p>
+      <label htmlFor="workspace-name">Workspace name</label>
+      <input id="workspace-name" value={draft} required onChange={(event) => setDraft(event.target.value)} />
+      <button className="button primary" disabled={busy || !draft.trim() || draft.trim() === name}>
+        {busy ? "Saving workspace name…" : "Save workspace name"}
+      </button>
+      {error && (
+        <p className="notice" role="alert">
+          {error}
+        </p>
+      )}
+    </form>
+  );
+}
+
+export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
+  const [selected, setSelected] = useState("");
+  const [name, setName] = useState("");
+  const [key, setKey] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const teams = snapshot.teams.filter(
+    (team) =>
+      team.visibility === "public" ||
+      snapshot.teamMemberships.some(
+        (membership) => membership.teamId === team.id && membership.userId === snapshot.context?.actor.id,
+      ),
+  );
+  const team = teams.find((candidate) => candidate.id === selected) ?? teams[0];
+  const states = snapshot.workflowStates.filter((state) => state.teamId === team?.id);
+  const failed = (failure: unknown) => setError(message(failure));
+  function create(event: FormEvent) {
+    event.preventDefault();
+    try {
+      setSelected(workspace.createTeam(name.trim(), key.trim()));
+      setName("");
+      setKey("");
+      setError(null);
+    } catch (failure) {
+      failed(failure);
+    }
+  }
+  return (
+    <section className="teams-settings" aria-label="Team and workflow settings">
+      <p>
+        Team and status changes save on this device and sync when connected. The workspace sync indicator confirms when
+        they are saved on the server.
+      </p>
+      {error && (
+        <p className="notice" role="alert">
+          {error}
+        </p>
+      )}
+      {snapshot.context?.mode === "hosted" && <WorkspaceName name={snapshot.context.workspaceName} />}
+      <h2>Teams</h2>
+      <label htmlFor="settings-team">Choose a team</label>
+      <select
+        id="settings-team"
+        value={team?.id ?? ""}
+        onChange={(event) => {
+          setSelected(event.target.value);
+          setError(null);
+        }}
+      >
+        {teams.map((candidate) => (
+          <option key={candidate.id} value={candidate.id}>
+            {candidate.name} ({candidate.key})
+          </option>
+        ))}
+      </select>
+      {team && <TeamEditor key={team.id} team={team} states={states} failed={failed} />}
+      <form className="team-form team-create" onSubmit={create}>
+        <h2>Create a team</h2>
+        <p>
+          New teams are available to everyone in this workspace. Their key becomes the prefix of issue identifiers and
+          cannot be changed here.
+        </p>
+        <label htmlFor="new-team-name">New team name</label>
+        <input
+          id="new-team-name"
+          value={name}
+          required
+          maxLength={80}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <label htmlFor="new-team-key">New team key</label>
+        <input
+          id="new-team-key"
+          value={key}
+          required
+          maxLength={7}
+          pattern="[A-Za-z][A-Za-z0-9]{0,6}"
+          onChange={(event) => setKey(event.target.value.toUpperCase())}
+        />
+        <button className="button primary" disabled={!name.trim() || !key.trim()}>
+          Create team
+        </button>
+      </form>
+    </section>
+  );
+}

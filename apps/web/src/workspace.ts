@@ -1,14 +1,16 @@
 import { eventSchema } from "@kanbun/events";
-import { uuidv7, type Row } from "@kanbun/model";
+import { uuidv7, WORKFLOW_STATE_TYPES, type Row } from "@kanbun/model";
 import { mutators } from "@kanbun/mutators";
 import {
   isPoke,
   issueIncarnation,
   notificationVisible,
+  workspaceContextSchema,
   type Mutation,
   type Transport,
   type WorkspaceContext,
 } from "@kanbun/sync";
+import { MembershipError, membershipRequest } from "./membership";
 import ReconnectingWebSocket from "partysocket/ws";
 import {
   IndexedDbPersister,
@@ -44,10 +46,12 @@ export type WorkspaceSnapshot = {
   error: string | null;
   context: WorkspaceContext | null;
   authenticationRequired: boolean;
+  accessDenied: boolean;
 };
 
 let context: WorkspaceContext | null = null;
 let authenticationRequired = false;
+let accessDenied = false;
 const listeners = new Set<() => void>();
 const deferredRejections = new Map<number, WorkspaceRejection>();
 let client: SyncClient<typeof mutators> | null = null;
@@ -89,6 +93,7 @@ let snapshot: WorkspaceSnapshot = {
   error,
   context,
   authenticationRequired,
+  accessDenied,
 };
 
 const message = (value: unknown) => (value instanceof Error ? value.message : String(value));
@@ -106,6 +111,10 @@ function issueId(mutation: Mutation): string | null {
 }
 
 function publish() {
+  const organization = client?.list("organization")[0];
+  if (!authenticationRequired && context?.mode === "hosted" && organization?.id === context.workspaceId)
+    context = { ...context, workspaceName: organization.name };
+
   const pending = client?.layerMutations(PENDING) ?? [];
   const pendingIds = new Set(pending.map((mutation) => mutation.id));
   // A server rejection that has left the outbox is ready to show alongside the
@@ -153,6 +162,7 @@ function publish() {
     status,
     context: authenticationRequired ? null : context,
     authenticationRequired,
+    accessDenied,
     pending: authenticationRequired ? 0 : pending.length,
     pendingIssueIds: authenticationRequired
       ? []
@@ -190,7 +200,12 @@ function publish() {
       (authenticationRequired ? undefined : client)
         ?.list("workflowState")
         .filter((state) => !state.archivedAt)
-        .sort((a, b) => a.position - b.position || compare(a.id, b.id)) ?? [],
+        .sort(
+          (a, b) =>
+            WORKFLOW_STATE_TYPES.indexOf(a.type) - WORKFLOW_STATE_TYPES.indexOf(b.type) ||
+            a.position - b.position ||
+            compare(a.id, b.id),
+        ) ?? [],
     members:
       (authenticationRequired ? undefined : client)
         ?.list("user")
@@ -227,8 +242,12 @@ function changed() {
   publish();
 }
 
-function blockAuthentication(message = "Your session is no longer authorized. Sign in again and reload this page.") {
+function blockAuthentication(
+  message = "Your session is no longer authorized. Sign in again and reload this page.",
+  denied = false,
+) {
   authenticationRequired = true;
+  accessDenied = denied;
   phase = "failed";
   error = message;
   realtimeRequested = false;
@@ -248,7 +267,7 @@ async function workspaceFetch(input: RequestInfo | URL, init?: RequestInit): Pro
       response.type === "opaqueredirect" ||
       (response.status >= 300 && response.status < 400))
   )
-    blockAuthentication();
+    blockAuthentication(undefined, response.status === 403);
   if (authenticationRequired) throw new Error(error ?? "Authentication required");
   return response;
 }
@@ -329,6 +348,7 @@ async function initialize() {
   client.subscribe("issue", changed);
   client.subscribe("team", changed);
   for (const model of [
+    "organization",
     "workflowState",
     "user",
     "issueLabel",
@@ -446,7 +466,7 @@ function start(): Promise<void> {
         });
     } catch (failure) {
       if (failure instanceof WorkspaceContextError && failure.authenticationRequired)
-        blockAuthentication(message(failure));
+        blockAuthentication(message(failure), failure.accessDenied);
       phase = "failed";
       error = message(failure);
       publish();
@@ -544,6 +564,64 @@ export const workspace = {
   removeIssueRelation(id: string): void {
     const active = editableClient();
     active.mutate("issueRelationDelete", { id });
+    publish();
+    flush(active);
+  },
+  async renameWorkspace(name: string): Promise<void> {
+    try {
+      const updated = workspaceContextSchema.parse(await membershipRequest("/api/workspace/name", { name }));
+      if (
+        !context ||
+        updated.workspaceId !== context.workspaceId ||
+        updated.actor.id !== context.actor.id ||
+        updated.admissionId !== context.admissionId
+      )
+        throw new Error("Workspace identity changed. Reload before changing settings.");
+      await refresh();
+    } catch (failure) {
+      if (failure instanceof MembershipError && (failure.status === 401 || failure.status === 403))
+        blockAuthentication(undefined, failure.status === 403);
+      throw failure;
+    }
+  },
+  createTeam(name: string, key: string): string {
+    const active = editableClient();
+    const id = uuidv7();
+    active.mutate("teamCreate", {
+      id,
+      name,
+      key,
+      membershipId: uuidv7(),
+      stateIds: { backlog: uuidv7(), todo: uuidv7(), inProgress: uuidv7(), done: uuidv7(), canceled: uuidv7() },
+    });
+    publish();
+    flush(active);
+    return id;
+  },
+  updateTeam(
+    id: string,
+    patch: { name?: string; displayName?: string; description?: string | null; defaultIssueStateId?: string },
+  ): void {
+    const active = editableClient();
+    active.mutate("teamUpdate", { id, patch });
+    publish();
+    flush(active);
+  },
+  createWorkflowState(teamId: string, name: string, type: Row<"workflowState">["type"], color: string): void {
+    const active = editableClient();
+    active.mutate("workflowStateCreate", { id: uuidv7(), teamId, name, type, color });
+    publish();
+    flush(active);
+  },
+  renameWorkflowState(id: string, name: string): void {
+    const active = editableClient();
+    active.mutate("workflowStateUpdate", { id, patch: { name } });
+    publish();
+    flush(active);
+  },
+  reorderWorkflowStates(teamId: string, type: Row<"workflowState">["type"], stateIds: string[]): void {
+    const active = editableClient();
+    active.mutate("workflowStateReorder", { teamId, type, stateIds });
     publish();
     flush(active);
   },

@@ -123,7 +123,8 @@ test("verified owner context isolates the local queue and preserves hosted work 
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await denied;
     await closed;
-    await expect(page.getByRole("alert")).toContainText("Sign in again");
+    await expect(page.getByRole("heading", { name: "Workspace access required", exact: true })).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText("Sign-in does not automatically grant workspace access");
     await expect(page.getByText("Hosted draft remains private", { exact: true })).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Create issue", exact: true }).and(page.locator(":enabled")),

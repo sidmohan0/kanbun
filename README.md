@@ -58,6 +58,8 @@ in a separate SQLite DocumentDO, with Yjs merging and durable browser recovery. 
 [local Worker development](docs/local-worker.md).
 
 [Daily views](docs/ux/issue-views.md) add My Issues, search, combined filters, and sorting.
+[Issue boards](docs/ux/issue-board.md) group the same filtered work by team and status, with drag
+and keyboard status changes.
 [Discussion](docs/ux/issue-discussion.md) adds attributed comments, replies, thread resolution,
 and activity grouped by intent. The personal [Inbox](docs/ux/workspace-inbox.md) shows assignments,
 explicit mentions, replies, and followed-issue comments, with durable read state. Private
@@ -74,6 +76,8 @@ The same create/rename flow also supports [durable workspace branches](docs/work
 Branch rows survive restarts without changing main, while untouched reads follow live main.
 Human owners can preview and merge the supported changes with explicit conflict choices and durable
 retry receipts. The branch review UI remains planned.
+
+Owners manage [workspace names, teams and workflow statuses](docs/ux/workspace-settings.md) in Settings. Workspace naming is an online directory-backed operation; team and status changes use durable offline synchronization.
 
 The [team readiness checklist](docs/team-readiness.md) links the verified product and operational
 capabilities and acceptance evidence for an invited team pilot.

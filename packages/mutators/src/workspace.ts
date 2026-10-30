@@ -90,6 +90,17 @@ export const workspaceInitArgs = z.object({
 });
 
 export const mutators = {
+  workspaceNameSync: defineMutator({
+    args: z.object({ id, name: z.string().trim().min(1) }),
+    description: "Mirror the directory's authoritative workspace name. System actor only.",
+    run(ctx, args) {
+      if (ctx.actor.type !== "system") throw new MutationError("workspaceNameSync is system-only", "forbidden");
+      const organization = ctx.store.get("organization", args.id);
+      if (!organization) throw new MutationError("workspace not found", "not_found");
+      if (organization.name !== args.name)
+        ctx.store.patch("organization", args.id, { name: args.name, updatedAt: ctx.now });
+    },
+  }),
   workspaceInit: defineMutator({
     args: workspaceInitArgs,
     description: "Create the organization row and its owner. System actor, runs once.",

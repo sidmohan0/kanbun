@@ -90,7 +90,7 @@ test("rejected or invalid context never reveals a cached workspace or discards i
       await page.unroute("**/api/context");
       await page.route("**/api/context", (route) => route.fulfill(failure));
       await page.reload();
-      await expect(page.getByRole("alert")).toContainText(/Sign in|context/i);
+      await expect(page.getByRole("alert")).toContainText(/Sign.in|context/i);
       await expect(page.getByRole("row", { name: "REC-1", exact: true })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Initialize local workspace", exact: true })).toHaveCount(0);
       await expect(

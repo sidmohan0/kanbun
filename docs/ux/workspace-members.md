@@ -1,9 +1,10 @@
 # Workspace members and invitation entry
 
-The hosted application currently admits only its configured owner. The browser starts its workspace
-client on page load, so an invited person without membership receives an authorization failure
-before seeing any invitation controls. Member administration and invitation acceptance need distinct
-entry points without changing the existing issue flow.
+The hosted application admits its configured owner and explicitly invited members. Sign-in alone
+does not grant access. A verified person opening the root URL without membership sees "Workspace
+access required", instructions to ask the owner for the complete invitation link, and a Check access
+again action. Expired sign-in has a separate Sign in to Kanbun screen. Neither failure opens cached
+workspace data or submits pending work.
 
 An owner sees a Members destination in workspace navigation. It lists current people and targeted
 email invitations, with controls to invite a person, revoke a pending invitation, and remove a member.
@@ -20,6 +21,13 @@ invitation details. Acceptance binds that identity to a member account and reloa
 context. Invalid, revoked, expired, already-used, or wrong-recipient invitations show actionable
 errors without opening previous cached issues or descriptions. The flow adds no native sign-in or
 authentication bypass.
+
+Owner instructions explicitly explain that creating an invitation does not send email. Invitees
+need the complete link and the invited email, rather than a separate Kanbun registration. A failed
+inspection can be retried after selecting the correct account. An expired session during inspection
+or acceptance provides a sign-in action that reloads the same invitation fragment; the token is
+removed only after successful acceptance. To select another account without changing an existing
+browser session, the invitation screen suggests opening the link in a private browser window.
 
 Members use their own actor-scoped mutation queues and description storage. Removal blocks later
 workspace reads, writes, notifications, and description access; a rejected browser session hides
