@@ -1,7 +1,7 @@
 # Protected hosted preview
 
 The preview serves the React app and workspace APIs from one Cloudflare Worker at
-`https://kanbun.sid-mohan.com`. It is restricted to the configured owner through a **hostname-based**
+`https://kanbun.ai`. It is restricted to the configured owner through a **hostname-based**
 Cloudflare Access application. This is a private preview of the existing issue flow; native sign-in,
 invites, and public onboarding remain separate work.
 
