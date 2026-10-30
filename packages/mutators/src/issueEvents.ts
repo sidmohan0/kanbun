@@ -114,6 +114,27 @@ export function applyIssueEvent(ctx: MutatorContext, event: DomainEvent): void {
       ctx.store.delete("issueLabelLink", link.id);
       break;
     }
+    case "IssueParentChanged":
+      patch = { parentId: event.payload.parentId, subIssueSortOrder: event.payload.subIssueSortOrder };
+      break;
+    case "IssueRelationAdded":
+      ctx.store.insert("issueRelation", {
+        id: event.payload.linkId,
+        issueId: issue.id,
+        teamId: issue.teamId,
+        relatedIssueId: event.payload.relatedIssueId,
+        type: event.payload.relationType,
+        createdAt: now,
+        updatedAt: now,
+      } as Row<"issueRelation">);
+      break;
+    case "IssueRelationRemoved": {
+      const link = ctx.store.get("issueRelation", event.payload.linkId);
+      if (!link || link.issueId !== issue.id || link.relatedIssueId !== event.payload.relatedIssueId)
+        throw new MutationError("Recorded relation does not match its issue", "invalid");
+      ctx.store.delete("issueRelation", link.id);
+      break;
+    }
     case "IssueArchived":
       patch = { archivedAt: now, autoArchivedAt: null };
       break;

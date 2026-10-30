@@ -139,6 +139,25 @@ const issueDescribedIntent = z.strictObject({
   type: z.literal("IssueDescribed"),
   payload: issueDescribedPayloadSchema,
 });
+const issueParentChangedIntent = z.strictObject({
+  ...subject,
+  type: z.literal("IssueParentChanged"),
+  payload: z.strictObject({ parentId: nullableId, subIssueSortOrder: nullableId }),
+});
+const issueRelationAddedIntent = z.strictObject({
+  ...subject,
+  type: z.literal("IssueRelationAdded"),
+  payload: z.strictObject({
+    linkId: id,
+    relatedIssueId: id,
+    relationType: z.enum(["blocks", "duplicate", "related", "similar"]),
+  }),
+});
+const issueRelationRemovedIntent = z.strictObject({
+  ...subject,
+  type: z.literal("IssueRelationRemoved"),
+  payload: z.strictObject({ linkId: id, relatedIssueId: id }),
+});
 const snapshotTakenIntent = z.strictObject({
   entityType: z.literal("organization"),
   entityId: id,
@@ -260,6 +279,9 @@ export const pendingEventSchema = z.discriminatedUnion("type", [
   issueCreatedIntent,
   issueTitledIntent,
   issueDescribedIntent,
+  issueParentChangedIntent,
+  issueRelationAddedIntent,
+  issueRelationRemovedIntent,
   snapshotTakenIntent,
   issuePrioritizedIntent,
   humanAssertedStatusIntent,
@@ -302,6 +324,9 @@ export const eventSchema = z.discriminatedUnion("type", [
   issueCreatedIntent.extend(envelope),
   issueTitledIntent.extend(envelope),
   issueDescribedIntent.extend(envelope),
+  issueParentChangedIntent.extend(envelope),
+  issueRelationAddedIntent.extend(envelope),
+  issueRelationRemovedIntent.extend(envelope),
   snapshotTakenIntent.extend(envelope),
   issuePrioritizedIntent.extend(envelope),
   humanAssertedStatusIntent.extend(envelope),

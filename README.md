@@ -46,6 +46,8 @@ The local Worker runs the existing engine in a SQLite-backed `WorkspaceDO`, with
 branch APIs. Runtime tests and browser recovery checks use actual `workerd`; fast engine tests and
 the seed still use `node:sqlite`. The web app lists, creates, and renames issues, with
 [status, priority, assignee, labels, and reversible archive controls](docs/ux/issue-properties.md).
+[Sub-issues and dependencies](docs/ux/issue-relationships.md) connect accessible issues across teams,
+with parent selection, inverse blocking links, and cycle validation.
 IndexedDB-backed offline recovery, automatic cross-browser updates, and visible sync/rejection
 state apply to these issue changes. See the
 [local issue flow](docs/ux/issues.md). A [protected hosted preview](docs/hosted-preview.md) uses

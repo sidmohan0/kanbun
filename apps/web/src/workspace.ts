@@ -38,6 +38,7 @@ export type WorkspaceSnapshot = {
   members: Row<"user">[];
   labels: Row<"issueLabel">[];
   labelLinks: Row<"issueLabelLink">[];
+  issueRelations: Row<"issueRelation">[];
   teamMemberships: Row<"teamMembership">[];
   rejections: WorkspaceRejection[];
   error: string | null;
@@ -82,6 +83,7 @@ let snapshot: WorkspaceSnapshot = {
   members: [],
   labels: [],
   labelLinks: [],
+  issueRelations: [],
   teamMemberships: [],
   rejections,
   error,
@@ -97,6 +99,9 @@ function issueId(mutation: Mutation): string | null {
   if (args === null || typeof args !== "object") return null;
   if ("issueId" in args && typeof args.issueId === "string") return args.issueId;
   if (!("id" in args) || typeof args.id !== "string") return null;
+  if (mutation.name === "issueRelationCreate" && "issueId" in args && typeof args.issueId === "string")
+    return args.issueId;
+  if (mutation.name === "issueRelationDelete") return client?.get("issueRelation", args.id)?.issueId ?? null;
   return mutation.name.startsWith("comment") ? (client?.get("comment", args.id)?.issueId ?? null) : args.id;
 }
 
@@ -196,6 +201,7 @@ function publish() {
         ?.list("issueLabel")
         .filter((label) => !label.archivedAt && !label.retiredAt)
         .sort((a, b) => a.name.localeCompare(b.name) || compare(a.id, b.id)) ?? [],
+    issueRelations: authenticationRequired ? [] : (client?.list("issueRelation") ?? []),
     labelLinks:
       (authenticationRequired ? undefined : client)?.list("issueLabelLink").filter((link) => !link.archivedAt) ?? [],
     teamMemberships:
@@ -327,6 +333,7 @@ async function initialize() {
     "user",
     "issueLabel",
     "issueLabelLink",
+    "issueRelation",
     "teamMembership",
     "comment",
     "agent",
@@ -509,7 +516,7 @@ export const workspace = {
   start,
   refresh,
   requireAuthentication: blockAuthentication,
-  createIssue(teamId: string, title: string, assigneeId?: string): void {
+  createIssue(teamId: string, title: string, assigneeId?: string, parentId?: string): void {
     const active = editableClient();
     active.mutate("issueCreate", {
       id: uuidv7(),
@@ -517,7 +524,26 @@ export const workspace = {
       title,
       subscriptionId: uuidv7(),
       ...(assigneeId ? { assigneeId } : {}),
+      ...(parentId ? { parentId } : {}),
     });
+    publish();
+    flush(active);
+  },
+  setIssueParent(id: string, parentId: string | null): void {
+    const active = editableClient();
+    active.mutate("issueUpdate", { id, patch: { parentId } });
+    publish();
+    flush(active);
+  },
+  addIssueRelation(issueId: string, relatedIssueId: string, type: "blocks" | "related"): void {
+    const active = editableClient();
+    active.mutate("issueRelationCreate", { id: uuidv7(), issueId, relatedIssueId, type });
+    publish();
+    flush(active);
+  },
+  removeIssueRelation(id: string): void {
+    const active = editableClient();
+    active.mutate("issueRelationDelete", { id });
     publish();
     flush(active);
   },

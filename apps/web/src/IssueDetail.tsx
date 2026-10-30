@@ -3,6 +3,7 @@ import type { Row } from "@kanbun/model";
 import type { WorkspaceContext } from "@kanbun/sync";
 import { descriptionSession } from "./description";
 import { IssueProperties } from "./IssueProperties";
+import { IssueRelationships } from "./IssueRelationships";
 import { IssueDiscussion } from "./IssueDiscussion";
 import type { WorkspaceSnapshot } from "./workspace";
 
@@ -30,6 +31,7 @@ export function IssueDetail({
       </a>
       <h2>{issue.title}</h2>
       <IssueProperties issue={issue} snapshot={workspaceSnapshot} onArchive={onArchive} />
+      <IssueRelationships issue={issue} snapshot={workspaceSnapshot} />
       <div className="description-heading">
         <label htmlFor="issue-description">Description</label>
         <span role="status" aria-label="Description status" aria-live="polite">
