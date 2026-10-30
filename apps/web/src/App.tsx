@@ -8,6 +8,7 @@ import { IssueDetail } from "./IssueDetail";
 import { Members } from "./Members";
 import { Inbox } from "./Inbox";
 import { IssueViewToolbar } from "./IssueViewToolbar";
+import { IssueBoard } from "./IssueBoard";
 import { emptyIssueFilters, visibleIssues, type IssueFilters, type IssueView } from "./issueViews";
 import { refreshDescriptions } from "./description";
 import "./styles/issues.css";
@@ -178,6 +179,7 @@ export function App() {
     all: emptyIssueFilters(),
     mine: emptyIssueFilters(),
   }));
+  const [viewLayouts, setViewLayouts] = useState<Record<IssueView, "list" | "board">>({ all: "list", mine: "list" });
   const [inboxView, setInboxView] = useState(() => location.hash === "#inbox");
   const [membersView, setMembersView] = useState(() => location.hash === "#members");
   const [issueId, setIssueId] = useState(selectedIssueId);
@@ -603,7 +605,22 @@ export function App() {
                       <h2 id="list-heading">
                         {listName} <span>{issues.length}</span>
                       </h2>
-                      <span className="list-help">Select a title to edit</span>
+                      <div className="issue-layout-controls" role="group" aria-label="Issue layout">
+                        <button
+                          className="button quiet compact"
+                          aria-pressed={viewLayouts[view] === "list"}
+                          onClick={() => setViewLayouts((current) => ({ ...current, [view]: "list" }))}
+                        >
+                          List
+                        </button>
+                        <button
+                          className="button quiet compact"
+                          aria-pressed={viewLayouts[view] === "board"}
+                          onClick={() => setViewLayouts((current) => ({ ...current, [view]: "board" }))}
+                        >
+                          Board
+                        </button>
+                      </div>
                     </div>
                     {snapshot.phase === "starting" ? (
                       <div className="empty-state">
@@ -626,6 +643,8 @@ export function App() {
                               : "Create your first issue above."}
                         </p>
                       </div>
+                    ) : viewLayouts[view] === "board" ? (
+                      <IssueBoard issues={issues} snapshot={snapshot} />
                     ) : (
                       <table>
                         <caption className="visually-hidden">
