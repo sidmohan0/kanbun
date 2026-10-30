@@ -63,3 +63,12 @@ controlled single-worker run of the same application code, without that competin
 783.7 ms to paint all 5,000 rows, including 68.4 ms HTTP and a 422,971-byte encoded response. Both
 observations are retained as evidence; the timing remains advisory because shared-runner load
 changes it. The controlled observation meets the specification target.
+
+The first GitHub Actions scale run ([41129277632](https://github.com/sidmohan0/kanbun/actions/runs/41129277632))
+used about 15.6 seconds for HTTP seeding and another 7.4 seconds for the warm browser. Together with fixture startup, this consumed
+23.8 seconds of the ordinary 30-second test budget before measurement. The view painted all 5,000
+rows, but the test deadline interrupted the subsequent receipt collection. Its retained trace records
+2,614 ms to paint, 273.1 ms HTTP, and 440,927 encoded bytes: that CI observation misses the one-second
+target. The scale case uses Playwright's standard slow-test allowance for its substantial fixture and
+trace work; the measured interval, 1,000 ms target, row-count assertion, and reported target result
+remain unchanged. Successful fixture execution does not imply a passing performance observation.

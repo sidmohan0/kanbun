@@ -9,6 +9,10 @@ test("records actual 5000-issue HTTP bootstrap and first React view against the 
   browser,
   app,
 }, testInfo) => {
+  // CI trace: fixture startup, seeding, and warm-up consumed 23.8s of the normal 30s test budget;
+  // receipt collection was interrupted after the measured view had already painted.
+  // Playwright's standard slow-test allowance covers setup, not the 1,000ms target below.
+  test.slow();
   const seedStarted = performance.now();
   // /sync/push accepts at most 500 mutations, as defined in the public request schema.
   for (let start = 1; start < workingSet; start += 500) {
