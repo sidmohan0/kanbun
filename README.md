@@ -58,8 +58,43 @@ Everything else (notifications, email, webhooks) hangs off the change events the
 
 ## Development
 
-Use the Node version pinned in `.nvmrc` and pnpm `10.28.0`, as declared in `package.json`.
-With nvm installed, `nvm install` and `nvm use` select the same Node version as CI.
+The [devcontainer](.devcontainer/devcontainer.json) is the standard environment for local development
+and every repository-owned CI workflow. It pins the Linux image and Node version, installs pnpm from
+`package.json`, and runs a frozen workspace install, Chromium setup, and `pnpm verify doctor`.
+Docker and host Node.js are needed to bootstrap the pinned devcontainer CLI; repository commands
+then run inside the container. VS Code's **Dev Containers: Reopen in Container** and GitHub Codespaces
+use the same configuration.
+
+```sh
+# With Docker running:
+./scripts/devcontainer.sh up
+./scripts/devcontainer.sh verify
+./scripts/devcontainer.sh dev
+# In another terminal, print the published localhost URL:
+./scripts/devcontainer.sh url
+```
+
+For Colima, start a project runtime with `colima start --profile kanbun --cpu 4 --memory 6 --disk 40
+--activate=false`. The wrapper uses `colima-kanbun` if the default Docker runtime is unavailable;
+it does not change the global Docker context. Explicit `DOCKER_CONTEXT` and `DOCKER_HOST` settings
+are respected. The web shell listens inside the container and is published to a dynamically chosen
+host port on `127.0.0.1`. Editors can also forward container port 5173.
+
+Use `./scripts/devcontainer.sh exec <command...>` for any repository command, `shell` for a container
+shell, and `stop` to stop this checkout's containers while preserving data. After changing the image
+or browser dependency, use `rebuild`. After changing branches or the lockfile, run a frozen install
+inside the container. Container and native dependencies must use separate checkouts; a native
+checkout is an optional troubleshooting environment, rather than CI proof. The devcontainer is a
+development environment; Cloudflare deployment is still planned.
+
+pnpm remains the package manager for both environments: use one root lockfile and declare internal
+dependencies with `workspace:*`. Run installs from the repository root, use
+`pnpm --filter <package-name> add <dependency>` to update an individual package, and commit the
+manifest and lockfile together.
+
+The commands below run in the container shell, or through `./scripts/devcontainer.sh exec`.
+For optional native troubleshooting, use a separate checkout with the Node version in `.nvmrc` and
+pnpm `10.28.0`, as declared in `package.json`.
 
 ```
 pnpm install --frozen-lockfile
@@ -79,11 +114,13 @@ Run `pnpm format` to format maintained source and configuration. The formatter e
 specification, its archives, generated migrations, the dependency lockfile, and exported brand assets.
 ESLint checks JavaScript and TypeScript correctness, with React Hooks rules for the web app.
 
-CI runs the frozen install and complete verifier on every pull request and push to `main`, retaining
+CI initializes the same devcontainer and runs the complete verifier on every pull request and push to `main`, retaining
 reports even after failures. The verifier checks the toolchain, formatting, lint, types, tests,
 production build, seed smoke run, browser recovery contracts, current spec archive, and mechanical documentation contracts.
 See [verification and drift reporting](docs/verification.md) for commands, evidence, and the daily
 mechanical documentation report. The separate spec-lock check also runs on every pull request and push to `main`.
+Changelog, spec-lock, and scheduled documentation commands also execute inside the devcontainer.
+Host runner steps only bootstrap the container and handle GitHub event files, summaries, and artifacts.
 Before the first commit, run `pnpm spec:check --initial`; once a base commit exists, use
 `pnpm spec:check <base-ref>` to validate changes against it.
 

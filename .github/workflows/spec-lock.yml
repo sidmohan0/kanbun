@@ -8,19 +8,18 @@ permissions:
 jobs:
   lock:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
+      - uses: ./.github/actions/devcontainer
       - name: Check the spec lock
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
-            node scripts/check-spec-lock.mjs --initial
+            ./scripts/devcontainer.sh exec env CI=true node scripts/check-spec-lock.mjs --initial
           else
-            node scripts/check-spec-lock.mjs "$BASE"
+            ./scripts/devcontainer.sh exec env CI=true node scripts/check-spec-lock.mjs "$BASE"
           fi

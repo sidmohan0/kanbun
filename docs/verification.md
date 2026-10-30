@@ -47,6 +47,10 @@ Skipped or unexecuted checks do not count as successful verification.
 
 The complete verifier runs on every PR and push to `main`, including documentation-only changes.
 Its workspace tests include [semantic issue replay and migration checks](event-replay.md).
+All repository-owned workflows initialize the same devcontainer used locally and execute their
+checks inside it. Run `./scripts/devcontainer.sh verify` from a host terminal or `pnpm verify` in
+the container shell. Changelog and spec-lock commands receive GitHub metadata explicitly; the
+scheduled documentation report runs in the same image and remains non-gating.
 GitHub Actions uploads its reports and logs after both successful and failed runs. The separate
 spec-lock workflow compares changes against their base; the separate changelog workflow checks the
 full committed PR and its exemption metadata. A current-tree verifier receipt does not replace those

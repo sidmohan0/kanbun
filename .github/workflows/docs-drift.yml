@@ -12,46 +12,50 @@ jobs:
   documentation:
     name: Mechanical documentation report
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/devcontainer
+        id: container
       - name: Check documentation
         id: documentation
         continue-on-error: true
         run: |
           mkdir -p artifacts/docs-drift
-          pnpm --silent verify docs --json > artifacts/docs-drift/documentation.json
+          ./scripts/devcontainer.sh exec env CI=true pnpm --silent verify docs --json > artifacts/docs-drift/documentation.json
       - name: Summarize documentation findings
-        if: always()
+        if: always() && steps.container.outcome == 'success'
         run: |
-          node --input-type=module <<'NODE'
-          import { appendFileSync, readFileSync } from "node:fs";
+          ./scripts/devcontainer.sh exec env CI=true node --input-type=module -e '
+          import { writeFileSync, readFileSync } from "node:fs";
           let report;
           try {
             report = JSON.parse(readFileSync("artifacts/docs-drift/documentation.json", "utf8"));
           } catch {
-            appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            writeFileSync("artifacts/docs-drift/summary.md",
               "# Documentation report\n\nThe check did not produce a receipt. Inspect the workflow logs.\n");
             process.exit(0);
           }
           const docs = report.steps?.find((step) => step.name === "docs");
           const result = !docs?.executed ? "incomplete" : docs.pass ? "pass" : "findings";
-          const lines = ["# Documentation report", "", `Result: **${result}**`, ""];
+          const lines = ["# Documentation report", "", "Result: **" + result + "**", ""];
           for (const check of docs?.checks ?? []) {
-            lines.push(`- ${check.pass ? "PASS" : "FAIL"}: ${check.name}`);
+            lines.push("- " + (check.pass ? "PASS" : "FAIL") + ": " + check.name);
           }
           lines.push("", "Semantic auditing is paused. This scheduled report does not gate pull requests.", "");
-          appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n"));
-          NODE
+          writeFileSync("artifacts/docs-drift/summary.md", lines.join("\n"));
+          '
+      - name: Publish documentation summary
+        if: always()
+        run: |
+          if [ -f artifacts/docs-drift/summary.md ]; then
+            cat artifacts/docs-drift/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '# Documentation report\n\nThe container or check did not produce a summary. Inspect the workflow logs.\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Preserve documentation evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

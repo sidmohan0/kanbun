@@ -5,6 +5,7 @@ docs/spec/
 # Generated migrations and dependency resolution
 packages/model/migrations/
 pnpm-lock.yaml
+.pnpm-store/
 
 # Brand masters and exported assets
 /brand/
