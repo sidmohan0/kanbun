@@ -13,7 +13,7 @@ Usage: ./scripts/devcontainer.sh <command> [arguments...]
   rebuild   Recreate this workspace's container after configuration changes
   exec      Run a command inside the container
   verify    Run the verifier inside the container (optional profile)
-  dev       Run the web shell inside the container
+  dev       Run the web shell and local Worker inside the container
   shell     Open a container shell
   status    Show this workspace's containers
   url       Print the localhost URL published for the web shell
@@ -74,7 +74,7 @@ case "$command_name" in
     [ "$#" -gt 0 ] || { printf 'Supply a command to execute.\n' >&2; exit 2; }
     ;;
   verify) set -- pnpm --silent verify "$@" --json ;;
-  dev) set -- pnpm --filter @kanbun/web dev --host 0.0.0.0 --strictPort "$@" ;;
+  dev) set -- pnpm dev "$@" ;;
   shell) set -- bash "$@" ;;
 esac
 exec "${container_cli[@]}" exec --workspace-folder "$repo_root" "$@"

@@ -1,9 +1,8 @@
 import { test as base, expect } from "@playwright/test";
-import { uuidv7, type Row } from "@kanbun/model";
-import { mutators } from "@kanbun/mutators";
-import { MutationError, type Actor, type PushRequest, type PushResponse } from "@kanbun/sync";
-import { SyncServer } from "@kanbun/sync/server";
-import { openWorkspaceDb } from "@kanbun/sync/server/node";
+import { uuidv7 } from "@kanbun/model";
+import type { Actor, PushRequest, PushResponse } from "@kanbun/sync";
+import type { SyncServer } from "@kanbun/sync/server";
+import { startWorkspaceRuntime } from "@kanbun/worker/testing";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
@@ -15,6 +14,8 @@ import { actors, type ActorName } from "./contract";
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const repository = path.resolve(directory, "../../../..");
 const actorCookie = "kanbun_fixture_actor";
+type WorkspaceRuntime = Awaited<ReturnType<typeof startWorkspaceRuntime>>;
+type Inspection = Awaited<ReturnType<WorkspaceRuntime["inspect"]>>;
 
 export type PushObservation = {
   request: PushRequest;
@@ -42,20 +43,14 @@ export type RecoveryHarness = {
   origin: string;
   teamId: string;
   issueId: string;
-  databasePath: string;
   actors: typeof actors;
   pushes: PushObservation[];
   merges: MergeObservation[];
-  createBranch(owner?: ActorName): string;
+  createBranch(owner?: ActorName): Promise<string>;
   dropNextPushResponse(actor?: ActorName): void;
   dropNextMergeResponse(actor?: ActorName): void;
-  restart(): Promise<void>;
-  inspect(): {
-    seq: number;
-    issues: Row<"issue">[];
-    clients: Record<string, unknown>[];
-    log: Record<string, unknown>[];
-  };
+  restart: WorkspaceRuntime["restart"];
+  inspect: WorkspaceRuntime["inspect"];
 };
 
 async function body(request: IncomingMessage): Promise<string> {
@@ -69,51 +64,18 @@ function json(response: ServerResponse, value: unknown, status = 200) {
   response.end(JSON.stringify(value));
 }
 
+function currentSeq(inspection: Inspection, branchId = "main") {
+  return inspection.log.reduce(
+    (seq, entry) =>
+      entry["branch_id"] === "main" || entry["branch_id"] === branchId ? Math.max(seq, Number(entry["seq"])) : seq,
+    0,
+  );
+}
+
 async function createHarness(seedIssue: boolean) {
   const temporary = await mkdtemp(path.join(tmpdir(), "kanbun-browser-recovery-"));
-  const databasePath = path.join(temporary, "workspace.sqlite");
-  const teamId = uuidv7();
-  const issueId = uuidv7();
-  const open = () => {
-    const { db, driver } = openWorkspaceDb(databasePath);
-    return { db, driver, server: new SyncServer({ driver, mutators }) };
-  };
-  let active = open();
-  active.server.system("workspaceInit", {
-    organization: { id: uuidv7(), name: "Recovery fixture", urlKey: "recovery-fixture" },
-    owner: { id: actors.alice.id, name: "Alice", email: "alice@example.com" },
-  });
-  active.server.system("memberSync", { id: actors.bob.id, name: "Bob", email: "bob@example.com" });
-  const mutations: PushRequest["mutations"] = [
-    {
-      id: 1,
-      name: "teamCreate",
-      args: {
-        id: teamId,
-        name: "Recovery",
-        key: "REC",
-        membershipId: uuidv7(),
-        stateIds: { backlog: uuidv7(), todo: uuidv7(), inProgress: uuidv7(), done: uuidv7(), canceled: uuidv7() },
-      },
-      ts: new Date().toISOString(),
-    },
-    {
-      id: 2,
-      name: "teamMembershipCreate",
-      args: { id: uuidv7(), teamId, userId: actors.bob.id },
-      ts: new Date().toISOString(),
-    },
-  ];
-  if (seedIssue)
-    mutations.push({
-      id: 3,
-      name: "issueCreate",
-      args: { id: issueId, teamId, title: "Shared issue", subscriptionId: uuidv7() },
-      ts: new Date().toISOString(),
-    });
-  const seeded = active.server.push(actors.alice, { clientId: "fixture-seed", mutations });
-  if (!seeded.ok || seeded.rejected.length) throw new Error(`Fixture seed failed: ${JSON.stringify(seeded)}`);
-
+  const runtime = await startWorkspaceRuntime({ localDev: true });
+  const { teamId, issueId } = await runtime.seed(seedIssue);
   const pushes: PushObservation[] = [];
   const merges: MergeObservation[] = [];
   let dropActor: ActorName | undefined;
@@ -137,7 +99,7 @@ async function createHarness(seedIssue: boolean) {
         const selected = JSON.parse(await body(request)) as { actor?: ActorName };
         if (selected.actor !== "alice" && selected.actor !== "bob")
           return json(response, { error: "fixture actor missing" }, 400);
-        // This cookie selects a synthetic fixture actor; it is not product authentication.
+        // The fixture cookie selects the Worker's explicitly enabled local actor mode.
         response.setHeader("set-cookie", `${actorCookie}=${selected.actor}; Path=/; HttpOnly; SameSite=Lax`);
         return json(response, actors[selected.actor]);
       }
@@ -150,97 +112,69 @@ async function createHarness(seedIssue: boolean) {
           ?.slice(actorCookie.length + 1);
         if (selected !== "alice" && selected !== "bob")
           return json(response, { error: "fixture actor cookie missing" }, 401);
-        const actor = actors[selected];
-        if (url.pathname === "/sync/branch/preview")
-          return json(response, active.server.previewBranch(actor, url.searchParams.get("branchId") ?? ""));
-        if (url.pathname === "/sync/branch/merge" && request.method === "POST") {
-          const rawBody = await body(request);
-          const merge = JSON.parse(rawBody) as Parameters<SyncServer["mergeBranch"]>[1];
-          const seqBefore = active.server.currentSeq();
-          const result = active.server.mergeBranch(actor, merge);
-          const responseDropped = dropMergeActor === selected && result.ok;
-          merges.push({
-            request: merge,
-            rawBody,
-            actor,
-            result,
-            seqBefore,
-            seqAfter: active.server.currentSeq(),
-            responseDropped,
-          });
-          if (responseDropped) {
-            dropMergeActor = undefined;
-            const payload = JSON.stringify(result);
-            response.writeHead(200, {
-              "content-type": "application/json; charset=utf-8",
-              "content-length": Buffer.byteLength(payload),
-            });
-            response.write(payload.slice(0, Math.floor(payload.length / 2)), () =>
-              setImmediate(() => response.destroy()),
-            );
-            return;
-          }
-          return json(response, result);
-        }
-        if (url.pathname === "/sync/bootstrap")
-          return json(
-            response,
-            active.server.bootstrap(
-              actor,
-              url.searchParams.get("clientId") ?? "",
-              url.searchParams.get("branchId") ?? "main",
-            ),
-          );
-        if (url.pathname === "/sync/pull")
-          return json(
-            response,
-            active.server.pull(actor, {
-              clientId: url.searchParams.get("clientId") ?? "",
-              since: Number(url.searchParams.get("since")),
-              branchId: url.searchParams.get("branchId") ?? "main",
-            }),
-          );
-        if (url.pathname === "/sync/load")
-          return json(
-            response,
-            active.server.load(actor, {
-              model: url.searchParams.get("model") as Parameters<SyncServer["load"]>[1]["model"],
-              parentId: url.searchParams.get("parentId") ?? "",
-              branchId: url.searchParams.get("branchId") ?? "main",
-            }),
-          );
-        if (url.pathname === "/sync/push" && request.method === "POST") {
-          const rawBody = await body(request);
-          const push = JSON.parse(rawBody) as PushRequest;
-          const seqBefore = active.server.currentSeq(push.branchId);
-          const result = active.server.push(actor, push);
-          const responseDropped = dropActor === selected && result.ok;
+        const rawBody = request.method === "POST" ? await body(request) : undefined;
+        const observingPush = url.pathname === "/sync/push" && request.method === "POST";
+        const observingMerge = url.pathname === "/sync/branch/merge" && request.method === "POST";
+        const before = observingPush || observingMerge ? await runtime.inspect() : undefined;
+        const upstream = await runtime.fetch(url.pathname + url.search, {
+          method: request.method ?? "GET",
+          headers: {
+            "X-Kanbun-Local-Actor": selected,
+            ...(request.headers["content-type"] ? { "content-type": request.headers["content-type"] } : {}),
+          },
+          ...(rawBody === undefined ? {} : { body: rawBody }),
+        });
+        const payload = await upstream.text();
+        let responseDropped = false;
+        if (observingPush) {
+          const push = JSON.parse(rawBody!) as PushRequest;
+          const result = JSON.parse(payload) as PushResponse;
+          responseDropped = dropActor === selected && upstream.ok && result.ok;
           pushes.push({
             request: push,
-            rawBody,
-            actor,
+            rawBody: rawBody!,
+            actor: actors[selected],
             cookie,
             requestContentType: request.headers["content-type"] ?? "",
             result,
-            seqBefore,
-            seqAfter: active.server.currentSeq(push.branchId),
+            seqBefore: currentSeq(before!, push.branchId),
+            seqAfter: currentSeq(await runtime.inspect(), push.branchId),
             responseDropped,
           });
-          if (responseDropped) {
-            dropActor = undefined;
-            const payload = JSON.stringify(result);
-            response.writeHead(200, {
-              "content-type": "application/json; charset=utf-8",
-              "content-length": Buffer.byteLength(payload),
-            });
-            response.write(payload.slice(0, Math.floor(payload.length / 2)), () => {
-              setImmediate(() => response.destroy());
-            });
-            return;
-          }
-          return json(response, result);
+          if (responseDropped) dropActor = undefined;
         }
-        return json(response, { error: "unknown sync fixture route" }, 404);
+        if (observingMerge) {
+          const merge = JSON.parse(rawBody!) as MergeObservation["request"];
+          const result = JSON.parse(payload) as MergeObservation["result"];
+          responseDropped = dropMergeActor === selected && upstream.ok && result.ok;
+          merges.push({
+            request: merge,
+            rawBody: rawBody!,
+            actor: actors[selected],
+            result,
+            seqBefore: currentSeq(before!),
+            seqAfter: currentSeq(await runtime.inspect()),
+            responseDropped,
+          });
+          if (responseDropped) dropMergeActor = undefined;
+        }
+        if (responseDropped) {
+          // The real Worker has committed. Only its browser-facing acknowledgement is lost.
+          response.writeHead(upstream.status, {
+            "content-type": upstream.headers.get("content-type") ?? "application/json",
+            "content-length": Buffer.byteLength(payload),
+          });
+          response.write(payload.slice(0, Math.floor(payload.length / 2)), () =>
+            setImmediate(() => response.destroy()),
+          );
+          return;
+        }
+        // Node fetch has decoded the upstream body; emit fresh transport framing for these bytes.
+        const headers = new Headers(upstream.headers);
+        for (const header of ["content-encoding", "content-length", "transfer-encoding"]) headers.delete(header);
+        response.writeHead(upstream.status, Object.fromEntries(headers));
+        response.end(payload);
+        return;
       }
       if (url.pathname === "/") {
         response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
@@ -248,13 +182,9 @@ async function createHarness(seedIssue: boolean) {
         return;
       }
       vite.middlewares(request, response, () => json(response, { error: "fixture asset missing" }, 404));
-    })().catch((error: unknown) => {
-      const status =
-        error instanceof MutationError
-          ? { forbidden: 403, not_found: 404, invalid: 400, conflict: 409 }[error.code]
-          : 500;
-      json(response, { error: error instanceof Error ? error.message : String(error) }, status);
-    });
+    })().catch((error: unknown) =>
+      json(response, { error: error instanceof Error ? error.message : String(error) }, 500),
+    );
   });
   await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
   const address = http.address();
@@ -263,17 +193,17 @@ async function createHarness(seedIssue: boolean) {
     origin: `http://127.0.0.1:${address.port}`,
     teamId,
     issueId,
-    databasePath,
     actors,
     pushes,
     merges,
-    createBranch(owner = "alice") {
+    async createBranch(owner = "alice") {
       const id = uuidv7();
-      active.server.createBranch(actors[owner], {
-        id,
-        name: "Recovery proposal",
-        scope: { teamIds: [teamId], projectIds: [] },
+      const response = await runtime.fetch("/sync/branch/create", {
+        method: "POST",
+        headers: { "content-type": "application/json", "X-Kanbun-Local-Actor": owner },
+        body: JSON.stringify({ id, name: "Recovery proposal", scope: { teamIds: [teamId], projectIds: [] } }),
       });
+      if (!response.ok) throw new Error(`Fixture branch creation failed: ${response.status} ${await response.text()}`);
       return id;
     },
     dropNextPushResponse(actor = "alice") {
@@ -282,27 +212,15 @@ async function createHarness(seedIssue: boolean) {
     dropNextMergeResponse(actor = "alice") {
       dropMergeActor = actor;
     },
-    async restart() {
-      active.db.close();
-      active = open();
-    },
-    inspect() {
-      return {
-        seq: active.server.currentSeq(),
-        issues: active.server.store.list("issue"),
-        clients: active.driver.all(
-          "SELECT client_id, user_id, branch_id, last_mutation_id FROM sync_client ORDER BY client_id",
-        ),
-        log: active.driver.all("SELECT * FROM sync_log ORDER BY seq"),
-      };
-    },
+    restart: () => runtime.restart(),
+    inspect: () => runtime.inspect(),
   };
   return {
     harness,
     async close() {
       await new Promise<void>((resolve, reject) => http.close((error) => (error ? reject(error) : resolve())));
       await vite.close();
-      active.db.close();
+      await runtime.close();
       await rm(temporary, { recursive: true, force: true });
     },
   };
@@ -319,7 +237,11 @@ export const test = base.extend<{ seedIssue: boolean; harness: RecoveryHarness }
         if (testInfo.status !== testInfo.expectedStatus) {
           await testInfo.attach("recovery-server-state", {
             body: JSON.stringify(
-              { database: fixture.harness.inspect(), pushes: fixture.harness.pushes, merges: fixture.harness.merges },
+              {
+                database: await fixture.harness.inspect(),
+                pushes: fixture.harness.pushes,
+                merges: fixture.harness.merges,
+              },
               null,
               2,
             ),

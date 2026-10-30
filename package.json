@@ -9,7 +9,7 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "dev": "pnpm -r --parallel --filter ./apps/* dev",
+    "dev": "pnpm -r --parallel --filter './apps/*' dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "test:changelog": "node --test scripts/check-changelog.test.mjs",

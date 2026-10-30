@@ -58,7 +58,8 @@ Sync requests select a branch using `branchId`; omitting it selects main. Bootst
 branch as its third server argument. Pull, push, and on-demand load carry it in their request;
 HTTP transport uses a query parameter for reads and the JSON body for push. Branch success
 responses identify their branch, and clients reject responses for another context before adopting
-state. The fixture HTTP adapter exercises this protocol; the production Worker is not implemented.
+state. The local Worker exercises this protocol against a real SQLite Durable Object; production
+authentication and deployment remain planned.
 
 Every sync client ID is permanently bound to one actor and branch. A branch client cannot reuse a
 main client ID, even to retry an old mutation. A `SyncClient` selects `branchId` at construction and
@@ -139,8 +140,8 @@ settings is rejected. The same active human must retry it. Resolution order is n
 comparison. An older branch without a recorded patch baseline cannot be safely merged; recreate it.
 The migration preserves its overlay and history rather than guessing a baseline.
 
-These are engine methods. The HTTP adapter in the browser recovery fixture exercises them, while
-the product Worker, authentication integration, and review UI remain to be implemented.
+The local Worker exposes these engine methods as HTTP routes. The browser recovery fixture forwards
+requests to that Worker. Production authentication, deployment, and review UI remain to be implemented.
 
 ## Verification
 
@@ -148,10 +149,10 @@ Real SQLite tests cover upgrade preservation, durable overlays, live fallback, t
 change capture. Server integration checks cover ownership, team and project scopes, agent proposal
 mode, idempotency, branch-bound clients, rollback, and complete first-touch pulls. Client tests
 reject mismatched saved state and response contexts. A Chromium recovery scenario uses real
-IndexedDB and HTTP across page reloads, database reopening, and a lost acknowledgement, while
+IndexedDB and HTTP across page reloads, Durable Object reactivation, and a lost acknowledgement, while
 asserting that main stays unchanged.
 
 Merge integration checks cover the specification's 500-event clean merge, semantic and legacy
 conflicts, explicit choices, stale previews, current permissions, atomic rollback, and durable retry
-receipts. Browser recovery checks exercise a committed merge with a lost HTTP response, SQLite
-reopening, an identical retry, and convergence through the main client's normal pull path.
+receipts. Browser recovery checks exercise a committed merge with a lost HTTP response, Durable
+Object reactivation, an identical retry, and convergence through the main client's normal pull path.

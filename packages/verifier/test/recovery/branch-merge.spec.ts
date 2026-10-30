@@ -5,11 +5,11 @@ type Preview = ReturnType<SyncServer["previewBranch"]>;
 type MergeRequest = Parameters<SyncServer["mergeBranch"]>[1];
 type MergeResult = ReturnType<SyncServer["mergeBranch"]>;
 
-test("a reviewed branch merge survives a lost HTTP acknowledgement and SQLite restart exactly once", async ({
+test("a reviewed branch merge survives a lost HTTP acknowledgement and Durable Object reactivation exactly once", async ({
   browser,
   harness,
 }, testInfo) => {
-  const branchId = harness.createBranch();
+  const branchId = await harness.createBranch();
   const context = await browser.newContext();
   const main = await context.newPage();
   const branch = await context.newPage();
@@ -41,7 +41,7 @@ test("a reviewed branch merge survives a lost HTTP acknowledgement and SQLite re
     const branchState = await branch.evaluate(() => window.recovery.push());
     expect(branchState.pending).toBe(0);
     expect(branchState.issues.find((issue) => issue.id === newIssueId)?.number).toBe(0);
-    expect(harness.inspect().issues).toHaveLength(1);
+    expect((await harness.inspect()).issues).toHaveLength(1);
 
     await main.evaluate(
       (id) => window.recovery.mutate("issueUpdate", { id, patch: { title: "Changed on main during review" } }),
@@ -100,7 +100,7 @@ test("a reviewed branch merge survives a lost HTTP acknowledgement and SQLite re
       skippedEntities: 0,
     });
     expect(committedAttempt.seqAfter).toBeGreaterThan(committedAttempt.seqBefore);
-    const committed = harness.inspect();
+    const committed = await harness.inspect();
     expect(committed.issues.find((issue) => issue.id === harness.issueId)?.title).toBe("Human-approved merged title");
     expect(committed.issues.find((issue) => issue.id === newIssueId)).toMatchObject({
       number: 2,
@@ -108,15 +108,16 @@ test("a reviewed branch merge survives a lost HTTP acknowledgement and SQLite re
     });
 
     await harness.restart();
-    expect(harness.inspect().issues).toEqual(committed.issues);
-    expect(harness.inspect().log).toEqual(committed.log);
+    const reopened = await harness.inspect();
+    expect(reopened.issues).toEqual(committed.issues);
+    expect(reopened.log).toEqual(committed.log);
     const retried = await merge();
     expect(retried.status).toBe(200);
     expect(retried.result).toEqual(committedAttempt.result);
     expect(harness.merges).toHaveLength(2);
     expect(harness.merges[1]?.rawBody).toBe(committedAttempt.rawBody);
     expect(harness.merges[1]?.seqAfter).toBe(committedAttempt.seqAfter);
-    expect(harness.inspect().log).toEqual(committed.log);
+    expect((await harness.inspect()).log).toEqual(committed.log);
     const mainState = await main.evaluate(() => window.recovery.pull());
     expect(mainState.issues).toEqual([...committed.issues].sort((a, b) => a.id.localeCompare(b.id)));
 

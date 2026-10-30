@@ -18,6 +18,7 @@
     "build": "echo 'source package'"
   },
   "devDependencies": {
+    "@kanbun/worker": "workspace:*",
     "@kanbun/model": "workspace:*",
     "@kanbun/mutators": "workspace:*",
     "@kanbun/sync": "workspace:*",

@@ -17,6 +17,7 @@ Contributions must not include third-party assets (icon sets, illustrations, CSS
 ```
 apps/
   web/        React + Vite web shell; routing and Worker integration are planned
+  worker/     Local HTTP sync and branch APIs backed by a SQLite WorkspaceDO
 packages/
   events/     Typed semantic issue events and their validated envelopes
   model/      Drizzle schema: one definition of every entity, for D1 and for DO SQLite
@@ -31,6 +32,7 @@ Current workspace packages:
 <!-- workspace-inventory:start -->
 
 - `apps/web`
+- `apps/worker`
 - `packages/events`
 - `packages/model`
 - `packages/mutators`
@@ -40,7 +42,10 @@ Current workspace packages:
 
 <!-- workspace-inventory:end -->
 
-The Worker (`apps/worker`: Hono router, WorkspaceDO with SQLite + sync log + WebSocket hub, DocumentDO with Yjs) is not written yet. The engine is exercised today over `node:sqlite` by the tests and the seed; the Durable Object driver in `packages/sync/src/server/driver.ts` is the SQL portability boundary for the future Worker.
+The local Worker runs the existing engine in a SQLite-backed `WorkspaceDO`, with HTTP sync and
+branch APIs. Runtime tests and browser recovery checks use actual `workerd`; fast engine tests and
+the seed still use `node:sqlite`. The web app remains a branded shell. Production authentication,
+deployment, WebSocket pokes, and DocumentDO/Yjs remain planned. See [local Worker development](docs/local-worker.md).
 
 Issue creation and title-only updates now record `IssueCreated` and `IssueTitled` events and apply
 shared reducers. Their recorded history can reproduce the same projections in memory and SQLite.
@@ -56,7 +61,7 @@ retry receipts. The branch review UI and Cloudflare deployment remain planned.
 
 1. The client runs a command against its in-memory object pool and re-renders. For migrated commands, a read-only decision produces events that a shared reducer applies optimistically. The command is appended to a persisted queue.
 2. The queue is pushed to `/sync/push`; the Worker forwards it to the workspace's Durable Object.
-3. The authority runs the same command inside a SQLite transaction (one savepoint per mutation, so a rejected one leaves nothing behind). Migrated commands record finalized semantic events and apply their reducers, including server-owned issue numbers. Derived patches enter `sync_log` with provenance; the future Worker will poke connected WebSockets after commit.
+3. The authority runs the same command inside a SQLite transaction (one savepoint per mutation, so a rejected one leaves nothing behind). Migrated commands record finalized semantic events and apply their reducers, including server-owned issue numbers. Derived patches enter `sync_log` with provenance; WebSocket notifications after commit remain planned.
 4. Clients pull `/sync/pull?since=<seq>`, apply the log, drop confirmed mutations from their queue and re-apply any still pending.
 
 Everything else (notifications, email, webhooks) hangs off the change events the DO emits to Queues.
@@ -112,7 +117,7 @@ pnpm test
 pnpm test:changelog
 pnpm build
 pnpm seed         # builds the 5k-issue workspace in memory and reports bootstrap size and timing
-pnpm dev          # web shell on :5173 (proxies /sync to :8787 once the Worker exists)
+pnpm dev          # web shell on :5173; local Worker on :8787
 ```
 
 Run `pnpm format` to format maintained source and configuration. The formatter excludes the locked
