@@ -160,6 +160,7 @@ export function App() {
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [title, setTitle] = useState("");
   const [teamId, setTeamId] = useState("");
+  const [archivedIssue, setArchivedIssue] = useState<Row<"issue"> | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(false);
   const [initializationError, setInitializationError] = useState<string | null>(null);
@@ -226,6 +227,21 @@ export function App() {
       setInitializationError(message(error));
     } finally {
       setInitializing(false);
+    }
+  }
+  function archived(issue: Row<"issue">) {
+    setArchivedIssue(issue);
+    location.hash = "issues";
+  }
+  function undoArchive() {
+    if (!archivedIssue) return;
+    try {
+      workspace.archiveIssue(archivedIssue.id, false);
+      location.hash = `issues/${archivedIssue.id}`;
+      setArchivedIssue(null);
+      setFormError(null);
+    } catch (failure) {
+      setFormError(message(failure));
     }
   }
   function retryWorkspace() {
@@ -364,12 +380,29 @@ export function App() {
                   </div>
                 );
               })}
+              {archivedIssue && !snapshot.issues.some((issue) => issue.id === archivedIssue.id) && (
+                <div className="notice archive-notice" role="status" aria-label="Archive status">
+                  <span>{identifier(archivedIssue, snapshot.teams)} archived.</span>
+                  <button className="button quiet compact" onClick={undoArchive}>
+                    Undo archive
+                  </button>
+                  <button
+                    className="notice-dismiss"
+                    aria-label="Dismiss archive notice"
+                    onClick={() => setArchivedIssue(null)}
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
               {issueId ? (
                 selectedIssue && context ? (
                   <IssueDetail
                     key={`${context.workspaceId}:${context.actor.id}:${selectedIssue.id}:${issueIncarnation(selectedIssue)}`}
                     issue={selectedIssue}
                     context={context}
+                    workspaceSnapshot={snapshot}
+                    onArchive={archived}
                   />
                 ) : (
                   <section className="empty-state">

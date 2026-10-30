@@ -309,7 +309,9 @@ describe("provenance", () => {
     expect(feed[0]?.reason).toBe("closing stale issue");
     expect(feed[0]?.patch?.["stateId"]).toBe(stateIds.done);
     expect(feed[0]?.prev?.["stateId"]).toBe(stateIds.backlog);
-    expect(feed[0]?.prev?.["priority"]).toBe(0);
+    const changes = feed.filter((entry) => entry.txnId === feed[0]?.txnId);
+    expect(changes.find((entry) => entry.patch?.["priority"] === 2)?.prev?.["priority"]).toBe(0);
+    expect(changes.every((entry) => entry.actorId === BOB.id && entry.reason === "closing stale issue")).toBe(true);
     // The create wrote the issue + a subscription in one txn.
     const create = feed.at(-1)!;
     const txn = server.activity(ALICE, { txnId: create.txnId });

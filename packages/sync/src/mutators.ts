@@ -53,6 +53,10 @@ export type EventMutatorDef<S extends z.ZodType = z.ZodType> = MutatorDescriptio
   /** A read-only decision. null explicitly selects the transitional legacy path. */
   decide(ctx: DecideContext, args: z.infer<S>): PendingEvent[] | null;
   apply(ctx: MutatorContext, event: DomainEvent): void;
+  /** Transitional legacy remainder, executed atomically before finalized semantic events.
+   * New domain behavior belongs in decide/apply; this preserves existing mixed commands during migration.
+   */
+  beforeEvents?(ctx: MutatorContext, args: z.infer<S>): void;
   /** Recover command intent for an authorized replay; recorded projections are not written directly. */
   replayArgs?(event: DomainEvent): z.input<S> | undefined;
   run?(ctx: MutatorContext, args: z.infer<S>): void;
@@ -113,12 +117,16 @@ export function executeMutator<S extends z.ZodType>(
     def.run(ctx, args);
     return;
   }
-  for (const [index, raw] of events.entries()) {
+  const pendingEvents = events.map((raw) => pendingEventSchema.parse(raw));
+  if (ctx.server && pendingEvents.length && !commit) throw new Error("Authoritative events require a durable commit");
+  for (const pending of pendingEvents) {
     if (ctx.causationSeq !== undefined && (!Number.isSafeInteger(ctx.causationSeq) || ctx.causationSeq <= 0))
       throw new MutationError("causationSeq must be a positive safe integer");
-    const pending = pendingEventSchema.parse(raw);
     if ((ctx.branchId ?? "main") !== "main" && pending.type !== "IssueCreated" && pending.type !== "IssueTitled")
       throw new MutationError("This event is not supported on branches");
+  }
+  def.beforeEvents?.(ctx, args);
+  for (const [index, pending] of pendingEvents.entries()) {
     if (commit) commit(pending, index, def.apply);
     else {
       if (ctx.server) throw new Error("Authoritative events require a durable commit");

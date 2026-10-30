@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added issue status, priority, assignee, labels, and reversible archive controls, with semantic history for human status assertions and supported property changes.
+
 - Added shareable issue details and collaborative descriptions with durable Yjs storage, offline recovery, attributed mirror events, and private-team authorization checks.
 
 - Moved the protected application deployment hostname to kanbun.ai while retaining the existing workspace and account directory.

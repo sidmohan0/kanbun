@@ -2,8 +2,20 @@ import { useState, useSyncExternalStore } from "react";
 import type { Row } from "@kanbun/model";
 import type { WorkspaceContext } from "@kanbun/sync";
 import { descriptionSession } from "./description";
+import { IssueProperties } from "./IssueProperties";
+import type { WorkspaceSnapshot } from "./workspace";
 
-export function IssueDetail({ issue, context }: { issue: Row<"issue">; context: WorkspaceContext }) {
+export function IssueDetail({
+  issue,
+  context,
+  workspaceSnapshot,
+  onArchive,
+}: {
+  issue: Row<"issue">;
+  context: WorkspaceContext;
+  workspaceSnapshot: WorkspaceSnapshot;
+  onArchive(issue: Row<"issue">): void;
+}) {
   const [session] = useState(() => descriptionSession(context, issue));
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
   return (
@@ -12,6 +24,7 @@ export function IssueDetail({ issue, context }: { issue: Row<"issue">; context: 
         ← All issues
       </a>
       <h2>{issue.title}</h2>
+      <IssueProperties issue={issue} snapshot={workspaceSnapshot} onArchive={onArchive} />
       <div className="description-heading">
         <label htmlFor="issue-description">Description</label>
         <span role="status" aria-label="Description status" aria-live="polite">

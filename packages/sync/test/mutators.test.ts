@@ -2,6 +2,43 @@ import { expect, it } from "vitest";
 import { z } from "zod";
 import { defineEventMutator, executeMutator, MemoryStore } from "../src";
 
+it("validates branch and durable-commit boundaries before invoking a transitional legacy remainder", () => {
+  const calls: string[] = [];
+  const command = defineEventMutator({
+    args: z.object({}),
+    description: "A semantic priority change with an existing legacy remainder",
+    decide: () => [
+      {
+        type: "IssuePrioritized",
+        entityType: "issue",
+        entityId: "issue",
+        teamId: "team",
+        scopeUserId: null,
+        payload: { priority: 2 },
+      },
+    ],
+    beforeEvents: () => {
+      calls.push("legacy");
+    },
+    apply: () => {
+      calls.push("event");
+    },
+  });
+  const context = {
+    store: new MemoryStore(),
+    actor: { id: "alice", type: "user" as const },
+    actorId: "alice",
+    now: "2026-10-29T12:00:00.000Z",
+    server: true,
+  };
+  expect(() => executeMutator(command, context, {})).toThrow(/durable commit/);
+  expect(calls).toEqual([]);
+  expect(() => executeMutator(command, { ...context, server: false, branchId: "proposal" }, {})).toThrow(/branches/);
+  expect(calls).toEqual([]);
+  executeMutator(command, { ...context, server: false }, {});
+  expect(calls).toEqual(["legacy", "event"]);
+});
+
 it("keeps JSON extrema reads isolated from the state used by a decision", () => {
   const store = new MemoryStore();
   const now = "2026-10-29T12:00:00.000Z";
