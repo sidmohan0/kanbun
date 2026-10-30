@@ -12,6 +12,8 @@ export class WorkspaceDO extends ApplicationWorkspaceDO {
     await this.ctx.storage.put("notification-test-backup-failure", enabled);
   }
   async notificationTestAlarm() {
+    // The platform consumes its scheduled alarm before invoking the handler.
+    await this.ctx.storage.deleteAlarm();
     try {
       await this.alarm();
       return { ok: true };

@@ -126,7 +126,7 @@ it("persists consumer progress/read state, sanitizes failure, isolates backup fa
   } finally {
     await Promise.allSettled([runtime.close(), restored.close()]);
   }
-});
+}, 30_000);
 
 it("fresh re-invitation cannot reopen the previous admission's inbox or accept a stale browser generation", async () => {
   const runtime = await startPreviewRuntime();

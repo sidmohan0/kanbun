@@ -315,7 +315,7 @@ export async function startPreviewRuntime({
           const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
           await storage.exec(
             "UPDATE scheduled_job SET fire_at = ? WHERE kind = 'workspace-backup'",
-            new Date(0).toISOString(),
+            new Date(Date.now() - 1_000).toISOString(),
           );
         }
       },
