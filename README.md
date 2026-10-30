@@ -49,7 +49,8 @@ the seed still use `node:sqlite`. The web app lists, creates, and renames issues
 IndexedDB-backed offline recovery, automatic cross-browser updates, and visible sync/rejection
 state apply to these issue changes. See the
 [local issue flow](docs/ux/issues.md). A [protected hosted preview](docs/hosted-preview.md) uses
-Cloudflare Access, actual user/workspace context, and a D1 directory. Native sign-in and public
+Cloudflare Access, actual user/workspace context, and a D1 directory. Owners manage
+[targeted invitations and membership](docs/ux/workspace-members.md); native sign-in and public
 onboarding remain planned. [Issue details](docs/ux/issue-details.md) add collaborative descriptions
 in a separate SQLite DocumentDO, with Yjs merging and durable browser recovery. See
 [local Worker development](docs/local-worker.md).

@@ -168,7 +168,9 @@ function blockAuthentication(message = "Your session is no longer authorized. Si
 function workspaceTransport(): Transport {
   const transport = httpTransport(location.origin, async (input, init) => {
     if (authenticationRequired) throw new Error(error ?? "Authentication required");
-    const response = await fetch(input, { ...init, redirect: "manual" });
+    const headers = new Headers(init?.headers);
+    if (context?.admissionId) headers.set("X-Kanbun-Admission", context.admissionId);
+    const response = await fetch(input, { ...init, headers, redirect: "manual" });
     if (
       context?.mode === "hosted" &&
       (response.status === 401 ||
@@ -294,10 +296,18 @@ function connectRealtime() {
   url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
   url.searchParams.set("clientId", client.clientId);
   url.searchParams.set("branchId", "main");
+  if (context?.admissionId) url.searchParams.set("admissionId", context.admissionId);
   // PartySocket supplies its existing bounded reconnect delay. Socket availability
   // does not change whether an HTTP mutation has been saved.
   socket = new ReconnectingWebSocket(url.toString());
   socket.addEventListener("open", requestRealtimeRefresh);
+  socket.addEventListener("close", (event) => {
+    // A server policy close may revoke access while a push is still offline or in flight.
+    // Hide hosted caches immediately rather than waiting behind that unacknowledged outbox.
+    if (event.code !== 1008) return;
+    if (context?.mode === "hosted") blockAuthentication();
+    else requestRealtimeRefresh();
+  });
   socket.addEventListener("message", (event) => {
     if (typeof event.data !== "string") return;
     let value: unknown;
