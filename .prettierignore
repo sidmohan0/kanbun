@@ -7,6 +7,9 @@ packages/model/migrations/
 pnpm-lock.yaml
 .pnpm-store/
 .wrangler/
+artifacts/recovery/
+artifacts/verification/
+artifacts/docs-drift/
 
 # Brand masters and exported assets
 /brand/

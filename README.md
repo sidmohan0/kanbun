@@ -16,7 +16,7 @@ Contributions must not include third-party assets (icon sets, illustrations, CSS
 
 ```
 apps/
-  web/        React + Vite web shell; routing and Worker integration are planned
+  web/        React issue list, creation, and title editing over the local sync client
   worker/     Local HTTP sync and branch APIs backed by a SQLite WorkspaceDO
 packages/
   events/     Typed semantic issue events and their validated envelopes
@@ -44,7 +44,9 @@ Current workspace packages:
 
 The local Worker runs the existing engine in a SQLite-backed `WorkspaceDO`, with HTTP sync and
 branch APIs. Runtime tests and browser recovery checks use actual `workerd`; fast engine tests and
-the seed still use `node:sqlite`. The web app remains a branded shell. Production authentication,
+the seed still use `node:sqlite`. The web app lists, creates, and renames issues with IndexedDB-backed
+offline recovery and visible sync/rejection state. See the [local issue flow](docs/ux/issues.md).
+Production authentication,
 deployment, WebSocket pokes, and DocumentDO/Yjs remain planned. See [local Worker development](docs/local-worker.md).
 
 Issue creation and title-only updates now record `IssueCreated` and `IssueTitled` events and apply
