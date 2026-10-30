@@ -703,3 +703,107 @@ td {
   color: var(--text-secondary);
   margin: 10px 0 0;
 }
+
+.issue-properties {
+  padding: 20px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+.property-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.property-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.property-field select,
+.add-label {
+  min-height: 34px;
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  color: var(--text);
+  background: var(--surface);
+  font-size: var(--text-sm);
+}
+.property-labels {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+.property-label-title {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.label-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.label-chip {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+.label-chip:hover {
+  background: var(--hover);
+}
+.label-chip span {
+  color: var(--text-secondary);
+}
+.issue-archive-action {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.archive-notice {
+  align-items: center;
+}
+.archive-notice > span {
+  margin-right: auto;
+}
+@media (max-width: 620px) {
+  .property-fields {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+.new-label-form {
+  margin-top: 10px;
+}
+.new-label-form label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.new-label-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.new-label-controls input {
+  flex: 1;
+  min-width: 160px;
+}

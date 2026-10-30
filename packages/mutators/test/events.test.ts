@@ -6,6 +6,7 @@ import type { DomainEvent } from "@kanbun/events";
 import { modelNames } from "@kanbun/model";
 import { MemoryStore, type MutatorContext, type Store } from "@kanbun/sync";
 import { SyncServer, SYSTEM_ACTOR } from "@kanbun/sync/server";
+import { MemoryPersister, SyncClient } from "@kanbun/sync/client";
 import { openWorkspaceDb } from "@kanbun/sync/server/node";
 import { applyIssueEvent, mutators } from "../src";
 
@@ -152,6 +153,459 @@ function push(server: SyncServer, mutationId: number, name: string, args: unknow
 }
 
 describe("semantic issue events", () => {
+  it("remaps deleted workflow baseline and assertion references without changing an unrelated effective status", () => {
+    const { db, server } = fixture();
+    try {
+      expect(push(server, 1, "issueCreate", create(ISSUE, id(12)))).toMatchObject({ ok: true, rejected: [] });
+      expect(push(server, 2, "issueUpdate", { id: ISSUE, patch: { stateId: STATES.done } })).toMatchObject({
+        ok: true,
+        rejected: [],
+      });
+      expect(
+        push(server, 3, "workflowStateDelete", { id: STATES.backlog, moveIssuesToStateId: STATES.todo }),
+      ).toMatchObject({ ok: true, rejected: [] });
+      expect(server.store.get("issue", ISSUE)).toMatchObject({
+        derivedStateId: STATES.todo,
+        assertedStateId: STATES.done,
+        stateId: STATES.done,
+        completedAt: CREATED,
+      });
+      expect(server.store.get("team", TEAM)?.defaultIssueStateId).toBe(STATES.todo);
+      expect(push(server, 4, "issueAssertStatus", { id: ISSUE, stateId: null })).toMatchObject({
+        ok: true,
+        rejected: [],
+      });
+      expect(server.store.get("issue", ISSUE)).toMatchObject({
+        stateId: STATES.todo,
+        assertedStateId: null,
+        completedAt: null,
+      });
+      expect(push(server, 5, "issueUpdate", { id: ISSUE, patch: { stateId: STATES.done } })).toMatchObject({
+        ok: true,
+        rejected: [],
+      });
+      expect(
+        push(server, 6, "workflowStateDelete", { id: STATES.done, moveIssuesToStateId: STATES.inProgress }),
+      ).toMatchObject({ ok: true, rejected: [] });
+      expect(server.store.get("issue", ISSUE)).toMatchObject({
+        stateId: STATES.inProgress,
+        assertedStateId: STATES.inProgress,
+        derivedStateId: STATES.todo,
+        completedAt: null,
+        startedAt: CREATED,
+      });
+      expect(push(server, 7, "issueAssertStatus", { id: ISSUE, stateId: null })).toMatchObject({
+        ok: true,
+        rejected: [],
+      });
+      expect(server.store.get("issue", ISSUE)?.stateId).toBe(STATES.todo);
+      const archivedTarget = push(server, 8, "workflowStateDelete", {
+        id: STATES.todo,
+        moveIssuesToStateId: STATES.done,
+      });
+      expect(archivedTarget.ok && archivedTarget.rejected).toMatchObject([
+        { id: 8, error: expect.stringMatching(/active state/) },
+      ]);
+      const invalidDefault = push(server, 9, "teamUpdate", { id: TEAM, patch: { defaultIssueStateId: STATES.done } });
+      expect(invalidDefault.ok && invalidDefault.rejected).toMatchObject([
+        { id: 9, error: expect.stringMatching(/active/) },
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("keeps private-team moves atomic with assignment eligibility and remaps the status baseline", () => {
+    const { db, server } = fixture();
+    try {
+      expect(push(server, 1, "issueCreate", create(ISSUE, id(12)))).toMatchObject({ ok: true, rejected: [] });
+      expect(push(server, 2, "issueUpdate", { id: ISSUE, patch: { assigneeId: BOB.id } })).toMatchObject({
+        ok: true,
+        rejected: [],
+      });
+      const otherTeam = id(100);
+      const states = { backlog: id(101), todo: id(102), inProgress: id(103), done: id(104), canceled: id(105) };
+      expect(
+        push(server, 3, "teamCreate", {
+          id: otherTeam,
+          name: "Private",
+          key: "PRIV",
+          visibility: "private",
+          membershipId: id(106),
+          stateIds: states,
+        }),
+      ).toMatchObject({ ok: true, rejected: [] });
+      const before = projection(server.store);
+      const history = server.events(ALICE);
+      const denied = push(server, 4, "issueUpdate", { id: ISSUE, patch: { teamId: otherTeam, title: "Cannot move" } });
+      expect(denied.ok && denied.rejected).toMatchObject([{ id: 4, error: expect.stringMatching(/private team/) }]);
+      expect(projection(server.store)).toEqual(before);
+      expect(server.events(ALICE)).toEqual(history);
+      expect(
+        push(server, 5, "issueUpdate", {
+          id: ISSUE,
+          patch: { teamId: otherTeam, title: "Moved safely", assigneeId: null, priority: 3 },
+        }),
+      ).toMatchObject({ ok: true, rejected: [] });
+      expect(server.store.get("issue", ISSUE)).toMatchObject({
+        teamId: otherTeam,
+        title: "Moved safely",
+        assigneeId: null,
+        priority: 3,
+        stateId: states.backlog,
+        derivedStateId: states.backlog,
+        assertedStateId: null,
+      });
+      expect(
+        server
+          .events(ALICE)
+          .slice(-3)
+          .map((event) => event.teamId),
+      ).toEqual([otherTeam, otherTeam, otherTeam]);
+      expect(push(server, 6, "issueAssertStatus", { id: ISSUE, stateId: null })).toMatchObject({
+        ok: true,
+        rejected: [],
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("discards the optimistic legacy remainder and facts together after a late local failure", async () => {
+    const { db, server } = fixture();
+    try {
+      expect(push(server, 1, "issueCreate", create(ISSUE, id(12)))).toMatchObject({ ok: true, rejected: [] });
+      const client = new SyncClient({
+        actor: ALICE,
+        mutators,
+        persister: new MemoryPersister(),
+        clientId: "scratch-controls",
+        transport: {
+          bootstrap: async (clientId) => server.bootstrap(ALICE, clientId),
+          push: async (request) => server.push(ALICE, request),
+          pull: async (request) => server.pull(ALICE, request),
+          load: async (request) => server.load(ALICE, request),
+        },
+      });
+      await client.start();
+      const before = projection(client.view);
+      expect(() =>
+        client.mutate("issueUpdate", {
+          id: ISSUE,
+          patch: {
+            title: "Uncommitted",
+            priority: 3,
+            stateId: STATES.done,
+            assigneeId: BOB.id,
+            estimate: 8,
+          },
+          assigneeSubscriptionId: id(12),
+        }),
+      ).toThrow(/already exists/);
+      expect(projection(client.view)).toEqual(before);
+      expect(client.pendingCount()).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("rejects unsupported branch controls even when their requested value is already present", () => {
+    const { db, server } = fixture();
+    try {
+      expect(push(server, 1, "issueCreate", create(ISSUE, id(12)))).toMatchObject({ ok: true, rejected: [] });
+      const branchId = id(90);
+      server.createBranch(ALICE, { id: branchId, name: "Title-only branch" });
+      const history = server.events(ALICE, { branchId });
+      const result = server.push(ALICE, {
+        clientId: "unsupported-controls",
+        branchId,
+        mutations: [
+          {
+            id: 1,
+            name: "issueUpdate",
+            args: { id: ISSUE, patch: { title: "Must not apply", priority: 0 } },
+            ts: CREATED,
+          },
+          { id: 2, name: "issueArchive", args: { id: ISSUE, archived: false }, ts: CREATED },
+          { id: 3, name: "issueLabelsSet", args: { issueId: ISSUE, add: [], remove: [] }, ts: CREATED },
+          { id: 4, name: "issueAssertStatus", args: { id: ISSUE, stateId: STATES.done }, ts: CREATED },
+        ],
+      });
+      expect(result.ok && result.rejected.map((rejection) => rejection.id)).toEqual([1, 2, 3, 4]);
+      expect(server.events(ALICE, { branchId })).toEqual(history);
+      expect(server.store.get("issue", ISSUE)?.title).toBe("Recorded issue");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("preserves mixed core and legacy issue updates atomically while recording granular human facts", () => {
+    const { db, server } = fixture();
+    try {
+      expect(push(server, 1, "issueCreate", create(ISSUE, id(12)))).toMatchObject({ ok: true, rejected: [] });
+      const args = {
+        id: ISSUE,
+        patch: {
+          title: "Mixed update",
+          priority: 2,
+          stateId: STATES.done,
+          assigneeId: BOB.id,
+          estimate: 5,
+          dueDate: "2026-12-01",
+          projectId: id(30),
+        },
+        assigneeSubscriptionId: id(13),
+      };
+      expect(push(server, 2, "issueUpdate", args)).toMatchObject({ ok: true, rejected: [] });
+      expect(server.store.get("issue", ISSUE)).toMatchObject({
+        ...args.patch,
+        assertedStateId: STATES.done,
+        derivedStateId: STATES.backlog,
+        completedAt: CREATED,
+      });
+      const facts = server.events(ALICE).slice(1);
+      expect(facts.map((event) => event.type)).toEqual([
+        "IssueTitled",
+        "IssuePrioritized",
+        "HumanAssertedStatus",
+        "IssueAssigned",
+        "SubscriberAdded",
+      ]);
+      expect(
+        facts.every(
+          (event) => event.actor.id === ALICE.id && event.mutationId === 2 && event.txnId === facts[0]!.txnId,
+        ),
+      ).toBe(true);
+      expect(server.store.get("issueSubscription", id(13))).toMatchObject({ userId: BOB.id, issueId: ISSUE });
+      const history = server.events(ALICE);
+      expect(push(server, 2, "issueUpdate", args)).toMatchObject({ ok: true, rejected: [] });
+      expect(server.events(ALICE)).toEqual(history);
+      expect(push(server, 3, "issueAssertStatus", { id: ISSUE, stateId: null })).toMatchObject({
+        ok: true,
+        rejected: [],
+      });
+      expect(server.store.get("issue", ISSUE)).toMatchObject({
+        assertedStateId: null,
+        stateId: STATES.backlog,
+        completedAt: null,
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("rolls back the legacy remainder and every earlier fact after a late subscription failure", () => {
+    const { db, server } = fixture();
+    try {
+      expect(push(server, 1, "issueCreate", create(ISSUE, id(12)))).toMatchObject({ ok: true, rejected: [] });
+      const before = projection(server.store);
+      const history = server.events(ALICE);
+      const cursor = server.currentSeq();
+      const result = push(server, 2, "issueUpdate", {
+        id: ISSUE,
+        patch: {
+          title: "Must roll back",
+          priority: 3,
+          stateId: STATES.done,
+          assigneeId: BOB.id,
+          estimate: 8,
+          dueDate: "2026-12-02",
+        },
+        assigneeSubscriptionId: id(12),
+      });
+      expect(result.ok && result.rejected).toMatchObject([
+        { id: 2, error: expect.stringMatching(/already exists|UNIQUE/i) },
+      ]);
+      expect(projection(server.store)).toEqual(before);
+      expect(server.events(ALICE)).toEqual(history);
+      expect(server.currentSeq()).toBe(cursor);
+      const invalidRemainder = push(server, 3, "issueUpdate", {
+        id: ISSUE,
+        patch: { title: "Also roll back", parentId: ISSUE },
+      });
+      expect(invalidRemainder.ok && invalidRemainder.rejected).toMatchObject([
+        { id: 3, error: expect.stringMatching(/own parent/) },
+      ]);
+      expect(projection(server.store)).toEqual(before);
+      expect(server.events(ALICE)).toEqual(history);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("records single-select replacement and archive Undo, and rejects inactive or foreign control values", () => {
+    const { db, server } = fixture();
+    try {
+      expect(push(server, 1, "issueCreate", create(ISSUE, id(12)))).toMatchObject({ ok: true, rejected: [] });
+      const group = id(60);
+      const first = id(61);
+      const second = id(62);
+      expect(
+        push(server, 2, "issueLabelCreate", {
+          id: group,
+          name: "Area",
+          color: "#123456",
+          isGroup: true,
+          groupType: "single",
+        }),
+      ).toMatchObject({ ok: true, rejected: [] });
+      expect(
+        push(server, 3, "issueLabelCreate", { id: first, name: "Web", parentId: group, color: "#123456" }),
+      ).toMatchObject({ ok: true, rejected: [] });
+      expect(
+        push(server, 4, "issueLabelCreate", { id: second, name: "API", parentId: group, color: "#123456" }),
+      ).toMatchObject({ ok: true, rejected: [] });
+      expect(
+        push(server, 5, "issueLabelsSet", { issueId: ISSUE, add: [{ labelId: first, linkId: id(63) }], remove: [] }),
+      ).toMatchObject({ ok: true, rejected: [] });
+      expect(
+        push(server, 6, "issueLabelsSet", { issueId: ISSUE, add: [{ labelId: second, linkId: id(64) }], remove: [] }),
+      ).toMatchObject({ ok: true, rejected: [] });
+      expect(
+        server
+          .events(ALICE)
+          .slice(-2)
+          .map((event) => event.type),
+      ).toEqual(["LabelRemoved", "LabelAdded"]);
+      expect(server.store.list("issueLabelLink", { issueId: ISSUE })).toMatchObject([{ labelId: second }]);
+      expect(push(server, 7, "issueArchive", { id: ISSUE, archived: true })).toMatchObject({ ok: true, rejected: [] });
+      expect(server.store.get("issue", ISSUE)?.archivedAt).toBe(CREATED);
+      expect(push(server, 8, "issueArchive", { id: ISSUE, archived: false })).toMatchObject({ ok: true, rejected: [] });
+      expect(server.events(ALICE).at(-1)?.type).toBe("IssueRestored");
+      expect(server.store.get("issue", ISSUE)?.archivedAt).toBeNull();
+      server.system("memberSync", { id: BOB.id, name: "Bob", email: "bob@example.com", active: false });
+      const inactive = push(server, 9, "issueUpdate", { id: ISSUE, patch: { assigneeId: BOB.id } });
+      expect(inactive.ok && inactive.rejected).toMatchObject([
+        { id: 9, error: expect.stringMatching(/active member/) },
+      ]);
+      server.system("memberSync", { id: BOB.id, name: "Bob", email: "bob@example.com", active: true });
+      server.store.patch("team", TEAM, { visibility: "private" });
+      const privateAssignee = push(server, 10, "issueUpdate", { id: ISSUE, patch: { assigneeId: BOB.id } });
+      expect(privateAssignee.ok && privateAssignee.rejected).toMatchObject([
+        { id: 10, error: expect.stringMatching(/private team/) },
+      ]);
+      server.store.patch("workflowState", STATES.done, { teamId: id(99) });
+      const foreignState = push(server, 11, "issueUpdate", { id: ISSUE, patch: { title: "No", stateId: STATES.done } });
+      expect(foreignState.ok && foreignState.rejected).toMatchObject([{ id: 11, error: "state not in team" }]);
+      server.store.patch("issueLabel", first, { teamId: id(99) });
+      const foreignLabel = push(server, 12, "issueLabelsSet", {
+        issueId: ISSUE,
+        add: [{ labelId: first, linkId: id(65) }],
+        remove: [],
+      });
+      expect(foreignLabel.ok && foreignLabel.rejected).toMatchObject([
+        { id: 12, error: expect.stringMatching(/another team/) },
+      ]);
+      const blankLabel = push(server, 13, "issueLabelCreate", { id: id(66), name: "  ", color: "#123456" });
+      expect(blankLabel.ok && blankLabel.rejected).toMatchObject([{ id: 13, error: "label name is required" }]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("replays independently recorded controls, subscription, labels and archive Undo in memory and SQLite", () => {
+    const { db, server } = fixture();
+    try {
+      const created = GOLDEN[0]!;
+      const titled = GOLDEN[1]!;
+      if (created.type !== "IssueCreated" || titled.type !== "IssueTitled")
+        throw new Error("Golden issue input missing");
+      const memory = new MemoryStore();
+      copyProjection(server.store, memory);
+      const base = { ...titled, txnId: "golden-controls" };
+      const facts: DomainEvent[] = [
+        {
+          ...created,
+          payload: { ...created.payload, assigneeId: null, subscriptions: [{ id: id(12), userId: ALICE.id }] },
+        },
+        { ...base, type: "IssuePrioritized", seq: 43, payload: { priority: 3 } },
+        {
+          ...base,
+          type: "HumanAssertedStatus",
+          seq: 44,
+          payload: {
+            stateId: STATES.done,
+            derivedStateId: STATES.backlog,
+            effectiveStateId: STATES.done,
+            boardOrder: "a7",
+            startedAt: null,
+            completedAt: TITLED,
+            canceledAt: null,
+            triagedAt: CREATED,
+            startedTriageAt: null,
+          },
+        },
+        { ...base, type: "IssueAssigned", seq: 45, payload: { assigneeId: BOB.id } },
+        { ...base, type: "SubscriberAdded", seq: 46, payload: { id: id(13), userId: BOB.id } },
+        { ...base, type: "LabelRemoved", seq: 47, payload: { labelId: LABEL, linkId: id(11) } },
+        { ...base, type: "LabelAdded", seq: 48, payload: { labelId: LABEL, linkId: id(14) } },
+        { ...base, type: "IssueArchived", seq: 49, payload: {} },
+      ];
+      for (const event of facts) {
+        applyIssueEvent(context(memory), event);
+        applyIssueEvent(context(server.store), event);
+      }
+      expect(projection(memory)).toEqual(projection(server.store));
+      expect(memory.get("issue", ISSUE)).toMatchObject({
+        priority: 3,
+        assertedStateId: STATES.done,
+        derivedStateId: STATES.backlog,
+        stateId: STATES.done,
+        assigneeId: BOB.id,
+        boardOrder: "a7",
+        completedAt: TITLED,
+        archivedAt: TITLED,
+        createdSeq: 41,
+        updatedSeq: 49,
+      });
+      expect(memory.list("issueLabelLink", { issueId: ISSUE })).toMatchObject([
+        { id: id(14), labelId: LABEL, teamId: TEAM, createdAt: TITLED },
+      ]);
+      expect(memory.get("issueSubscription", id(13))).toMatchObject({
+        issueId: ISSUE,
+        userId: BOB.id,
+        teamId: TEAM,
+        createdAt: TITLED,
+      });
+      const undo: DomainEvent[] = [
+        { ...base, type: "IssueRestored", seq: 50, payload: { from: "archive" } },
+        { ...base, type: "IssueUnassigned", seq: 51, payload: {} },
+        {
+          ...base,
+          type: "HumanAssertedStatus",
+          seq: 52,
+          payload: {
+            stateId: null,
+            derivedStateId: STATES.backlog,
+            effectiveStateId: STATES.backlog,
+            boardOrder: "a8",
+            startedAt: null,
+            completedAt: null,
+            canceledAt: null,
+            triagedAt: CREATED,
+            startedTriageAt: null,
+          },
+        },
+      ];
+      for (const event of undo) {
+        applyIssueEvent(context(memory), event);
+        applyIssueEvent(context(server.store), event);
+      }
+      expect(projection(memory)).toEqual(projection(server.store));
+      expect(memory.get("issue", ISSUE)).toMatchObject({
+        stateId: STATES.backlog,
+        assertedStateId: null,
+        derivedStateId: STATES.backlog,
+        assigneeId: null,
+        archivedAt: null,
+        completedAt: null,
+        updatedSeq: 52,
+      });
+    } finally {
+      db.close();
+    }
+  });
+
   it("replays an independently recorded description and deletion mirror identically in memory and SQLite", () => {
     const { db, server } = fixture();
     try {
