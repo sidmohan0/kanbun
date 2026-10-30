@@ -462,16 +462,35 @@ export function App() {
             </section>
           ) : snapshot.phase === "failed" ? (
             <section className="connection-panel">
-              <h2>Couldn’t open this workspace</h2>
+              <h2>
+                {snapshot.accessDenied
+                  ? "Workspace access required"
+                  : snapshot.authenticationRequired
+                    ? "Sign in to Kanbun"
+                    : "Couldn’t open this workspace"}
+              </h2>
               <p role="alert">
                 {initializationError ??
-                  (snapshot.authenticationRequired
-                    ? "Sign in again and reload this page to continue. Pending changes remain saved in this browser."
-                    : connectionMessage(snapshot.error, local))}
+                  (snapshot.accessDenied
+                    ? "Sign-in does not automatically grant workspace access. You may need an invitation, or your access may have been removed."
+                    : snapshot.authenticationRequired
+                      ? "Sign in again using the email address on your invitation. Pending changes remain saved in this browser."
+                      : connectionMessage(snapshot.error, local))}
               </p>
+              {snapshot.authenticationRequired && (
+                <p>
+                  {snapshot.accessDenied
+                    ? "Ask the workspace owner for an invitation link and open that complete link to join. If you already joined, check that you are signed in with the invited email."
+                    : "After signing in, reopen your complete invitation link if you have not joined yet. Kanbun does not require a separate account registration."}
+                </p>
+              )}
               <div className="panel-actions">
                 <button className="button primary" onClick={retryWorkspace}>
-                  {snapshot.authenticationRequired ? "Sign in again" : "Try again"}
+                  {snapshot.accessDenied
+                    ? "Check access again"
+                    : snapshot.authenticationRequired
+                      ? "Sign in again"
+                      : "Try again"}
                 </button>
                 {local && snapshot.error?.includes("HTTP 403") && (
                   <button className="button" onClick={() => void initialize()} disabled={initializing}>
