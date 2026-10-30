@@ -3,6 +3,8 @@ import type { BootstrapResponse } from "@kanbun/sync";
 import { createTestHarness } from "wrangler";
 import { fileURLToPath } from "node:url";
 
+export { startPreviewRuntime } from "./preview-runtime";
+
 export type RuntimeSnapshot = {
   seq: number;
   issues: Row<"issue">[];

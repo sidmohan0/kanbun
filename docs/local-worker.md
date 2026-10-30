@@ -2,7 +2,7 @@
 
 `apps/worker` runs the sync engine in a real SQLite-backed `WorkspaceDO`. Issue creation, title
 updates, branch isolation, preview, and merge run through Cloudflare's local `workerd` runtime.
-Production authentication and deployment are later work.
+The separate [hosted preview](hosted-preview.md) uses authenticated identity and workspace routing.
 
 ## Start in the devcontainer
 
@@ -45,15 +45,17 @@ cannot use sync routes. Existing team permissions, branch ownership, and write s
 All requests target the fixed `local` workspace. This is fixture identity selection, not production
 authentication or workspace routing.
 
-The default configuration disables workers.dev and preview URLs. There is no deployment workflow
-or deploy script. `pnpm build` bundles and validates the Worker using Wrangler's `deploy --dry-run`;
-it does not publish the Worker. Production access needs a later authenticated entry point.
+The default configuration disables workers.dev and preview URLs. `pnpm build` builds the web assets
+and validates both local and preview Workers using Wrangler's `deploy --dry-run`; it does not
+publish either Worker. The explicit preview deployment command uses a separate authenticated
+configuration and never enables local fixture identities.
 
 ## HTTP surface
 
 | Method | Path                   | Purpose                                       |
 | ------ | ---------------------- | --------------------------------------------- |
 | POST   | `/__local/seed`        | Initialize local fixture data                 |
+| GET    | `/api/context`         | Describe the local identity before seeding    |
 | GET    | `/sync/bootstrap`      | Bootstrap a branch-bound client               |
 | GET    | `/sync/connect`        | Upgrade a main-branch notification socket     |
 | GET    | `/sync/pull`           | Pull visible patches after `since`            |

@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "wrangler dev --local --ip 0.0.0.0 --port 8787 --var LOCAL_DEV:true",
-    "build": "wrangler deploy --dry-run --outdir dist",
+    "build": "wrangler deploy --dry-run --outdir dist && wrangler deploy --config wrangler.preview.json --dry-run --outdir dist/preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p test/tsconfig.json"
   },
@@ -19,10 +19,12 @@
     "@kanbun/model": "workspace:*",
     "@kanbun/mutators": "workspace:*",
     "@kanbun/sync": "workspace:*",
+    "jose": "6.2.14",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261030.1",
+    "@kanbun/web": "workspace:*",
     "@types/node": "22.20.5",
     "typescript": "^5.9.3",
     "vitest": "^4.0.6",

@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "pnpm -r --parallel --filter './apps/*' dev",
     "build": "pnpm -r build",
+    "deploy:preview": "node scripts/deploy-preview.mjs",
     "test": "pnpm -r test",
     "test:changelog": "node --test scripts/check-changelog.test.mjs",
     "test:verifier": "pnpm --filter @kanbun/verifier test",

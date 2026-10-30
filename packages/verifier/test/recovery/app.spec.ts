@@ -1,7 +1,7 @@
 import { uuidv7 } from "@kanbun/model";
 import type { Mutation, PushRequest, PushResponse } from "@kanbun/sync";
 import type { Page, WebSocketRoute } from "@playwright/test";
-import { test, expect, syncApi } from "./app.fixture";
+import { test, expect, syncApi, readWorkspaceState } from "./app.fixture";
 
 async function openApp(page: Page, origin: string) {
   await page.goto(origin);
@@ -17,25 +17,7 @@ async function rename(page: Page, identifier: string, title: string) {
 }
 
 async function storedOutbox(page: Page): Promise<Mutation[]> {
-  return page.evaluate(async () => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("kanbun");
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    try {
-      return await new Promise<Mutation[]>((resolve, reject) => {
-        const request = db.transaction("state", "readonly").objectStore("state").get("local:user-alice:main");
-        request.onsuccess = () => {
-          const state = request.result as { pending?: Mutation[] } | undefined;
-          resolve(state?.pending ?? []);
-        };
-        request.onerror = () => reject(request.error);
-      });
-    } finally {
-      db.close();
-    }
-  });
+  return (await readWorkspaceState(page, "local:user-alice:main"))?.pending ?? [];
 }
 
 async function expectStoredTitle(page: Page, title: string) {
@@ -265,10 +247,12 @@ test("an offline title entered in the issue UI survives reload and is committed 
     expect((await app.runtime.inspect()).issues.find((issue) => issue.id === app.issueId)?.title).toBe("Shared issue");
     await expectStoredTitle(page, "A title saved while offline");
 
+    await context.route("**/api/context", (route) => route.abort("internetdisconnected"));
     await page.reload();
     await expect(page.getByRole("row", { name: "REC-1", exact: true })).toContainText("A title saved while offline");
     await expect(page.getByRole("status")).toContainText("Offline");
     await context.unroute(syncApi);
+    await context.unroute("**/api/context");
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(page.getByRole("status")).toContainText("Saved");
     const committed = await app.runtime.inspect();

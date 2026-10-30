@@ -16,16 +16,18 @@ function initialTheme(): Theme {
   return "system";
 }
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
-function connectionMessage(error: string | null) {
+function connectionMessage(error: string | null, local: boolean) {
   if (/Web Locks/i.test(error ?? ""))
     return "This browser cannot coordinate local workspace storage. Open kanbun in a browser with Web Locks support.";
   if (/IndexedDB|storage|quota|denied/i.test(error ?? ""))
     return "Browser storage is unavailable. Check this site's storage permissions, then try again.";
-  if (error?.includes("HTTP 403"))
+  if (local && error?.includes("HTTP 403"))
     return "The local workspace is unavailable. If this is your first visit, initialize it below.";
-  if (error?.includes("HTTP 503"))
+  if (local && error?.includes("HTTP 503"))
     return "The local workspace is disabled. Start the local development stack and try again.";
-  return "Check your connection and that the local development stack is running, then choose Refresh to try again.";
+  return local
+    ? "Check your connection and that the local development stack is running, then choose Refresh to try again."
+    : (error ?? "Check your connection and reload to open your workspace.");
 }
 function identifier(issue: Row<"issue">, teams: Row<"team">[]) {
   return issue.number === 0
@@ -156,6 +158,10 @@ export function App() {
     }
   }, [theme]);
   const selectedTeam = teamId || snapshot.teams[0]?.id || "";
+  const context = snapshot.context;
+  const local = context?.mode === "local";
+  const workspaceName = context?.workspaceName ?? "Workspace";
+  const userName = context?.name ?? "Not signed in";
   const ready = snapshot.phase === "ready";
   const canCreate = ready && Boolean(selectedTeam);
   const pendingIds = new Set(snapshot.pendingIssueIds);
@@ -182,6 +188,7 @@ export function App() {
     }
   }
   async function initialize() {
+    if (!local) return;
     setInitializing(true);
     setInitializationError(null);
     try {
@@ -199,6 +206,10 @@ export function App() {
       setInitializing(false);
     }
   }
+  function retryWorkspace() {
+    if (snapshot.authenticationRequired || !context) location.reload();
+    else void workspace.refresh();
+  }
   return (
     <div className="workspace-shell">
       <aside className="workspace-sidebar" aria-label="Workspace navigation">
@@ -208,11 +219,11 @@ export function App() {
         </a>
         <div className="workspace-label">
           <span className="workspace-avatar" aria-hidden="true">
-            L
+            {workspaceName.slice(0, 1).toUpperCase()}
           </span>
           <div>
-            <strong>Local workspace</strong>
-            <span>Development</span>
+            <strong>{workspaceName}</strong>
+            <span>{local ? "Development" : context ? "Signed in" : "Connecting"}</span>
           </div>
         </div>
         <nav>
@@ -226,11 +237,11 @@ export function App() {
         <div className="sidebar-footer">
           <div className="local-person">
             <span className="person-avatar" aria-hidden="true">
-              A
+              {context ? userName.slice(0, 1).toUpperCase() : "?"}
             </span>
             <div>
-              <strong>Alice</strong>
-              <span>Local fixture identity</span>
+              <strong>{userName}</strong>
+              <span>{local ? "Local fixture identity" : (context?.email ?? "")}</span>
             </div>
           </div>
           <label className="theme-control">
@@ -246,7 +257,7 @@ export function App() {
       <main className="issues-main" id="issues">
         <header className="workspace-topbar">
           <span className="workspace-breadcrumb">
-            Local workspace <span aria-hidden="true">/</span> All issues
+            {workspaceName} <span aria-hidden="true">/</span> All issues
           </span>
           <div className="sync-actions">
             <span className="sync-indicator" data-state={snapshot.status} role="status" aria-live="polite">
@@ -256,7 +267,7 @@ export function App() {
             </span>
             <button
               className="button quiet compact"
-              onClick={() => void workspace.refresh()}
+              onClick={retryWorkspace}
               disabled={snapshot.phase === "starting" || snapshot.phase === "waiting"}
             >
               Refresh
@@ -270,7 +281,7 @@ export function App() {
               <h1>Issues</h1>
               <p className="page-description">A place for the work ahead.</p>
             </div>
-            <span className="local-badge">Local development</span>
+            {context && <span className="local-badge">{local ? "Local development" : "Private workspace"}</span>}
           </div>
           {snapshot.phase === "waiting" ? (
             <section className="empty-state" aria-labelledby="waiting-title">
@@ -280,12 +291,17 @@ export function App() {
           ) : snapshot.phase === "failed" ? (
             <section className="connection-panel">
               <h2>Couldn’t open this workspace</h2>
-              <p role="alert">{initializationError ?? connectionMessage(snapshot.error)}</p>
+              <p role="alert">
+                {initializationError ??
+                  (snapshot.authenticationRequired
+                    ? "Sign in again and reload this page to continue. Pending changes remain saved in this browser."
+                    : connectionMessage(snapshot.error, local))}
+              </p>
               <div className="panel-actions">
-                <button className="button primary" onClick={() => void workspace.refresh()}>
-                  Try again
+                <button className="button primary" onClick={retryWorkspace}>
+                  {snapshot.authenticationRequired ? "Sign in again" : "Try again"}
                 </button>
-                {snapshot.error?.includes("HTTP 403") && (
+                {local && snapshot.error?.includes("HTTP 403") && (
                   <button className="button" onClick={() => void initialize()} disabled={initializing}>
                     {initializing ? "Initializing…" : "Initialize local workspace"}
                   </button>
@@ -299,7 +315,7 @@ export function App() {
                   <strong>
                     {snapshot.status === "offline" ? "Connection unavailable." : "Changes need attention."}
                   </strong>{" "}
-                  {connectionMessage(snapshot.error)}
+                  {connectionMessage(snapshot.error, local)}
                 </div>
               )}
               {snapshot.rejections.map((rejection) => {
@@ -380,7 +396,7 @@ export function App() {
                   </div>
                 ) : (
                   <table>
-                    <caption className="visually-hidden">Issues in the local workspace</caption>
+                    <caption className="visually-hidden">Issues in {workspaceName}</caption>
                     <thead>
                       <tr>
                         <th scope="col">Identifier</th>
@@ -411,7 +427,11 @@ export function App() {
             </>
           )}
           <p className="local-footnote">
-            This workspace uses local fixture data. Sign-in and deployment are still to come.
+            {local
+              ? "This workspace uses local fixture data."
+              : context
+                ? `Signed in to ${workspaceName}.`
+                : "Connect to open your workspace."}
           </p>
         </div>
       </main>
