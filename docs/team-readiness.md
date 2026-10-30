@@ -37,9 +37,24 @@ devcontainer verifier, changelog policy, and automated preview deployment remain
        [Runbook](operations.md); [health-check proof](../scripts/preview-health.test.mjs),
        [error-reporting proof](../apps/worker/test/reporting.test.ts), and
        [successful hosted health run](https://github.com/sidmohan0/kanbun/actions/runs/41124994715).
-10. [ ] Team-scale acceptance: multiple authenticated users; concurrent and offline editing;
+10. [x] Team-scale acceptance: multiple authenticated users; concurrent and offline editing;
         expired/revoked sessions; realistic issue volume; measured 5,000-issue bootstrap and rendering
         against the specification's one-second target.
+        [Scale fixture](../packages/verifier/test/recovery/app-scale.spec.ts),
+        [authenticated recovery](../packages/verifier/test/recovery/app-membership.spec.ts), and
+        [measurement definition](ux/issue-views.md#measured-rendering-evidence).
+
+## Recorded qualification
+
+On October 30, 2026, the
+[qualification source](https://github.com/sidmohan0/kanbun/commit/57192165e600c5864f25bd23e58ba4ea6573a1f1)
+passed all 15 devcontainer verifier steps, including 37 Chromium cases and 53 Worker package cases.
+The full-suite 5,000-issue observation was 815.5 ms from bootstrap fetch to painted React view; a
+controlled single-worker observation was 724.0 ms, including 62.8 ms HTTP and a 420,126-byte encoded
+response. Both rendered all 5,000 rows with initially empty browser storage and met the one-second
+target. Fixture seeding and cold module compilation are excluded. These local observations are
+retained acceptance evidence rather than a hosted latency guarantee; CI retains fresh receipts and
+browser reports for each candidate.
 
 Implementation proceeds in focused PRs. Frontend, backend, and behavioral tests can run in parallel
 within a slice once their interfaces agree. Access administration precedes hosted multi-user proof;

@@ -16,7 +16,7 @@ Contributions must not include third-party assets (icon sets, illustrations, CSS
 
 ```
 apps/
-  web/        React issue list, details, and collaborative descriptions over the local sync client
+  web/        React issue views, discussion, inbox, and collaborative descriptions over the local sync client
   worker/     HTTP sync, notifications, SQLite WorkspaceDO, and Yjs DocumentDO bodies
 packages/
   events/     Typed semantic issue events and their validated envelopes
@@ -55,7 +55,15 @@ onboarding remain planned. [Issue details](docs/ux/issue-details.md) add collabo
 in a separate SQLite DocumentDO, with Yjs merging and durable browser recovery. See
 [local Worker development](docs/local-worker.md).
 
-Issue creation, human property changes, labels, archive, and document publication record semantic
+[Daily views](docs/ux/issue-views.md) add My Issues, search, combined filters, and sorting.
+[Discussion](docs/ux/issue-discussion.md) adds attributed comments, replies, thread resolution,
+and activity grouped by intent. The personal [Inbox](docs/ux/workspace-inbox.md) shows assignments,
+explicit mentions, replies, and followed-issue comments, with durable read state. Private
+[workspace backups](docs/data-recovery.md) include the directory, SQL state, and collaborative
+bodies, with an isolated restoration procedure. The [operations runbook](docs/operations.md)
+describes scheduled health reports and failure recovery.
+
+Issue creation, human property changes, labels, archive, document publication, and discussion record semantic
 events and apply shared reducers. Their recorded history can reproduce the supported projections
 in memory and SQLite. Other mutations retain a legacy path during the incremental migration. See
 [semantic event replay](docs/event-replay.md) for the supported scope and invariants.
@@ -65,8 +73,8 @@ Branch rows survive restarts without changing main, while untouched reads follow
 Human owners can preview and merge the supported changes with explicit conflict choices and durable
 retry receipts. The branch review UI remains planned.
 
-The [team readiness checklist](docs/team-readiness.md) tracks the remaining product and operational
-gates before an invited team pilot.
+The [team readiness checklist](docs/team-readiness.md) links the verified product and operational
+capabilities and acceptance evidence for an invited team pilot.
 
 ## How a write flows
 
@@ -75,7 +83,9 @@ gates before an invited team pilot.
 3. The authority runs the same command inside a SQLite transaction (one savepoint per mutation, so a rejected one leaves nothing behind). Migrated commands record finalized semantic events and apply their reducers, including server-owned issue numbers. Derived patches enter `sync_log` with provenance; main-branch commits send cursor-only WebSocket notifications.
 4. Clients pull `/sync/pull?since=<seq>` after notifications and socket reconnects, apply the log, drop confirmed mutations from their queue and re-apply any still pending. Socket messages never carry rows or replace HTTP synchronization.
 
-Everything else (notifications, email, webhooks) hangs off the change events the DO emits to Queues.
+Personal inbox notifications are a durable consumer of committed main-workspace events, dispatched
+through the workspace's persisted alarm jobs after the write commits. Email, webhooks, and other
+external delivery remain planned Queue consumers.
 
 ## Development
 
