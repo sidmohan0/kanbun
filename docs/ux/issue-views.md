@@ -56,3 +56,10 @@ summary removes 15,000 additional table cells while
 retaining every property. No pagination cap or virtualization was required. The browser scale test
 retains its structured receipt and verifies the full working-set row count; each subsequent run
 reports whether its observed rendering time meets the specification target.
+
+After integrating discussion and recovery, the complete suite passed all 34 browser cases. Its
+scale observation was 1,047.3 ms while a deployment build was also running in the shared VM. A
+controlled single-worker run of the same application code, without that competing build, measured
+783.7 ms to paint all 5,000 rows, including 68.4 ms HTTP and a 422,971-byte encoded response. Both
+observations are retained as evidence; the timing remains advisory because shared-runner load
+changes it. The controlled observation meets the specification target.
