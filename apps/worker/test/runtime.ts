@@ -1,7 +1,6 @@
 import type { Row } from "@kanbun/model";
 import { issueIncarnation, type BootstrapResponse } from "@kanbun/sync";
-import { createTestHarness } from "wrangler";
-import { fileURLToPath } from "node:url";
+import { createRuntimeHarness, localWorkerConfig } from "./harness";
 
 export { startPreviewRuntime } from "./preview-runtime";
 
@@ -19,10 +18,10 @@ export type RuntimeSnapshot = {
 
 /** Shared Node test adapter; the Worker and all SQL execute in workerd. */
 export async function startWorkspaceRuntime({ localDev = true }: { localDev?: boolean } = {}) {
-  const harness = createTestHarness({
-    root: fileURLToPath(new URL("..", import.meta.url)),
-    workers: [{ configPath: "wrangler.json", vars: { LOCAL_DEV: localDev ? "true" : "false" } }],
-  });
+  const config = await localWorkerConfig();
+  const harness = await createRuntimeHarness([
+    { ...config, vars: { ...config.vars, LOCAL_DEV: localDev ? "true" : "false" } },
+  ]);
   try {
     const { url } = await harness.listen();
     const origin = url.origin;
