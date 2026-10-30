@@ -56,6 +56,8 @@ in a separate SQLite DocumentDO, with Yjs merging and durable browser recovery. 
 [local Worker development](docs/local-worker.md).
 
 [Daily views](docs/ux/issue-views.md) add My Issues, search, combined filters, and sorting.
+[Issue boards](docs/ux/issue-board.md) group the same filtered work by team and status, with drag
+and keyboard status changes.
 [Discussion](docs/ux/issue-discussion.md) adds attributed comments, replies, thread resolution,
 and activity grouped by intent. The personal [Inbox](docs/ux/workspace-inbox.md) shows assignments,
 explicit mentions, replies, and followed-issue comments, with durable read state. Private

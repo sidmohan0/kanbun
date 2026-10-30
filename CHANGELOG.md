@@ -7,6 +7,7 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added team-scoped issue boards alongside list views, sharing filters and sorting, with drag or keyboard status changes and existing offline recovery.
 - Added owner workspace naming and team/workflow settings, including team creation, custom statuses, default status selection and atomic category reordering, with server permissions and offline team-change recovery.
 
 - Added a personal inbox for assignments, explicit stable-ID mentions, thread replies, and followed comments, with durable read state, retry-safe background delivery, and current membership/issue visibility checks.
