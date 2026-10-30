@@ -508,9 +508,15 @@ export const workspace = {
   start,
   refresh,
   requireAuthentication: blockAuthentication,
-  createIssue(teamId: string, title: string): void {
+  createIssue(teamId: string, title: string, assigneeId?: string): void {
     const active = editableClient();
-    active.mutate("issueCreate", { id: uuidv7(), teamId, title, subscriptionId: uuidv7() });
+    active.mutate("issueCreate", {
+      id: uuidv7(),
+      teamId,
+      title,
+      subscriptionId: uuidv7(),
+      ...(assigneeId ? { assigneeId } : {}),
+    });
     publish();
     flush(active);
   },

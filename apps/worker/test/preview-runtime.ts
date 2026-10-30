@@ -1,8 +1,6 @@
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { createTestHarness, type Unstable_RawConfig } from "wrangler";
+import { createRuntimeHarness, localWorkerConfig } from "./harness";
 import type { D1Database, R2Bucket, DurableObjectNamespace } from "@cloudflare/workers-types";
 import type { BootstrapResponse, WorkspaceContext } from "@kanbun/sync";
 import type { BodyBackup, StoredDocumentBackup } from "../src/backup-format";
@@ -40,12 +38,11 @@ export async function startPreviewRuntime({
   backups?: boolean;
   isolatedRestore?: boolean;
 } = {}) {
-  const root = fileURLToPath(new URL("..", import.meta.url));
   const instance = randomUUID().slice(0, 8);
   const certWorker = `preview-test-certs-${instance}`;
   const assetWorker = `preview-test-assets-${instance}`;
   const backupWorker = `preview-test-backup-control-${instance}`;
-  const local = JSON.parse(await readFile(new URL("../wrangler.json", import.meta.url), "utf8")) as Unstable_RawConfig;
+  const local = await localWorkerConfig();
   const issuer = "https://test-access.cloudflareaccess.com";
   const audience = "protected-preview-test-audience";
   const appOrigin = "https://preview.example.test";
@@ -64,9 +61,8 @@ export async function startPreviewRuntime({
     })
       .setProtectedHeader({ alg: "RS256", kid: "preview-test-key" })
       .sign(pair.privateKey);
-  const harness = createTestHarness({
-    root,
-    workers: [
+  const harness = await createRuntimeHarness(
+    [
       {
         config: {
           ...local,
@@ -125,8 +121,8 @@ export async function startPreviewRuntime({
             },
           ]
         : []),
-    ],
-  });
+    ].map((worker) => worker.config),
+  );
   try {
     const { url } = await harness.listen();
     await harness.getWorker().applyD1Migrations("ACCOUNTS");
@@ -182,7 +178,7 @@ export async function startPreviewRuntime({
         const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
         await storage.exec(
           "UPDATE scheduled_job SET fire_at = ? WHERE dedup_key = ?",
-          new Date(0).toISOString(),
+          new Date(Date.now() - 1_000).toISOString(),
           "workspace-backup",
         );
         const workspace = environment.WORKSPACES.getByName(workspaceId) as unknown as {
