@@ -58,7 +58,8 @@ history-aware checks.
 
 ## Browser recovery contracts
 
-The recovery suite uses the actual browser `IndexedDbPersister`, `httpTransport`, `SyncClient`, and
+The browser suite tests both the actual React issue app and a focused sync recovery harness. Both
+use the actual browser `IndexedDbPersister`, `httpTransport`, `SyncClient`, and
 mutators through a local Cloudflare Worker and SQLite-backed `WorkspaceDO` in actual `workerd`.
 The Node adapter serves assets, selects synthetic local identities, and can drop acknowledgements;
 it does not execute business mutations. The suite verifies:
@@ -76,8 +77,14 @@ it does not execute business mutations. The suite verifies:
   Durable Object reactivation. An identical retry returns the saved receipt, main converges through normal
   pull, the closed branch rejects access, and issue numbering advances only once.
 
-This is a browser integration harness, with synthetic fixture actors. It does not exercise product
-UI, production authentication, or a deployed Worker. Reactivation evicts the Durable Object instance
+The actual-app cases additionally cover form creation and inline renaming with two-session
+convergence, durable offline reloads, real authority rejection and optimistic rollback (including
+an overlapping pull), fractional ordering, one-writer tab handoff, and unavailable browser storage.
+The app uses its maintained Vite configuration and entry point; tests do not inject an alternate UI.
+Light, dark, and narrow-screen screenshots are retained with the product test.
+
+These suites use synthetic local actors. Production authentication and a deployed Worker remain
+outside their scope. Reactivation evicts the Durable Object instance
 while preserving its SQLite storage; it does not simulate a host crash. Sync API outages leave the test page's assets
 available; offline app-asset loading requires a separate product capability and test.
 

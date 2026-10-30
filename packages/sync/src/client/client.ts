@@ -117,6 +117,10 @@ export class SyncClient<M extends MutatorMap> {
   pendingCount(): number {
     return this.pending.mutations.length;
   }
+  /** Save the latest canonical rows and outbox, and wait for pending storage writes. */
+  async flushPersistence(): Promise<void> {
+    await this.persist();
+  }
   layerNames(): string[] {
     return this.layers.map((l) => l.name);
   }
@@ -150,7 +154,14 @@ export class SyncClient<M extends MutatorMap> {
    * server's per-client mutation counter carries across page loads.
    */
   async start(): Promise<void> {
-    const saved = await this.opts.persister?.load();
+    let saved: PersistedState | null | undefined;
+    try {
+      saved = await this.opts.persister?.load();
+    } catch (error) {
+      this.setStatus("error");
+      this.opts.onError?.(error);
+      throw error;
+    }
     const sameUser = saved?.userId === this.opts.actor.id;
     if (saved && sameUser && (saved.branchId ?? "main") !== this.branchId) {
       this.setStatus("error");
@@ -193,7 +204,7 @@ export class SyncClient<M extends MutatorMap> {
         for (const r of rows) this.canonical.put(model, r as never);
       }
       this.seq = b.seq;
-      this.lastConfirmed = b.lastMutationId;
+      this.confirm(b.lastMutationId);
       this.dropConfirmed();
       this.rebase(modelNames);
       this.setStatus("idle");
@@ -217,7 +228,7 @@ export class SyncClient<M extends MutatorMap> {
     changes.push(...this.rebuildFrom(1));
     this.notify(changes);
     this.schedulePush();
-    void this.persist();
+    void this.persist().catch((error) => this.opts.onError?.(error));
   }
 
   /**
@@ -334,11 +345,12 @@ export class SyncClient<M extends MutatorMap> {
             const m = this.pending.mutations.find((p) => p.id === r.id);
             if (m) this.opts.onRejected?.(m, r.error);
           }
-          this.lastConfirmed = Math.max(this.lastConfirmed, res.lastMutationId);
+          this.confirm(res.lastMutationId);
           if (res.seq > this.seq) await this.pull();
           else {
             this.dropConfirmed();
             this.rebase([]);
+            await this.persist();
           }
         }
         this.setStatus("idle");
@@ -382,7 +394,7 @@ export class SyncClient<M extends MutatorMap> {
             await this.bootstrap();
             continue;
           }
-          this.lastConfirmed = Math.max(this.lastConfirmed, res.lastMutationId);
+          this.confirm(res.lastMutationId);
           const touched = this.applyLog(res.entries);
           this.seq = res.seq;
           this.dropConfirmed();
@@ -421,6 +433,11 @@ export class SyncClient<M extends MutatorMap> {
       }
     }
     return touched;
+  }
+
+  private confirm(lastMutationId: number): void {
+    this.lastConfirmed = Math.max(this.lastConfirmed, lastMutationId);
+    this.nextMutationId = Math.max(this.nextMutationId, this.lastConfirmed + 1);
   }
 
   private dropConfirmed(): void {

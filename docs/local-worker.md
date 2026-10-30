@@ -13,8 +13,10 @@ Production authentication and deployment are later work.
 
 The development command starts both the Vite web shell on port 5173 and Wrangler on port 8787
 inside the container. The web shell proxies `/sync` and `/__local` to the Worker. Use
-`./scripts/devcontainer.sh url` to obtain the published localhost URL. The web app still shows the
-brand shell; issue views are not implemented.
+`./scripts/devcontainer.sh url` to obtain the published localhost URL. Open the issue list to create
+issues and edit their titles directly in the app; the sidebar identifies the
+synthetic Alice user. On a first visit, use **Initialize local workspace** if prompted, or initialize
+it from the terminal below.
 
 Initialize the local workspace from another terminal:
 
@@ -87,6 +89,12 @@ rollback within a mixed batch, branch privacy, durable merge receipts, strict re
 and default-disabled access. The four Chromium scenarios use the same Worker, real HTTP, and
 browser IndexedDB. The Node HTTP layer serves assets and can truncate a real Worker acknowledgement
 after commit; it does not execute business mutations.
+
+The actual React app also has browser coverage for create/rename convergence, persisted offline
+edits, authoritative rejection and rollback, same-browser tab handoff, and storage failures. The
+app refreshes on focus, reconnect, or **Refresh**. WebSocket pokes remain later work. One tab at a
+time owns the stable Alice/main outbox; another tab waits and automatically restores the queue
+after the owner closes. Independent browser contexts use independent clients.
 
 Recovery evicts and recreates `WorkspaceDO` through the official harness API while preserving its
 SQLite storage. This tests loss of instance memory and rerunning initialization. It does not

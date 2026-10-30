@@ -57,17 +57,21 @@ export class IndexedDbPersister implements Persister {
   }
 
   async load(): Promise<PersistedState | null> {
+    const db = await this.open();
     try {
-      const db = await this.open();
       return await new Promise((resolve, reject) => {
         const tx = db.transaction("state", "readonly");
         const req = tx.objectStore("state").get(this.key);
-        req.onsuccess = () => resolve((req.result as PersistedState | undefined) ?? null);
+        let state: PersistedState | null = null;
+        req.onsuccess = () => {
+          state = (req.result as PersistedState | undefined) ?? null;
+        };
         req.onerror = () => reject(req.error);
-        tx.oncomplete = () => db.close();
+        tx.oncomplete = () => resolve(state);
+        tx.onabort = () => reject(tx.error ?? new Error("IndexedDB read aborted"));
       });
-    } catch {
-      return null;
+    } finally {
+      db.close();
     }
   }
 
@@ -80,18 +84,18 @@ export class IndexedDbPersister implements Persister {
           const s = this.queued;
           this.queued = null;
           const db = await this.open();
-          await new Promise<void>((resolve, reject) => {
-            const tx = db.transaction("state", "readwrite");
-            tx.objectStore("state").put(s, this.key);
-            tx.oncomplete = () => {
-              db.close();
-              resolve();
-            };
-            tx.onerror = () => reject(tx.error);
-          });
+          try {
+            await new Promise<void>((resolve, reject) => {
+              const tx = db.transaction("state", "readwrite");
+              tx.objectStore("state").put(s, this.key);
+              tx.oncomplete = () => resolve();
+              tx.onerror = () => reject(tx.error);
+              tx.onabort = () => reject(tx.error ?? new Error("IndexedDB write aborted"));
+            });
+          } finally {
+            db.close();
+          }
         }
-      } catch {
-        /* storage is a convenience; never fail the app over it */
       } finally {
         this.writing = null;
       }
