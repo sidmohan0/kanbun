@@ -26,6 +26,7 @@ import {
   createInvitation,
   revokeInvitation,
   removeMembership,
+  renameWorkspace,
   type DirectoryEnvironment,
 } from "./directory";
 import { localActors, seedWorkspace } from "./local";
@@ -79,6 +80,7 @@ const routes = new Map<string, string>(
   Object.entries({
     "/api/context": "GET",
     "/api/members": "GET",
+    "/api/workspace/name": "POST",
     "/api/invitations": "POST",
     "/api/invitations/revoke": "POST",
     "/api/members/remove": "POST",
@@ -642,6 +644,11 @@ export class WorkspaceDO extends DurableObject<Env> {
         const context = await this.requestContext(request, server);
         if (context.role !== "owner") throw new RequestError("Only the workspace owner may manage members", 403);
         const principal = readPrincipal(request);
+        if (url.pathname === "/api/workspace/name") {
+          const { name } = z.strictObject({ name: z.string().trim().min(1) }).parse(input);
+          await renameWorkspace(this.env, principal, name);
+          return json(await this.requestContext(request, server));
+        }
         if (url.pathname === "/api/members") {
           const result = await listMembership(this.env, principal);
           await this.requestContext(request, server);

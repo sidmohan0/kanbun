@@ -8,6 +8,7 @@ preparation moves them to a dated version heading.
 ### Added
 
 - Added team-scoped issue boards alongside list views, sharing filters and sorting, with drag or keyboard status changes and existing offline recovery.
+- Added owner workspace naming and team/workflow settings, including team creation, custom statuses, default status selection and atomic category reordering, with server permissions and offline team-change recovery.
 
 - Added a personal inbox for assignments, explicit stable-ID mentions, thread replies, and followed comments, with durable read state, retry-safe background delivery, and current membership/issue visibility checks.
 
@@ -49,6 +50,8 @@ preparation moves them to a dated version heading.
 - Added Chromium integration tests for offline IndexedDB recovery and durable mutation retries over HTTP and file-backed SQLite.
 
 ### Fixed
+
+- Workspace entry now distinguishes missing access from expired sign-in, explains invitation sharing, and lets invitees retry with the correct account without losing their invitation link.
 
 - Reconnect and focus signals received during an older refresh now queue a fresh synchronization pass, so a failed offline push cannot leave a restored outbox waiting for another user action.
 

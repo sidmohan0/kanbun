@@ -99,6 +99,10 @@ export function Members() {
       <p className="members-description">
         Each person signs in with their own account. Owners manage access; members work on issues.
       </p>
+      <p className="members-description">
+        To invite someone, enter their work email, then copy and send them the invitation link. Kanbun does not send an
+        invitation email. They must open that link and sign in with the same email to accept.
+      </p>
       {error && (
         <p className="notice" role="alert">
           {error}

@@ -75,6 +75,8 @@ Branch rows survive restarts without changing main, while untouched reads follow
 Human owners can preview and merge the supported changes with explicit conflict choices and durable
 retry receipts. The branch review UI remains planned.
 
+Owners manage [workspace names, teams and workflow statuses](docs/ux/workspace-settings.md) in Settings. Workspace naming is an online directory-backed operation; team and status changes use durable offline synchronization.
+
 The [team readiness checklist](docs/team-readiness.md) links the verified product and operational
 capabilities and acceptance evidence for an invited team pilot.
 
