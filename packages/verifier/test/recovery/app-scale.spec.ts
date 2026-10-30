@@ -13,6 +13,9 @@ test("records actual 5000-issue HTTP bootstrap and first React view against the 
   // receipt collection was interrupted after the measured view had already painted.
   // Playwright's standard slow-test allowance covers setup, not the 1,000ms target below.
   test.slow();
+  // Bulk startup readiness uses this case's authoritative budget, not the ordinary
+  // 5s child assertion deadline. The outer test still bounds all setup and measurement.
+  const expectReady = expect.configure({ timeout: testInfo.timeout });
   const seedStarted = performance.now();
   // /sync/push accepts at most 500 mutations, as defined in the public request schema.
   for (let start = 1; start < workingSet; start += 500) {
@@ -39,9 +42,9 @@ test("records actual 5000-issue HTTP bootstrap and first React view against the 
   const warmContext = await browser.newContext();
   try {
     const warm = await warmContext.newPage();
-    await warm.goto(app.origin);
-    await expect(warm.locator(".list-heading h2 > span")).toHaveText(String(workingSet));
-    await expect(warm.locator(".sync-indicator")).toContainText("Saved");
+    await warm.goto(app.origin, { timeout: testInfo.timeout });
+    await expectReady(warm.locator(".list-heading h2 > span")).toHaveText(String(workingSet));
+    await expectReady(warm.locator(".sync-indicator")).toContainText("Saved");
   } finally {
     await warmContext.close();
   }
@@ -75,8 +78,8 @@ test("records actual 5000-issue HTTP bootstrap and first React view against the 
       });
       observer.observe(document, { childList: true, subtree: true });
     }, workingSet);
-    await page.goto(app.origin);
-    await expect
+    await page.goto(app.origin, { timeout: testInfo.timeout });
+    await expectReady
       .poll(() => page.evaluate(() => performance.getEntriesByName("kanbun-bootstrap-render").length))
       .toBe(1);
     const timing = await page.evaluate(() => {

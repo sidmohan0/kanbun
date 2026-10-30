@@ -72,3 +72,11 @@ rows, but the test deadline interrupted the subsequent receipt collection. Its r
 target. The scale case uses Playwright's standard slow-test allowance for its substantial fixture and
 trace work; the measured interval, 1,000 ms target, row-count assertion, and reported target result
 remain unchanged. Successful fixture execution does not imply a passing performance observation.
+
+A subsequent Actions trace ([41130845088](https://github.com/sidmohan0/kanbun/actions/runs/41130845088))
+reached all 5,000 warm-up rows and completed bootstrap and pull requests successfully, then exhausted
+an ordinary five-second `Saved` assertion while bulk startup was still progressing. This happened
+before the separate empty-cache measurement context was opened. Scale readiness assertions, metric
+polling, and navigation now inherit the slow case's authoritative `testInfo.timeout`; the outer test
+still bounds the entire operation. The saved-state and row conditions remain required, and no retry,
+trace suppression, or change to the one-second performance result is introduced.
