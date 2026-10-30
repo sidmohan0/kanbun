@@ -19,10 +19,12 @@ describe("native temporary Worker harness projects", () => {
     const harness = await createRuntimeHarness([
       {
         ...config,
+        tsconfig: "tsconfig.json",
         d1_databases: [
           { binding: "ACCOUNTS", database_name: "fixture", migrations_dir: "../../packages/model/migrations/accounts" },
         ],
       },
+      config,
     ]);
     const input = options();
     const root = input.root!;
@@ -34,8 +36,10 @@ describe("native temporary Worker harness projects", () => {
       expect(child).toMatch(/^kanbun-worker-runtime-/);
       const { config: actual } = input.workers[0] as { config: typeof config };
       expect(actual.main).toMatch(/\/apps\/worker\/src\/index\.ts$/);
-      expect(actual.tsconfig).toMatch(/\/apps\/worker\/tsconfig\.json$/);
+      expect(isAbsolute(actual.tsconfig!)).toBe(false);
+      expect(resolve(root, actual.tsconfig!)).toMatch(/\/apps\/worker\/tsconfig\.json$/);
       expect(actual.d1_databases?.[0]?.migrations_dir).toMatch(/\/packages\/model\/migrations\/accounts$/);
+      expect((input.workers[1] as { config: typeof config }).config.tsconfig).toBe(source.tsconfig);
       expect(actual).toMatchObject({
         vars: source.vars,
         durable_objects: source.durable_objects,
