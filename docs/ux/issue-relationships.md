@@ -3,7 +3,8 @@
 Issue details show a parent selector, sub-issues, and linked work. People can create a sub-issue in
 its parent's team, assign an existing accessible issue a parent, detach a child, and open linked
 issues. A sub-issue has one parent; a parent may have multiple children. The server rejects self
-parenting and cycles across the full parent chain, including across teams.
+parenting and cycles across the full parent chain, including across teams. Changing a child's parent requires access to the child and the new parent; clearing it requires access to the child.
+An inaccessible old parent does not prevent someone from clearing or replacing that field.
 
 The relationship picker offers Blocks, Blocked by, and Related to. One stored blocking edge is
 shown as Blocks at its source and Blocked by at its target. Related links are symmetric: selecting

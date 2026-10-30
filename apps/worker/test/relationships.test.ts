@@ -9,6 +9,7 @@ it("authorizes both relationship endpoints and revokes/restores cross-team point
     const { teamId, issueId } = await runtime.seed();
     const otherTeam = uuidv7(),
       target = uuidv7(),
+      replacement = uuidv7(),
       link = uuidv7();
     const ids = new Map<string, number>();
     async function push(name: string, args: unknown, actor = "alice") {
@@ -46,6 +47,9 @@ it("authorizes both relationship endpoints and revokes/restores cross-team point
     expect(
       await push("issueRelationCreate", { id: link, issueId, relatedIssueId: target, type: "blocks" }),
     ).toMatchObject({ rejected: [] });
+    expect(
+      await push("issueCreate", { id: replacement, teamId, title: "Replacement parent", subscriptionId: uuidv7() }),
+    ).toMatchObject({ rejected: [] });
     const bob = { "X-Kanbun-Local-Actor": "bob" };
     const bootstrap = async () =>
       (await (
@@ -68,8 +72,13 @@ it("authorizes both relationship endpoints and revokes/restores cross-team point
       expect(await response.text()).not.toContain(target);
     }
     expect(await push("issueUpdate", { id: issueId, patch: { parentId: null } }, "bob")).toMatchObject({
-      rejected: [{}],
+      rejected: [],
     });
+    expect(await push("issueUpdate", { id: issueId, patch: { parentId: target } })).toMatchObject({ rejected: [] });
+    expect(await push("issueUpdate", { id: issueId, patch: { parentId: replacement } }, "bob")).toMatchObject({
+      rejected: [],
+    });
+    expect(await push("issueUpdate", { id: issueId, patch: { parentId: target } })).toMatchObject({ rejected: [] });
     expect(await push("issueRelationDelete", { id: link }, "bob")).toMatchObject({ rejected: [{}] });
     expect(
       await push("issueRelationCreate", { id: uuidv7(), issueId, relatedIssueId: target, type: "related" }, "bob"),

@@ -487,7 +487,6 @@ export const mutators = {
       const events: PendingEvent[] = [];
       if (p.parentId) requireParent(ctx, issue.id, p.parentId);
       if (p.parentId !== undefined && p.parentId !== issue.parentId) {
-        if (issue.parentId) requireIssue(ctx, issue.parentId);
         events.push({
           ...subject,
           type: "IssueParentChanged",

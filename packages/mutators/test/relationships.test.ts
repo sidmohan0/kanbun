@@ -101,7 +101,7 @@ it("validates cross-team hierarchy and dependency graphs, deduplicates symmetric
 });
 
 it("revokes and restores references in existing caches and history when either endpoint changes visibility", () => {
-  const { db, server, push, team, otherTeam, a, b } = fixture();
+  const { db, server, push, team, otherTeam, a, b, c } = fixture();
   try {
     const link = uuidv7();
     expect(push("issueUpdate", { id: a, patch: { parentId: b } })).toMatchObject({ rejected: [] });
@@ -118,7 +118,13 @@ it("revokes and restores references in existing caches and history when either e
     expect(JSON.stringify(server.events(bob))).not.toContain(b);
     expect(JSON.stringify(server.activity(bob))).not.toContain(b);
     expect(push("issueUpdate", { id: a, patch: { parentId: b } }, bob)).toMatchObject({ rejected: [{}] });
-    expect(push("issueUpdate", { id: a, patch: { parentId: null } }, bob)).toMatchObject({ rejected: [{}] });
+    // Editing the authorized child's field does not require access to its hidden old parent.
+    expect(push("issueUpdate", { id: a, patch: { parentId: null } }, bob)).toMatchObject({ rejected: [] });
+    expect(server.store.get("issue", a)!.parentId).toBeNull();
+    expect(push("issueUpdate", { id: a, patch: { parentId: b } })).toMatchObject({ rejected: [] });
+    expect(push("issueUpdate", { id: a, patch: { parentId: c } }, bob)).toMatchObject({ rejected: [] });
+    expect(server.store.get("issue", a)!.parentId).toBe(c);
+    expect(push("issueUpdate", { id: a, patch: { parentId: b } })).toMatchObject({ rejected: [] });
     expect(push("issueRelationDelete", { id: link }, bob)).toMatchObject({ rejected: [{}] });
     expect(
       push("issueRelationCreate", { id: uuidv7(), issueId: a, relatedIssueId: b, type: "related" }, bob),
