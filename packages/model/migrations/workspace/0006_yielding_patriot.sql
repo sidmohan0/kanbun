@@ -1,0 +1,1 @@
+ALTER TABLE `user` ADD `directory_admission_id` text;

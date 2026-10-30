@@ -1,28 +1,35 @@
 # Protected hosted preview
 
 The preview serves the React app and workspace APIs from one Cloudflare Worker at
-`https://kanbun.ai`. It is restricted to the configured owner through a **hostname-based**
-Cloudflare Access application. This is a private preview of the existing issue flow; native sign-in,
-invites, and public onboarding remain separate work.
+`https://kanbun.ai`. A **hostname-based** Cloudflare Access application authenticates eligible
+people, and Kanbun's directory authorizes the owner and explicitly invited members. This remains
+a private preview; native sign-in and public onboarding are separate work.
 
 ## Identity and storage
 
 The Worker verifies the Access assertion's signature, issuer, audience, and expiry against the
-issuer's JWKS before serving assets or APIs. It also checks the configured owner email. The D1
-directory binds the verified issuer and subject to a stable account, workspace, and active
-membership; email alone never links a new subject to an existing account.
+issuer's JWKS before serving assets or APIs. Valid JWTs may load the application shell so an invitee
+can accept an invitation before workspace membership exists. Context, synchronization, documents,
+and member administration require active directory and workspace membership. The configured owner
+email controls initial owner admission. The D1 directory binds verified issuer and subject to a
+stable account; email alone never links a new subject to an existing account.
 
 The first authorized context request creates the owner workspace and an empty starter team using
 the existing system commands and mutations. It adds no synthetic members or demonstration issues.
 Subsequent requests reuse those identities. Removed memberships and deleted workspaces are denied
-rather than recreated.
+rather than recreated by ordinary sign-in. The owner can deliberately readmit a removed member
+through a fresh targeted invitation; old links cannot reactivate that admission.
 
-`GET /api/context` supplies the browser's actual workspace, user, and display names. The browser
+`GET /api/context` supplies the browser's actual workspace, user, role, admission, and display names. The browser
 validates that response before acquiring a Web Lock or opening IndexedDB. Hosted outboxes are
-partitioned by workspace, actor, and branch. No Access token is stored in browser application
+partitioned by workspace, actor, branch, and member admission. Existing owner storage keys remain
+compatible. A fresh admission leaves old private drafts stored but unopened rather than resubmitting
+them under renewed access. No Access token is stored in browser application
 storage or included in a WebSocket URL. An authentication rejection hides cached rows, disables
 editing, closes the notification socket, and preserves the outbox for recovery after signing in
-and reloading.
+and reloading. A hosted WebSocket policy close hides cached work immediately even if a pending HTTP
+write is blocked. An expected-admission precondition prevents an old page from adopting a new
+membership through a refreshed Access cookie.
 
 A hosted cold start requires a fresh authenticated context; a network failure alone does not
 authorize opening a previous user's cached data. An already open page can queue edits offline.
@@ -54,8 +61,29 @@ and [JWT validation guidance](https://developers.cloudflare.com/cloudflare-one/a
 
 Cloudflare Access activation requires the account owner's acceptance of its terms and any billing
 authorization shown by Cloudflare. Select the intended plan explicitly before creating the Access
-application. The application policy should allow only the configured owner, with no bypass policy.
-Create the Access application before publishing the custom hostname.
+application. The application policy must admit the configured owner and the intended team's sign-in
+identities, with no bypass policy. Eligibility to authenticate at Access does not create a Kanbun
+membership: an explicit invitation is still required. Create the Access application before
+publishing the custom hostname. Updating Kanbun code alone does not change a previously owner-only
+Access policy; review that hosted policy as part of the member-access rollout.
+
+## Invitations and member administration
+
+The owner uses Members to create a targeted invitation, optionally select an expiry, copy its
+one-time link, revoke pending invitations, and remove members. This flow does not send email.
+Invitation tokens are stored only as hashes in D1; links use URL fragments and inspection/acceptance
+send the token in a same-origin POST body. Listing invitations never returns their token.
+
+Acceptance requires the verified target email, an unused or same-identity accepted token, and an
+available workspace. The owner cannot be removed or replaced through this interface. Member removal
+revokes outstanding invitations and the current admission; sockets are closed and every later API
+request rechecks authority. Fresh readmission changes the admission identifier and clears previous
+private-team grants. Interrupted directory-to-workspace projection can finish without inventing a
+new admission or reactivating a manually disabled member during normal sign-in.
+
+The accounts and workspace admission migrations are additive. Apply the reviewed D1 migration and
+deploy the exact green commit through the manual schema-rollout path before resuming automatic
+code-only releases. Verify owner access before changing the hostname Access policy for invitees.
 
 Use the existing accounts SQL migrations for the dedicated D1 database; preview data must not
 share an unrelated application's database or namespace. The DO applies its existing migration

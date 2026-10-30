@@ -89,6 +89,7 @@ export const workspaceMembers = sqliteTable(
     role: text("role").$type<UserRole>().notNull().default("user"),
     createdAt: text("created_at").notNull(),
     removedAt: text("removed_at"),
+    admissionId: text("admission_id"),
   },
   (t) => [
     uniqueIndex("workspace_members_pair").on(t.workspaceId, t.accountId),
@@ -107,6 +108,8 @@ export const invites = sqliteTable(
     tokenHash: text("token_hash").notNull(),
     expiresAt: text("expires_at"),
     acceptedAt: text("accepted_at"),
+    acceptedAccountId: text("accepted_account_id"),
+    revokedAt: text("revoked_at"),
     createdAt: text("created_at").notNull(),
   },
   (t) => [index("invites_workspace").on(t.workspaceId), uniqueIndex("invites_token").on(t.tokenHash)],

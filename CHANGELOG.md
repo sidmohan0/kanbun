@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added owner-managed targeted invitations, member removal and explicit re-invitation, with individual identities, admission-scoped browser storage, and HTTP/document/WebSocket authorization checks.
+
 - Added issue status, priority, assignee, labels, and reversible archive controls, with semantic history for human status assertions and supported property changes.
 
 - Added shareable issue details and collaborative descriptions with durable Yjs storage, offline recovery, attributed mirror events, and private-team authorization checks.

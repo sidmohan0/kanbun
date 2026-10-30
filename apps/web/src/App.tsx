@@ -5,6 +5,7 @@ import type { SyncStatus } from "@kanbun/sync/client";
 import { Mark } from "./brand/Mark";
 import { workspace } from "./workspace";
 import { IssueDetail } from "./IssueDetail";
+import { Members } from "./Members";
 import { refreshDescriptions } from "./description";
 import "./styles/issues.css";
 
@@ -156,6 +157,7 @@ function selectedIssueId(): string | null {
 
 export function App() {
   const snapshot = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
+  const [membersView, setMembersView] = useState(() => location.hash === "#members");
   const [issueId, setIssueId] = useState(selectedIssueId);
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [title, setTitle] = useState("");
@@ -166,7 +168,10 @@ export function App() {
   const [initializationError, setInitializationError] = useState<string | null>(null);
   useEffect(() => {
     void workspace.start();
-    const changeRoute = () => setIssueId(selectedIssueId());
+    const changeRoute = () => {
+      setIssueId(selectedIssueId());
+      setMembersView(location.hash === "#members");
+    };
     window.addEventListener("hashchange", changeRoute);
     return () => window.removeEventListener("hashchange", changeRoute);
   }, []);
@@ -268,12 +273,24 @@ export function App() {
           </div>
         </div>
         <nav>
-          <a className="navigation-item" href="#issues" aria-current="page">
+          <a className="navigation-item" href="#issues" aria-current={membersView ? undefined : "page"}>
             <span className="navigation-symbol" aria-hidden="true">
               ≡
             </span>
             All issues{ready && <span className="navigation-count">{snapshot.issues.length}</span>}
           </a>
+          {context?.mode === "hosted" && context.role === "owner" && (
+            <a
+              className="navigation-item members-navigation"
+              href="#members"
+              aria-current={membersView ? "page" : undefined}
+            >
+              <span className="navigation-symbol" aria-hidden="true">
+                ◎
+              </span>{" "}
+              Members
+            </a>
+          )}
         </nav>
         <div className="sidebar-footer">
           <div className="local-person">
@@ -299,7 +316,7 @@ export function App() {
         <header className="workspace-topbar">
           <span className="workspace-breadcrumb">
             {workspaceName} <span aria-hidden="true">/</span>{" "}
-            {selectedIssue ? identifier(selectedIssue, snapshot.teams) : "All issues"}
+            {membersView ? "Members" : selectedIssue ? identifier(selectedIssue, snapshot.teams) : "All issues"}
           </span>
           <div className="sync-actions">
             <span className="sync-indicator" data-state={snapshot.status} role="status" aria-live="polite">
@@ -320,9 +337,13 @@ export function App() {
           <div className="page-heading">
             <div>
               <p className="eyebrow">YOUR WORKSPACE</p>
-              <h1>{issueId ? "Issue" : "Issues"}</h1>
+              <h1>{membersView ? "Members" : issueId ? "Issue" : "Issues"}</h1>
               <p className="page-description">
-                {selectedIssue ? identifier(selectedIssue, snapshot.teams) : "A place for the work ahead."}
+                {membersView
+                  ? "Manage who can access this workspace."
+                  : selectedIssue
+                    ? identifier(selectedIssue, snapshot.teams)
+                    : "A place for the work ahead."}
               </p>
             </div>
             {context && <span className="local-badge">{local ? "Local development" : "Private workspace"}</span>}
@@ -380,7 +401,7 @@ export function App() {
                   </div>
                 );
               })}
-              {archivedIssue && !snapshot.issues.some((issue) => issue.id === archivedIssue.id) && (
+              {!membersView && archivedIssue && !snapshot.issues.some((issue) => issue.id === archivedIssue.id) && (
                 <div className="notice archive-notice" role="status" aria-label="Archive status">
                   <span>{identifier(archivedIssue, snapshot.teams)} archived.</span>
                   <button className="button quiet compact" onClick={undoArchive}>
@@ -395,10 +416,22 @@ export function App() {
                   </button>
                 </div>
               )}
-              {issueId ? (
+              {membersView ? (
+                ready && context?.mode === "hosted" && context.role === "owner" ? (
+                  <Members />
+                ) : (
+                  <section className="empty-state">
+                    <h2>{ready ? "Workspace owner access required" : "Opening members…"}</h2>
+                    {ready && <p>Only workspace owners can manage members and invitations.</p>}
+                    <a className="back-to-issues" href="#issues">
+                      Return to all issues
+                    </a>
+                  </section>
+                )
+              ) : issueId ? (
                 selectedIssue && context ? (
                   <IssueDetail
-                    key={`${context.workspaceId}:${context.actor.id}:${selectedIssue.id}:${issueIncarnation(selectedIssue)}`}
+                    key={`${context.workspaceId}:${context.actor.id}:${context.admissionId ?? "owner"}:${selectedIssue.id}:${issueIncarnation(selectedIssue)}`}
                     issue={selectedIssue}
                     context={context}
                     workspaceSnapshot={snapshot}
