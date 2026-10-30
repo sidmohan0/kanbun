@@ -20,6 +20,11 @@ export type WorkspaceSnapshot = {
   pendingIssueIds: string[];
   issues: Row<"issue">[];
   teams: Row<"team">[];
+  workflowStates: Row<"workflowState">[];
+  members: Row<"user">[];
+  labels: Row<"issueLabel">[];
+  labelLinks: Row<"issueLabelLink">[];
+  teamMemberships: Row<"teamMembership">[];
   rejections: WorkspaceRejection[];
   error: string | null;
   context: WorkspaceContext | null;
@@ -53,6 +58,11 @@ let snapshot: WorkspaceSnapshot = {
   pendingIssueIds: [],
   issues: [],
   teams: [],
+  workflowStates: [],
+  members: [],
+  labels: [],
+  labelLinks: [],
+  teamMemberships: [],
   rejections,
   error,
   context,
@@ -64,7 +74,9 @@ const compare = (left: string, right: string) => (left < right ? -1 : left > rig
 
 function issueId(mutation: Mutation): string | null {
   const args = mutation.args;
-  return args !== null && typeof args === "object" && "id" in args && typeof args.id === "string" ? args.id : null;
+  if (args === null || typeof args !== "object") return null;
+  if ("id" in args && typeof args.id === "string") return args.id;
+  return "issueId" in args && typeof args.issueId === "string" ? args.issueId : null;
 }
 
 function publish() {
@@ -104,6 +116,27 @@ function publish() {
         ?.list("team")
         .filter((team) => !team.archivedAt && !team.retiredAt)
         .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) ?? [],
+    workflowStates:
+      (authenticationRequired ? undefined : client)
+        ?.list("workflowState")
+        .filter((state) => !state.archivedAt)
+        .sort((a, b) => a.position - b.position || compare(a.id, b.id)) ?? [],
+    members:
+      (authenticationRequired ? undefined : client)
+        ?.list("user")
+        .filter((member) => member.active && !member.archivedAt)
+        .sort((a, b) => a.displayName.localeCompare(b.displayName) || compare(a.id, b.id)) ?? [],
+    labels:
+      (authenticationRequired ? undefined : client)
+        ?.list("issueLabel")
+        .filter((label) => !label.archivedAt && !label.retiredAt)
+        .sort((a, b) => a.name.localeCompare(b.name) || compare(a.id, b.id)) ?? [],
+    labelLinks:
+      (authenticationRequired ? undefined : client)?.list("issueLabelLink").filter((link) => !link.archivedAt) ?? [],
+    teamMemberships:
+      (authenticationRequired ? undefined : client)
+        ?.list("teamMembership")
+        .filter((membership) => !membership.archivedAt) ?? [],
     rejections: authenticationRequired ? [] : rejections,
     error,
   };
@@ -220,6 +253,8 @@ async function initialize() {
   });
   client.subscribe("issue", changed);
   client.subscribe("team", changed);
+  for (const model of ["workflowState", "user", "issueLabel", "issueLabelLink", "teamMembership"] as const)
+    client.subscribe(model, changed);
   client.subscribeStatus(changed);
   try {
     await client.start();
@@ -397,6 +432,44 @@ export const workspace = {
   renameIssue(id: string, title: string): void {
     const active = editableClient();
     active.mutate("issueUpdate", { id, patch: { title } });
+    publish();
+    flush(active);
+  },
+  updateIssue(id: string, patch: { stateId?: string; priority?: 0 | 1 | 2 | 3 | 4; assigneeId?: string | null }): void {
+    const active = editableClient();
+    active.mutate("issueUpdate", { id, patch, ...(patch.assigneeId ? { assigneeSubscriptionId: uuidv7() } : {}) });
+    publish();
+    flush(active);
+  },
+  clearIssueStatus(id: string): void {
+    const active = editableClient();
+    active.mutate("issueAssertStatus", { id, stateId: null });
+    publish();
+    flush(active);
+  },
+  setIssueLabel(issueId: string, labelId: string, applied: boolean): void {
+    const active = editableClient();
+    active.mutate("issueLabelsSet", {
+      issueId,
+      add: applied ? [{ labelId, linkId: uuidv7() }] : [],
+      remove: applied ? [] : [labelId],
+    });
+    publish();
+    flush(active);
+  },
+  createIssueLabel(issueId: string, teamId: string, name: string): void {
+    const active = editableClient();
+    const trimmed = name.trim();
+    if (!trimmed || trimmed.length > 60) throw new Error("Enter a label name between 1 and 60 characters.");
+    const labelId = uuidv7();
+    active.mutate("issueLabelCreate", { id: labelId, teamId, name: trimmed, color: "#C2321F" });
+    active.mutate("issueLabelsSet", { issueId, add: [{ labelId, linkId: uuidv7() }], remove: [] });
+    publish();
+    flush(active);
+  },
+  archiveIssue(id: string, archived: boolean): void {
+    const active = editableClient();
+    active.mutate("issueArchive", { id, archived });
     publish();
     flush(active);
   },

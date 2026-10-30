@@ -142,6 +142,13 @@ export const mutators = {
     run(ctx, args) {
       requireTeamAdmin(ctx, args.id);
       if (args.patch.parentId === args.id) throw new MutationError("a team cannot be its own parent", "invalid");
+      for (const field of ["defaultIssueStateId", "triageIssueStateId", "autoCloseStateId"] as const) {
+        const stateId = args.patch[field];
+        if (!stateId) continue;
+        const state = ctx.store.get("workflowState", stateId);
+        if (!state || state.teamId !== args.id || state.archivedAt)
+          throw new MutationError("team state must be active and belong to this team", "invalid");
+      }
       ctx.store.patch("team", args.id, { ...args.patch, updatedAt: ctx.now });
     },
   }),
@@ -248,10 +255,33 @@ export const mutators = {
       if (!s) throw new MutationError("state not found", "not_found");
       requireTeamAdmin(ctx, s.teamId);
       const target = ctx.store.get("workflowState", args.moveIssuesToStateId);
-      if (!target || target.teamId !== s.teamId)
-        throw new MutationError("target state must be in the same team", "invalid");
-      for (const issue of ctx.store.list("issue", { stateId: args.id }))
-        ctx.store.patch("issue", issue.id, { stateId: target.id, updatedAt: ctx.now });
+      if (!target || target.teamId !== s.teamId || target.archivedAt || target.id === s.id)
+        throw new MutationError("target state must be a different active state in the same team", "invalid");
+      for (const issue of ctx.store.list("issue", { teamId: s.teamId })) {
+        if (issue.stateId !== s.id && issue.assertedStateId !== s.id && issue.derivedStateId !== s.id) continue;
+        const assertedStateId = issue.assertedStateId === s.id ? target.id : issue.assertedStateId;
+        const derivedStateId =
+          issue.derivedStateId === s.id
+            ? target.id
+            : (issue.derivedStateId ?? (issue.stateId === s.id ? target.id : issue.stateId));
+        const stateId = assertedStateId ?? derivedStateId;
+        const effective = ctx.store.get("workflowState", stateId)!;
+        const changed = stateId !== issue.stateId;
+        ctx.store.patch("issue", issue.id, {
+          assertedStateId,
+          derivedStateId,
+          stateId,
+          updatedAt: ctx.now,
+          startedAt: changed && effective.type === "started" ? (issue.startedAt ?? ctx.now) : issue.startedAt,
+          completedAt: !changed ? issue.completedAt : effective.type === "completed" ? ctx.now : null,
+          canceledAt: !changed ? issue.canceledAt : effective.type === "canceled" ? ctx.now : null,
+        });
+      }
+      const team = ctx.store.get("team", s.teamId)!;
+      const references: Partial<Row<"team">> = {};
+      for (const field of ["defaultIssueStateId", "triageIssueStateId", "autoCloseStateId"] as const)
+        if (team[field] === s.id) references[field] = target.id;
+      if (Object.keys(references).length) ctx.store.patch("team", team.id, { ...references, updatedAt: ctx.now });
       ctx.store.patch("workflowState", args.id, { archivedAt: ctx.now, updatedAt: ctx.now });
     },
   }),

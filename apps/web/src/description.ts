@@ -89,6 +89,7 @@ export class DescriptionSession {
   private initialized = false;
   private ready = false;
   private blocked = false;
+  private recoverableVisibilityBlock = false;
   private blockedMessage = "Sign in again to open this description.";
   private storageReadFailed = false;
   private revision = 0;
@@ -131,13 +132,23 @@ export class DescriptionSession {
       if (issue && issueIncarnation(issue) !== this.incarnation)
         return this.block("This issue was replaced. Reopen it before editing its description.");
       if (current.phase === "ready" && !issue)
-        return this.block("This issue is no longer available in this workspace.");
+        return this.block("This issue is no longer available in this workspace.", true);
+      let reopened = false;
+      if (issue && this.blocked && this.recoverableVisibilityBlock) {
+        // Undo may restore the same issue while local writes are still queued. Keep the
+        // retained Y.Doc and persistence chain; authentication/identity blocks never reopen.
+        this.blocked = false;
+        this.recoverableVisibilityBlock = false;
+        this.error = null;
+        reopened = true;
+        this.publish();
+      }
       const stamp = issue ? JSON.stringify([issue.updatedSeq, issue.descriptionContentId, issue.description]) : "";
       const changed = stamp !== this.lastIssueStamp;
       const reconnected = current.status === "idle" && this.previousWorkspaceStatus !== "idle";
       this.previousWorkspaceStatus = current.status;
       this.lastIssueStamp = stamp;
-      if (changed || reconnected) this.refresh();
+      if (changed || reconnected || reopened) this.refresh();
     });
     window.addEventListener("focus", this.refresh);
     window.addEventListener("online", this.refresh);
@@ -177,8 +188,13 @@ export class DescriptionSession {
     for (const listener of this.listeners) listener();
   }
 
-  private block(message = "Sign in again and reload before opening this description.") {
+  private block(
+    message = "Sign in again and reload before opening this description.",
+    recoverableVisibilityBlock = false,
+  ) {
+    if (this.blocked && !this.recoverableVisibilityBlock) return;
     this.blocked = true;
+    this.recoverableVisibilityBlock = recoverableVisibilityBlock;
     this.blockedMessage = message;
     this.error = message;
     this.syncRequested = false;
