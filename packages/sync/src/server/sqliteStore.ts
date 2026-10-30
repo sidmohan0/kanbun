@@ -15,6 +15,9 @@ export type LogTag = {
   txnId: string;
   causationSeq: number | null;
   reason: string | null;
+  /** Present for patches derived from a committed semantic event. */
+  eventSeq?: number;
+  ts?: string;
 };
 
 export const SYSTEM_TAG = (txnId: string): LogTag => ({
@@ -209,8 +212,8 @@ export class SqliteStore implements Store {
     const prevTeam = beforeRow ? this.scopeOf(model, beforeRow)[0] : null;
     const prevTeamId = prevTeam !== null && prevTeam !== teamId ? prevTeam : null;
     this.driver.run(
-      `INSERT INTO sync_log (model, row_id, op, patch, prev, actor_id, actor_type, client_id, mutation_id, txn_id, causation_seq, reason, team_id, prev_team_id, scope_user_id, ts)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO sync_log (model, row_id, op, patch, prev, actor_id, actor_type, client_id, mutation_id, txn_id, causation_seq, reason, team_id, prev_team_id, scope_user_id, ts, event_seq)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         model,
         rowId,
@@ -227,7 +230,8 @@ export class SqliteStore implements Store {
         teamId,
         prevTeamId,
         scopeUserId,
-        new Date().toISOString(),
+        this.tag.ts ?? new Date().toISOString(),
+        this.tag.eventSeq ?? null,
       ],
     );
   }

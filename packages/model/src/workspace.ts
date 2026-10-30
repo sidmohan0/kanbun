@@ -1,7 +1,7 @@
 /**
  * Workspace schema: lives in one SQLite database inside the workspace's
- * Durable Object. Every table here except `sync_log` and `sync_client`
- * is a synced model (see registry.ts for sync policy).
+ * Durable Object. Internal bookkeeping tables are excluded from the
+ * synced model registry (see registry.ts for sync policy).
  *
  * Field names are chosen so that a future import from an existing tracker
  * maps 1:1 onto them.
@@ -37,6 +37,39 @@ const exactlyOne = (name: string, cols: { name: string }[]) =>
 // Sync bookkeeping (not synced to clients)
 // ---------------------------------------------------------------------------
 
+/** Semantic history. Projection writes and their derived sync patches commit with the event. */
+export const eventLog = sqliteTable(
+  "event_log",
+  {
+    seq: integer("seq").primaryKey({ autoIncrement: true }),
+    branchId: text("branch_id").notNull(),
+    txnId: text("txn_id").notNull(),
+    eventIndex: integer("event_index").notNull(),
+    type: text("type").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    teamId: text("team_id").notNull(),
+    scopeUserId: text("scope_user_id"),
+    payload: json<Record<string, unknown>>("payload").notNull(),
+    actor: json<{ id: string; type: ActorType; via?: string }>("actor").notNull(),
+    clientId: text("client_id"),
+    mutationId: integer("mutation_id"),
+    sessionId: text("session_id"),
+    sourceRef: text("source_ref"),
+    causationSeq: integer("causation_seq"),
+    reason: text("reason"),
+    ts: integer("ts").notNull(),
+  },
+  (t) => [
+    uniqueIndex("event_log_client_mutation_index").on(t.clientId, t.mutationId, t.eventIndex),
+    index("event_log_branch_seq").on(t.branchId, t.seq),
+    index("event_log_entity").on(t.entityType, t.entityId),
+    index("event_log_team_seq").on(t.teamId, t.seq),
+    index("event_log_txn").on(t.txnId),
+    check("event_log_event_index_nonnegative", sql`${t.eventIndex} >= 0`),
+  ],
+);
+
 export const syncLog = sqliteTable(
   "sync_log",
   {
@@ -54,6 +87,8 @@ export const syncLog = sqliteTable(
     mutationId: integer("mutation_id"),
     /** All rows written by one mutation share a txnId; grouped undo and the activity feed key on it. */
     txnId: text("txn_id").notNull(),
+    /** Semantic event that produced this patch; null while a legacy mutator owns the write. */
+    eventSeq: integer("event_seq"),
     /** The log entry that triggered this write (the comment an agent replied to, the PR that closed an issue). */
     causationSeq: integer("causation_seq"),
     /** Short free-text reason, mainly for agent writes. */
@@ -71,6 +106,7 @@ export const syncLog = sqliteTable(
     index("sync_log_team").on(t.teamId),
     index("sync_log_prev_team").on(t.prevTeamId),
     index("sync_log_txn").on(t.txnId),
+    index("sync_log_event_seq").on(t.eventSeq),
     index("sync_log_actor").on(t.actorType, t.actorId),
     oneOf("sync_log_op_check", t.op, ["upsert", "delete"]),
     oneOf("sync_log_actor_type_check", t.actorType, ACTOR_TYPES),
@@ -333,6 +369,9 @@ export const issue = sqliteTable(
   "issue",
   {
     ...syncedColumns,
+    /** Semantic event sequence; 0 for optimistic and pre-event-log rows. */
+    createdSeq: integer("created_seq").notNull().default(0),
+    updatedSeq: integer("updated_seq").notNull().default(0),
     teamId: text("team_id").notNull(),
     /** Assigned by the DO from team.issueCounter; 0 while optimistic. The identifier `KEY-123` and the branch name are derived at read time. */
     number: integer("number").notNull().default(0),

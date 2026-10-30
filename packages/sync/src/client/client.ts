@@ -20,7 +20,15 @@
  * skipping it would open a gap in the mutation sequence.
  */
 import { modelNames, type ModelName, type Row } from "@kanbun/model";
-import { MutationError, parseArgs, type Actor, type ArgsOf, type MutatorContext, type MutatorMap } from "../mutators";
+import {
+  executeMutator,
+  MutationError,
+  parseArgs,
+  type Actor,
+  type ArgsOf,
+  type MutatorContext,
+  type MutatorMap,
+} from "../mutators";
 import type { LogEntry, Mutation, Transport } from "../protocol";
 import { normalizeRow } from "../rows";
 import { MemoryStore, OverlayStore, type PoolChange, type ReadableStore, type Where } from "../store";
@@ -215,7 +223,7 @@ export class SyncClient<M extends MutatorMap> {
       ...(m.reason !== undefined ? { reason: m.reason } : {}),
       ...(m.causationSeq !== undefined ? { causationSeq: m.causationSeq } : {}),
     };
-    def.run(ctx, parseArgs(m.name, def, m.args));
+    executeMutator(def, ctx, parseArgs(m.name, def, m.args));
     layer.store.absorb(scratch);
     return scratch.touched();
   }

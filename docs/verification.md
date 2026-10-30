@@ -46,6 +46,7 @@ Skipped or unexecuted checks do not count as successful verification.
 ## PR and main checks
 
 The complete verifier runs on every PR and push to `main`, including documentation-only changes.
+Its workspace tests include [semantic issue replay and migration checks](event-replay.md).
 GitHub Actions uploads its reports and logs after both successful and failed runs. The separate
 spec-lock workflow compares changes against their base; the separate changelog workflow checks the
 full committed PR and its exemption metadata. A current-tree verifier receipt does not replace those
