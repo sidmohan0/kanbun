@@ -5,6 +5,7 @@ import type { SyncStatus } from "@kanbun/sync/client";
 import { Mark } from "./brand/Mark";
 import { workspace } from "./workspace";
 import { IssueDetail } from "./IssueDetail";
+import { Members } from "./Members";
 import { IssueViewToolbar } from "./IssueViewToolbar";
 import { emptyIssueFilters, visibleIssues, type IssueFilters, type IssueView } from "./issueViews";
 import { refreshDescriptions } from "./description";
@@ -178,6 +179,7 @@ export function App() {
     all: emptyIssueFilters(),
     mine: emptyIssueFilters(),
   }));
+  const [membersView, setMembersView] = useState(() => location.hash === "#members");
   const [issueId, setIssueId] = useState(selectedIssueId);
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [title, setTitle] = useState("");
@@ -190,6 +192,7 @@ export function App() {
     void workspace.start();
     const changeRoute = () => {
       setIssueId(selectedIssueId());
+      setMembersView(location.hash === "#members");
       if (location.hash === "#my-issues") setView("mine");
       else if (location.hash === "#issues" || location.hash === "") setView("all");
     };
@@ -308,7 +311,11 @@ export function App() {
           </div>
         </div>
         <nav>
-          <a className="navigation-item" href="#issues" aria-current={view === "all" ? "page" : undefined}>
+          <a
+            className="navigation-item"
+            href="#issues"
+            aria-current={!membersView && view === "all" ? "page" : undefined}
+          >
             <span className="navigation-symbol" aria-hidden="true">
               ≡
             </span>
@@ -317,13 +324,25 @@ export function App() {
           <a
             className="navigation-item my-issues-navigation"
             href="#my-issues"
-            aria-current={view === "mine" ? "page" : undefined}
+            aria-current={!membersView && view === "mine" ? "page" : undefined}
           >
             <span className="navigation-symbol" aria-hidden="true">
               ◇
             </span>{" "}
             My Issues{ready && <span className="navigation-count">{myIssueCount}</span>}
           </a>
+          {context?.mode === "hosted" && context.role === "owner" && (
+            <a
+              className="navigation-item members-navigation"
+              href="#members"
+              aria-current={membersView ? "page" : undefined}
+            >
+              <span className="navigation-symbol" aria-hidden="true">
+                ◎
+              </span>{" "}
+              Members
+            </a>
+          )}
         </nav>
         <div className="sidebar-footer">
           <div className="local-person">
@@ -349,7 +368,7 @@ export function App() {
         <header className="workspace-topbar">
           <span className="workspace-breadcrumb">
             {workspaceName} <span aria-hidden="true">/</span>{" "}
-            {selectedIssue ? identifier(selectedIssue, snapshot.teams) : listName}
+            {membersView ? "Members" : selectedIssue ? identifier(selectedIssue, snapshot.teams) : listName}
           </span>
           <div className="sync-actions">
             <span className="sync-indicator" data-state={snapshot.status} role="status" aria-live="polite">
@@ -370,9 +389,13 @@ export function App() {
           <div className="page-heading">
             <div>
               <p className="eyebrow">YOUR WORKSPACE</p>
-              <h1>{issueId ? "Issue" : view === "mine" ? "My Issues" : "Issues"}</h1>
+              <h1>{membersView ? "Members" : issueId ? "Issue" : view === "mine" ? "My Issues" : "Issues"}</h1>
               <p className="page-description">
-                {selectedIssue ? identifier(selectedIssue, snapshot.teams) : "A place for the work ahead."}
+                {membersView
+                  ? "Manage who can access this workspace."
+                  : selectedIssue
+                    ? identifier(selectedIssue, snapshot.teams)
+                    : "A place for the work ahead."}
               </p>
             </div>
             {context && <span className="local-badge">{local ? "Local development" : "Private workspace"}</span>}
@@ -430,7 +453,7 @@ export function App() {
                   </div>
                 );
               })}
-              {archivedIssue && !snapshot.issues.some((issue) => issue.id === archivedIssue.id) && (
+              {!membersView && archivedIssue && !snapshot.issues.some((issue) => issue.id === archivedIssue.id) && (
                 <div className="notice archive-notice" role="status" aria-label="Archive status">
                   <span>{identifier(archivedIssue, snapshot.teams)} archived.</span>
                   <button className="button quiet compact" onClick={undoArchive}>
@@ -445,10 +468,22 @@ export function App() {
                   </button>
                 </div>
               )}
-              {issueId ? (
+              {membersView ? (
+                ready && context?.mode === "hosted" && context.role === "owner" ? (
+                  <Members />
+                ) : (
+                  <section className="empty-state">
+                    <h2>{ready ? "Workspace owner access required" : "Opening members…"}</h2>
+                    {ready && <p>Only workspace owners can manage members and invitations.</p>}
+                    <a className="back-to-issues" href="#issues">
+                      Return to all issues
+                    </a>
+                  </section>
+                )
+              ) : issueId ? (
                 selectedIssue && context ? (
                   <IssueDetail
-                    key={`${context.workspaceId}:${context.actor.id}:${selectedIssue.id}:${issueIncarnation(selectedIssue)}`}
+                    key={`${context.workspaceId}:${context.actor.id}:${context.admissionId ?? "owner"}:${selectedIssue.id}:${issueIncarnation(selectedIssue)}`}
                     issue={selectedIssue}
                     context={context}
                     workspaceSnapshot={snapshot}

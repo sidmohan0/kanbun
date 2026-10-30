@@ -15,7 +15,15 @@ export function workspacePersistenceKey(context: WorkspaceContext): string {
   // Keep the existing local outbox and its lease; hosted scopes always include actual identity.
   return context.mode === "local" && context.workspaceId === "local"
     ? `local:${context.actor.id}:main`
-    : JSON.stringify(["v1", context.mode, context.workspaceId, context.actor.type, context.actor.id, "main"]);
+    : JSON.stringify([
+        "v1",
+        context.mode,
+        context.workspaceId,
+        context.actor.type,
+        context.actor.id,
+        "main",
+        ...(context.admissionId ? [context.admissionId] : []),
+      ]);
 }
 
 function cachedLocalContext(): WorkspaceContext | null {

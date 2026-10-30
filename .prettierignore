@@ -17,3 +17,5 @@ apps/web/public/
 apps/web/src/brand/*.svg
 
 artifacts/deployment/
+
+artifacts/preview-health/

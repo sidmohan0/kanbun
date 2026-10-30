@@ -125,7 +125,8 @@ export class DescriptionSession {
         (current.context.workspaceId !== this.context.workspaceId ||
           current.context.mode !== this.context.mode ||
           current.context.actor.type !== this.context.actor.type ||
-          current.context.actor.id !== this.context.actor.id)
+          current.context.actor.id !== this.context.actor.id ||
+          current.context.admissionId !== this.context.admissionId)
       )
         return this.block("Workspace identity changed. Reload to open this issue.");
       const issue = current.issues.find((candidate) => candidate.id === this.issueId);
@@ -316,9 +317,12 @@ export class DescriptionSession {
             credentials: "include",
             cache: "no-store",
             redirect: "manual",
+            headers: {
+              ...(posting ? { "content-type": "application/json" } : {}),
+              ...(this.context.admissionId ? { "X-Kanbun-Admission": this.context.admissionId } : {}),
+            },
             ...(posting
               ? {
-                  headers: { "content-type": "application/json" },
                   body: JSON.stringify({ issueId: this.issueId, incarnation: this.incarnation, update }),
                 }
               : {}),
@@ -403,6 +407,7 @@ export function descriptionSession(context: WorkspaceContext, issue: Row<"issue"
     "main",
     issueId,
     incarnation,
+    ...(context.admissionId ? [context.admissionId] : []),
   ]);
   let session = sessions.get(key);
   if (!session) {
