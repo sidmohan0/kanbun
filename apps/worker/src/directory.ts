@@ -164,6 +164,18 @@ async function owner(env: DirectoryEnvironment, principal: HostedPrincipal) {
   return context;
 }
 
+/** D1 is the name authority; the next authenticated DO request reconciles its projection. */
+export async function renameWorkspace(env: DirectoryEnvironment, principal: HostedPrincipal, name: string) {
+  const context = await owner(env, principal);
+  await database(env)
+    .prepare(
+      "UPDATE workspaces SET name = ? WHERE id = ? AND deletion_requested_at IS NULL AND EXISTS (SELECT 1 FROM workspace_members WHERE workspace_id = ? AND account_id = ? AND role = 'owner' AND removed_at IS NULL)",
+    )
+    .bind(name, context.workspaceId, context.workspaceId, context.actor.id)
+    .run();
+  return owner(env, principal);
+}
+
 const invitationView = (row: Invitation) => ({
   id: row.id,
   email: row.email,

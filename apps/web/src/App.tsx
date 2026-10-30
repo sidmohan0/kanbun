@@ -6,6 +6,7 @@ import { Mark } from "./brand/Mark";
 import { workspace } from "./workspace";
 import { IssueDetail } from "./IssueDetail";
 import { Members } from "./Members";
+import { TeamSettings } from "./TeamSettings";
 import { Inbox } from "./Inbox";
 import { IssueViewToolbar } from "./IssueViewToolbar";
 import { emptyIssueFilters, visibleIssues, type IssueFilters, type IssueView } from "./issueViews";
@@ -179,6 +180,7 @@ export function App() {
     mine: emptyIssueFilters(),
   }));
   const [inboxView, setInboxView] = useState(() => location.hash === "#inbox");
+  const [teamsView, setTeamsView] = useState(() => location.hash === "#settings");
   const [membersView, setMembersView] = useState(() => location.hash === "#members");
   const [issueId, setIssueId] = useState(selectedIssueId);
   const [theme, setTheme] = useState<Theme>(initialTheme);
@@ -193,6 +195,7 @@ export function App() {
     const changeRoute = () => {
       setIssueId(selectedIssueId());
       setMembersView(location.hash === "#members");
+      setTeamsView(location.hash === "#settings");
       setInboxView(location.hash === "#inbox");
       if (location.hash === "#my-issues") setView("mine");
       else if (location.hash === "#issues" || location.hash === "") setView("all");
@@ -216,6 +219,7 @@ export function App() {
   const workspaceName = context?.workspaceName ?? "Workspace";
   const userName = context?.name ?? "Not signed in";
   const ready = snapshot.phase === "ready";
+  const canManageTeams = context?.role === "owner";
   const canCreate = ready && Boolean(selectedTeam);
   const filters = viewFilters[view];
   const issues = visibleIssues({
@@ -315,7 +319,7 @@ export function App() {
           <a
             className="navigation-item"
             href="#issues"
-            aria-current={!membersView && !inboxView && view === "all" ? "page" : undefined}
+            aria-current={!membersView && !inboxView && !teamsView && view === "all" ? "page" : undefined}
           >
             <span className="navigation-symbol" aria-hidden="true">
               ≡
@@ -325,7 +329,7 @@ export function App() {
           <a
             className="navigation-item my-issues-navigation"
             href="#my-issues"
-            aria-current={!membersView && !inboxView && view === "mine" ? "page" : undefined}
+            aria-current={!membersView && !inboxView && !teamsView && view === "mine" ? "page" : undefined}
           >
             <span className="navigation-symbol" aria-hidden="true">
               ◇
@@ -346,6 +350,18 @@ export function App() {
               </span>
             )}
           </a>
+          {canManageTeams && (
+            <a
+              className="navigation-item teams-navigation"
+              href="#settings"
+              aria-current={teamsView ? "page" : undefined}
+            >
+              <span className="navigation-symbol" aria-hidden="true">
+                ▦
+              </span>{" "}
+              Settings
+            </a>
+          )}
           {context?.mode === "hosted" && context.role === "owner" && (
             <a
               className="navigation-item members-navigation"
@@ -383,13 +399,15 @@ export function App() {
         <header className="workspace-topbar">
           <span className="workspace-breadcrumb">
             {workspaceName} <span aria-hidden="true">/</span>{" "}
-            {inboxView
-              ? "Inbox"
-              : membersView
-                ? "Members"
-                : selectedIssue
-                  ? identifier(selectedIssue, snapshot.teams)
-                  : listName}
+            {teamsView
+              ? "Settings"
+              : inboxView
+                ? "Inbox"
+                : membersView
+                  ? "Members"
+                  : selectedIssue
+                    ? identifier(selectedIssue, snapshot.teams)
+                    : listName}
           </span>
           <div className="sync-actions">
             <span className="sync-indicator" data-state={snapshot.status} role="status" aria-live="polite">
@@ -411,24 +429,28 @@ export function App() {
             <div>
               <p className="eyebrow">YOUR WORKSPACE</p>
               <h1>
-                {inboxView
-                  ? "Inbox"
-                  : membersView
-                    ? "Members"
-                    : issueId
-                      ? "Issue"
-                      : view === "mine"
-                        ? "My Issues"
-                        : "Issues"}
+                {teamsView
+                  ? "Settings"
+                  : inboxView
+                    ? "Inbox"
+                    : membersView
+                      ? "Members"
+                      : issueId
+                        ? "Issue"
+                        : view === "mine"
+                          ? "My Issues"
+                          : "Issues"}
               </h1>
               <p className="page-description">
-                {inboxView
-                  ? "Your personal workspace updates."
-                  : membersView
-                    ? "Manage who can access this workspace."
-                    : selectedIssue
-                      ? identifier(selectedIssue, snapshot.teams)
-                      : "A place for the work ahead."}
+                {teamsView
+                  ? "Manage your workspace, teams and workflow statuses."
+                  : inboxView
+                    ? "Your personal workspace updates."
+                    : membersView
+                      ? "Manage who can access this workspace."
+                      : selectedIssue
+                        ? identifier(selectedIssue, snapshot.teams)
+                        : "A place for the work ahead."}
               </p>
             </div>
             {context && <span className="local-badge">{local ? "Local development" : "Private workspace"}</span>}
@@ -486,7 +508,8 @@ export function App() {
                   </div>
                 );
               })}
-              {!membersView &&
+              {!teamsView &&
+                !membersView &&
                 !inboxView &&
                 archivedIssue &&
                 !snapshot.issues.some((issue) => issue.id === archivedIssue.id) && (
@@ -504,7 +527,17 @@ export function App() {
                     </button>
                   </div>
                 )}
-              {inboxView ? (
+              {teamsView ? (
+                ready && canManageTeams ? (
+                  <TeamSettings snapshot={snapshot} />
+                ) : (
+                  <section className="empty-state">
+                    <h2>{ready ? "Workspace owner access required" : "Opening team settings…"}</h2>
+                    {ready && <p>Only workspace owners can manage teams in this interface.</p>}
+                    <a href="#issues">Return to all issues</a>
+                  </section>
+                )
+              ) : inboxView ? (
                 ready ? (
                   <Inbox snapshot={snapshot} />
                 ) : (
