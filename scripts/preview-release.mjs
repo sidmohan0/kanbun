@@ -3,11 +3,13 @@ import { readFileSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { request as httpsRequest } from "node:https";
 import { release, assertCompatibleSchema } from "./preview-release-control.mjs";
+import { cloudflareToken } from "./preview-credentials.mjs";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const config = JSON.parse(readFileSync(new URL("../apps/worker/wrangler.preview.json", import.meta.url)));
 const sha = process.argv[2];
-const token = process.env.CLOUDFLARE_API_TOKEN;
-if (!token) throw new Error("CLOUDFLARE_API_TOKEN is required");
+const token = cloudflareToken(process.env.CLOUDFLARE_API_TOKEN);
+// Wrangler subprocesses must receive the same normalized value as direct API calls.
+process.env.CLOUDFLARE_API_TOKEN = token;
 const run = (...args) => execFileSync("pnpm", args, { cwd: root, stdio: "inherit" });
 const prefix = `https://api.cloudflare.com/client/v4/accounts/${config.account_id}/workers/scripts/${config.name}`;
 async function request(url, options = {}) {

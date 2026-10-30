@@ -34,6 +34,8 @@ preparation moves them to a dated version heading.
 
 ### Fixed
 
+- Deployment credentials now tolerate pasted whitespace and reject malformed values without including secrets in HTTP header errors.
+
 - Persistent clients now advance mutation IDs after server acknowledgements, save drained rejection queues, and report browser-storage failures instead of silently replacing saved state.
 
 - Semantic event causation now resolves sync-log references to their producing events, and read-only decisions cannot mutate stored JSON through extrema queries.
