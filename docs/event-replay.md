@@ -31,6 +31,12 @@ event-sequence order. Team membership, an agent's owner, and agent team scopes f
 The event cursor is separate from the existing patch-based sync cursor. `sync_log.eventSeq` links
 derived patches to their semantic event; legacy writes have no event link.
 
+The existing mutation option `causationSeq` continues to accept a sync-log patch sequence.
+Before recording a semantic event, the authority resolves that visible patch's `eventSeq` and
+stores the semantic sequence in the event's `causationSeq`. A legacy patch or an unavailable
+source has no semantic cause, so the event stores null. Derived sync patches retain the original
+patch-based reference. Optimistic events use null until the authority can resolve their cause.
+
 Issue `createdSeq` and `updatedSeq` identify semantic creation and the latest semantic update.
 The migration preserves existing rows with zero sequence metadata and does not invent historical
 events. Other issue updates, including mixed title-and-other-field updates, remain on the legacy

@@ -27,7 +27,7 @@ export type MutatorContext = {
   server: boolean;
   /** Free-text reason supplied with the mutation (mainly agents). */
   reason?: string;
-  /** Log entry that caused this mutation, if any. */
+  /** Sync-log patch that caused this mutation, if any; resolved to an event by the authority. */
   causationSeq?: number;
 };
 
@@ -94,8 +94,8 @@ export function executeMutator<S extends z.ZodType>(
       store: {
         get: (model, id) => structuredClone(store.get(model, id)),
         list: (model, where) => structuredClone(store.list(model, where)),
-        maxOf: store.maxOf.bind(store),
-        minOf: store.minOf.bind(store),
+        maxOf: (model, column, where) => structuredClone(store.maxOf(model, column, where)),
+        minOf: (model, column, where) => structuredClone(store.minOf(model, column, where)),
       },
     },
     args,
@@ -106,6 +106,8 @@ export function executeMutator<S extends z.ZodType>(
     return;
   }
   for (const [index, raw] of events.entries()) {
+    if (ctx.causationSeq !== undefined && (!Number.isSafeInteger(ctx.causationSeq) || ctx.causationSeq <= 0))
+      throw new MutationError("causationSeq must be a positive safe integer");
     const pending = pendingEventSchema.parse(raw);
     if (commit) commit(pending, index, def.apply);
     else {
@@ -123,7 +125,8 @@ export function executeMutator<S extends z.ZodType>(
           mutationId: null,
           sessionId: null,
           sourceRef: null,
-          causationSeq: ctx.causationSeq ?? null,
+          // Only the authority can translate a patch cursor into an event sequence.
+          causationSeq: null,
           reason: ctx.reason ?? null,
           ts: Date.parse(ctx.now),
         }),

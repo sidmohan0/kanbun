@@ -79,6 +79,7 @@ const envelope = {
   mutationId: z.number().int().positive().nullable(),
   sessionId: nullableId,
   sourceRef: nullableId,
+  /** Semantic event sequence, resolved by the authority from the visible source patch. */
   causationSeq: z.number().int().positive().nullable(),
   reason: z.string().nullable(),
   /** Authoritative milliseconds since epoch, copied into projections at apply. */

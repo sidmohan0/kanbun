@@ -19,4 +19,5 @@ preparation moves them to a dated version heading.
 
 ### Fixed
 
+- Semantic event causation now resolves sync-log references to their producing events, and read-only decisions cannot mutate stored JSON through extrema queries.
 - Revoked private-team memberships can no longer create or modify issues through the mutation API.

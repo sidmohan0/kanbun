@@ -122,6 +122,17 @@ export class SyncServer {
     return { sql: `${teamClause} AND (${userCol} IS NULL OR ${userCol} = ?)`, params: [...teamIds, userId] };
   }
 
+  /** The wire API uses patch cursors; semantic history references the producing event. */
+  private eventCause(actor: Actor, syncSeq: number | undefined): number | null {
+    if (syncSeq === undefined) return null;
+    const scope = this.scopeSql(this.visibleTeamIds(actor), this.effectiveUserId(actor), "team_id", "scope_user_id");
+    const row = this.opts.driver.all(`SELECT event_seq FROM sync_log WHERE seq = ? AND (${scope.sql})`, [
+      syncSeq,
+      ...scope.params,
+    ])[0];
+    return row?.["event_seq"] == null ? null : Number(row["event_seq"]);
+  }
+
   // ---- client bookkeeping ---------------------------------------------------
 
   /**
@@ -269,7 +280,7 @@ export class SyncServer {
                   clientId: req.clientId,
                   mutationId: m.id,
                   ts: Date.parse(ctx.now),
-                  causationSeq: m.causationSeq ?? null,
+                  causationSeq: this.eventCause(actor, m.causationSeq),
                   reason: m.reason ?? null,
                 });
                 apply(
@@ -283,7 +294,7 @@ export class SyncServer {
                       txnId,
                       eventSeq: event.seq,
                       ts: new Date(event.ts).toISOString(),
-                      causationSeq: event.causationSeq,
+                      causationSeq: m.causationSeq ?? null,
                       reason: event.reason,
                     }),
                   },
@@ -390,7 +401,7 @@ export class SyncServer {
           clientId: null,
           mutationId: null,
           ts: Date.parse(ctx.now),
-          causationSeq: extra.causationSeq ?? null,
+          causationSeq: this.eventCause(SYSTEM_ACTOR, extra.causationSeq),
           reason: extra.reason ?? null,
         });
         apply(
@@ -400,7 +411,7 @@ export class SyncServer {
               ...SYSTEM_TAG(txnId),
               eventSeq: event.seq,
               ts: new Date(event.ts).toISOString(),
-              causationSeq: event.causationSeq,
+              causationSeq: extra.causationSeq ?? null,
               reason: event.reason,
             }),
           },

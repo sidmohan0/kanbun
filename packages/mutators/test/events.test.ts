@@ -266,6 +266,49 @@ describe("semantic issue events", () => {
     }
   });
 
+  it("maps patch causes to semantic events while retaining legacy patch provenance", () => {
+    const { db, server } = fixture();
+    try {
+      expect(push(server, 1, "issueCreate", create(ISSUE, id(12)))).toMatchObject({ ok: true, rejected: [] });
+      const created = server.events(ALICE)[0]!;
+      const creationPatch = server.activity(ALICE, { model: "issue", rowId: ISSUE })[0]!;
+      expect(creationPatch.seq).not.toBe(created.seq);
+      const rename = (mutationId: number, title: string, causationSeq: number) =>
+        server.push(ALICE, {
+          clientId: "issue-client",
+          mutations: [
+            {
+              id: mutationId,
+              name: "issueUpdate",
+              args: { id: ISSUE, patch: { title } },
+              ts: CREATED,
+              causationSeq,
+            },
+          ],
+        });
+
+      expect(rename(2, "Caused by creation", creationPatch.seq)).toMatchObject({ ok: true, rejected: [] });
+      expect.soft(server.events(ALICE)[1]?.causationSeq).toBe(created.seq);
+      expect(server.activity(ALICE, { model: "issue", rowId: ISSUE })[0]?.causationSeq).toBe(creationPatch.seq);
+
+      server.system(
+        "issueUpdate",
+        { id: ISSUE, patch: { title: "System response to creation" } },
+        { causationSeq: creationPatch.seq },
+      );
+      expect(server.events(ALICE)[2]?.causationSeq).toBe(created.seq);
+      expect(server.activity(ALICE, { model: "issue", rowId: ISSUE })[0]?.causationSeq).toBe(creationPatch.seq);
+
+      const legacyPatch = server.activity(ALICE, { model: "workflowState" })[0]!;
+      expect(legacyPatch).toBeDefined();
+      expect(rename(3, "Caused by configuration", legacyPatch.seq)).toMatchObject({ ok: true, rejected: [] });
+      expect.soft(server.events(ALICE)[3]?.causationSeq).toBeNull();
+      expect(server.activity(ALICE, { model: "issue", rowId: ISSUE })[0]?.causationSeq).toBe(legacyPatch.seq);
+    } finally {
+      db.close();
+    }
+  });
+
   it("rolls back the event, issue, and counter when a later projection write fails", () => {
     const { db, server } = fixture();
     try {
@@ -340,6 +383,24 @@ describe("semantic issue events", () => {
       expect(server.events(BOB, { entityId: id(39) })).toEqual([]);
       expect(server.events(allTeamsAgent).map((event) => event.entityId)).toEqual([id(39), ISSUE]);
       expect(server.events(publicOnlyAgent).map((event) => event.entityId)).toEqual([ISSUE]);
+
+      const privatePatch = server.activity(ALICE, { model: "issue", rowId: id(39) })[0]!;
+      expect(
+        server.push(BOB, {
+          clientId: "bob-cause",
+          mutations: [
+            {
+              id: 1,
+              name: "issueUpdate",
+              args: { id: ISSUE, patch: { title: "Public edit with an invisible cause" } },
+              ts: CREATED,
+              causationSeq: privatePatch.seq,
+            },
+          ],
+        }),
+      ).toMatchObject({ ok: true, rejected: [] });
+      expect(server.events(BOB).at(-1)?.causationSeq).toBeNull();
+      expect(server.activity(BOB, { model: "issue", rowId: ISSUE })[0]?.causationSeq).toBe(privatePatch.seq);
 
       // Archived memberships may remain after synchronization; admission must agree with history visibility.
       server.store.patch("teamMembership", id(38), { archivedAt: TITLED });
