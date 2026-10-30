@@ -5,6 +5,8 @@ import type { SyncStatus } from "@kanbun/sync/client";
 import { Mark } from "./brand/Mark";
 import { workspace } from "./workspace";
 import { IssueDetail } from "./IssueDetail";
+import { IssueViewToolbar } from "./IssueViewToolbar";
+import { emptyIssueFilters, visibleIssues, type IssueFilters, type IssueView } from "./issueViews";
 import { refreshDescriptions } from "./description";
 import "./styles/issues.css";
 
@@ -43,11 +45,15 @@ function IssueRow({
   teams,
   pending,
   status,
+  stateName,
+  assigneeName,
 }: {
   issue: Row<"issue">;
   teams: Row<"team">[];
   pending: boolean;
   status: SyncStatus;
+  stateName: string;
+  assigneeName: string;
 }) {
   const name = identifier(issue, teams);
   const [editing, setEditing] = useState(false);
@@ -119,8 +125,19 @@ function IssueRow({
             )}
           </form>
         ) : (
-          <button ref={editButton} className="issue-title-button" aria-label={`Edit title for ${name}`} onClick={edit}>
-            <span>{issue.title}</span>
+          <button
+            ref={editButton}
+            className="issue-title-button"
+            aria-label={`Edit title for ${name}`}
+            aria-describedby={`issue-properties-${issue.id}`}
+            onClick={edit}
+          >
+            <span>
+              {issue.title}
+              <span className="row-properties" id={`issue-properties-${issue.id}`}>
+                {`Status: ${stateName} · Priority: ${["None", "Urgent", "High", "Medium", "Low"][issue.priority]} · Assignee: ${assigneeName}`}
+              </span>
+            </span>
             <span className="edit-hint" aria-hidden="true">
               Edit
             </span>
@@ -156,6 +173,11 @@ function selectedIssueId(): string | null {
 
 export function App() {
   const snapshot = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
+  const [view, setView] = useState<IssueView>(() => (location.hash === "#my-issues" ? "mine" : "all"));
+  const [viewFilters, setViewFilters] = useState<Record<IssueView, IssueFilters>>(() => ({
+    all: emptyIssueFilters(),
+    mine: emptyIssueFilters(),
+  }));
   const [issueId, setIssueId] = useState(selectedIssueId);
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [title, setTitle] = useState("");
@@ -166,7 +188,11 @@ export function App() {
   const [initializationError, setInitializationError] = useState<string | null>(null);
   useEffect(() => {
     void workspace.start();
-    const changeRoute = () => setIssueId(selectedIssueId());
+    const changeRoute = () => {
+      setIssueId(selectedIssueId());
+      if (location.hash === "#my-issues") setView("mine");
+      else if (location.hash === "#issues" || location.hash === "") setView("all");
+    };
     window.addEventListener("hashchange", changeRoute);
     return () => window.removeEventListener("hashchange", changeRoute);
   }, []);
@@ -187,6 +213,20 @@ export function App() {
   const userName = context?.name ?? "Not signed in";
   const ready = snapshot.phase === "ready";
   const canCreate = ready && Boolean(selectedTeam);
+  const filters = viewFilters[view];
+  const issues = visibleIssues({
+    issues: snapshot.issues,
+    teams: snapshot.teams,
+    labelLinks: snapshot.labelLinks,
+    actorId: context?.actor.id ?? null,
+    view,
+    filters,
+  });
+  const stateNames = new Map(snapshot.workflowStates.map((state) => [state.id, state.name]));
+  const memberNames = new Map(snapshot.members.map((member) => [member.id, member.displayName || member.name]));
+  const myIssueCount = snapshot.issues.filter((issue) => issue.assigneeId === context?.actor.id).length;
+  const filtersActive = filters.search || filters.stateId || filters.assigneeId || filters.priority || filters.labelId;
+  const listName = view === "mine" ? "My Issues" : "All issues";
   const pendingIds = new Set(snapshot.pendingIssueIds);
   const status =
     snapshot.status === "offline"
@@ -203,7 +243,7 @@ export function App() {
     try {
       if (!title.trim()) throw new Error("Enter an issue title.");
       if (!selectedTeam) throw new Error("Choose an active team.");
-      workspace.createIssue(selectedTeam, title.trim());
+      workspace.createIssue(selectedTeam, title.trim(), view === "mine" ? context?.actor.id : undefined);
       setTitle("");
       setFormError(null);
     } catch (error) {
@@ -231,7 +271,7 @@ export function App() {
   }
   function archived(issue: Row<"issue">) {
     setArchivedIssue(issue);
-    location.hash = "issues";
+    location.hash = view === "mine" ? "my-issues" : "issues";
   }
   function undoArchive() {
     if (!archivedIssue) return;
@@ -268,11 +308,21 @@ export function App() {
           </div>
         </div>
         <nav>
-          <a className="navigation-item" href="#issues" aria-current="page">
+          <a className="navigation-item" href="#issues" aria-current={view === "all" ? "page" : undefined}>
             <span className="navigation-symbol" aria-hidden="true">
               ≡
             </span>
             All issues{ready && <span className="navigation-count">{snapshot.issues.length}</span>}
+          </a>
+          <a
+            className="navigation-item my-issues-navigation"
+            href="#my-issues"
+            aria-current={view === "mine" ? "page" : undefined}
+          >
+            <span className="navigation-symbol" aria-hidden="true">
+              ◇
+            </span>{" "}
+            My Issues{ready && <span className="navigation-count">{myIssueCount}</span>}
           </a>
         </nav>
         <div className="sidebar-footer">
@@ -299,7 +349,7 @@ export function App() {
         <header className="workspace-topbar">
           <span className="workspace-breadcrumb">
             {workspaceName} <span aria-hidden="true">/</span>{" "}
-            {selectedIssue ? identifier(selectedIssue, snapshot.teams) : "All issues"}
+            {selectedIssue ? identifier(selectedIssue, snapshot.teams) : listName}
           </span>
           <div className="sync-actions">
             <span className="sync-indicator" data-state={snapshot.status} role="status" aria-live="polite">
@@ -320,7 +370,7 @@ export function App() {
           <div className="page-heading">
             <div>
               <p className="eyebrow">YOUR WORKSPACE</p>
-              <h1>{issueId ? "Issue" : "Issues"}</h1>
+              <h1>{issueId ? "Issue" : view === "mine" ? "My Issues" : "Issues"}</h1>
               <p className="page-description">
                 {selectedIssue ? identifier(selectedIssue, snapshot.teams) : "A place for the work ahead."}
               </p>
@@ -403,6 +453,8 @@ export function App() {
                     context={context}
                     workspaceSnapshot={snapshot}
                     onArchive={archived}
+                    backHref={view === "mine" ? "#my-issues" : "#issues"}
+                    backLabel={listName}
                   />
                 ) : (
                   <section className="empty-state">
@@ -461,10 +513,16 @@ export function App() {
                       </p>
                     )}
                   </section>
+                  <IssueViewToolbar
+                    view={view}
+                    filters={filters}
+                    snapshot={snapshot}
+                    onChange={(value) => setViewFilters((current) => ({ ...current, [view]: value }))}
+                  />
                   <section className="issue-list" aria-labelledby="list-heading">
                     <div className="list-heading">
                       <h2 id="list-heading">
-                        All issues <span>{snapshot.issues.length}</span>
+                        {listName} <span>{issues.length}</span>
                       </h2>
                       <span className="list-help">Select a title to edit</span>
                     </div>
@@ -472,14 +530,28 @@ export function App() {
                       <div className="empty-state">
                         <p>Opening your workspace…</p>
                       </div>
-                    ) : snapshot.issues.length === 0 ? (
+                    ) : issues.length === 0 ? (
                       <div className="empty-state">
-                        <h3>A little room to begin.</h3>
-                        <p>Create your first issue above.</p>
+                        <h3>
+                          {filtersActive
+                            ? "No matching issues"
+                            : view === "mine"
+                              ? "No issues assigned to you yet"
+                              : "A little room to begin."}
+                        </h3>
+                        <p>
+                          {filtersActive
+                            ? "Change or clear the filters above to see more work."
+                            : view === "mine"
+                              ? "Create an issue above to assign it to yourself, or take ownership of existing work."
+                              : "Create your first issue above."}
+                        </p>
                       </div>
                     ) : (
                       <table>
-                        <caption className="visually-hidden">Issues in {workspaceName}</caption>
+                        <caption className="visually-hidden">
+                          {listName} in {workspaceName}
+                        </caption>
                         <thead>
                           <tr>
                             <th scope="col">Identifier</th>
@@ -490,20 +562,26 @@ export function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {snapshot.issues.map((issue) => (
+                          {issues.map((issue) => (
                             <IssueRow
                               key={issue.id}
                               issue={issue}
                               teams={snapshot.teams}
                               pending={pendingIds.has(issue.id)}
                               status={snapshot.status}
+                              stateName={stateNames.get(issue.stateId) ?? "Unavailable status"}
+                              assigneeName={
+                                issue.assigneeId
+                                  ? (memberNames.get(issue.assigneeId) ?? "Unavailable member")
+                                  : "Unassigned"
+                              }
                             />
                           ))}
                         </tbody>
                       </table>
                     )}
                     <div className="list-footer">
-                      {snapshot.issues.length} {snapshot.issues.length === 1 ? "issue" : "issues"}
+                      {issues.length} of {snapshot.issues.length} {snapshot.issues.length === 1 ? "issue" : "issues"}
                       <span>Changes sync when connected.</span>
                     </div>
                   </section>

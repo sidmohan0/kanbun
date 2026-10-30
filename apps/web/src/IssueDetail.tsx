@@ -10,18 +10,22 @@ export function IssueDetail({
   context,
   workspaceSnapshot,
   onArchive,
+  backHref = "#issues",
+  backLabel = "All issues",
 }: {
   issue: Row<"issue">;
   context: WorkspaceContext;
   workspaceSnapshot: WorkspaceSnapshot;
   onArchive(issue: Row<"issue">): void;
+  backHref?: string;
+  backLabel?: string;
 }) {
   const [session] = useState(() => descriptionSession(context, issue));
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
   return (
     <section className="issue-detail" aria-label="Issue details">
-      <a className="back-to-issues" href="#issues">
-        ← All issues
+      <a className="back-to-issues" href={backHref}>
+        ← {backLabel}
       </a>
       <h2>{issue.title}</h2>
       <IssueProperties issue={issue} snapshot={workspaceSnapshot} onArchive={onArchive} />
