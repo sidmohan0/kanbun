@@ -21,3 +21,5 @@ artifacts/docs-drift/
 artifacts/recovery/
 
 artifacts/deployment/
+
+artifacts/preview-health/

@@ -20,6 +20,7 @@ import { localActors, seedWorkspace } from "./local";
 import { preparePreview } from "./preview";
 import { DocumentDO, documentName } from "./document";
 export { DocumentDO } from "./document";
+import { internalFailure } from "./reporting";
 import {
   activityQuery,
   body,
@@ -132,8 +133,7 @@ function failure(error: unknown): Response {
       error.code === "forbidden" ? 403 : error.code === "not_found" ? 404 : error.code === "conflict" ? 409 : 400;
     return json({ error: error.message, code: error.code }, status);
   }
-  console.error("Workspace request failed", error);
-  return json({ error: "Internal workspace error" }, 500);
+  return internalFailure(error);
 }
 
 /** The authority is reached through the edge Worker's private binding, never a public DO URL. */
