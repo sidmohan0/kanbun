@@ -1,8 +1,9 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
-import { mkdir, mkdtemp, open, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { checkDocumentation } from "./docs.mjs";
@@ -252,6 +253,7 @@ async function execute(step, root, runDirectory, index) {
 
 export async function runVerification({ root, command = "all", outputDirectory } = {}) {
   const started = performance.now();
+  let localDirectory;
   const report = {
     schemaVersion: 1,
     command,
@@ -271,6 +273,7 @@ export async function runVerification({ root, command = "all", outputDirectory }
     const steps = plan(command, root, report.metadata, outputDirectory);
     await mkdir(outputDirectory, { recursive: true });
     report.runDirectory = await mkdtemp(path.join(outputDirectory, "run-"));
+    localDirectory = await mkdtemp(path.join(tmpdir(), "kanbun-verification-"));
     for (const [index, step] of steps.entries()) {
       if (report.steps.some((result) => !result.pass)) {
         report.steps.push({
@@ -283,7 +286,7 @@ export async function runVerification({ root, command = "all", outputDirectory }
           reason: "A prerequisite or earlier step failed.",
         });
       } else {
-        report.steps.push(await execute(step, root, report.runDirectory, index));
+        report.steps.push(await execute(step, root, localDirectory, index));
       }
     }
     report.executed = report.steps.some((step) => step.executed);
@@ -297,16 +300,48 @@ export async function runVerification({ root, command = "all", outputDirectory }
     report.error = error.message;
   }
   report.durationMs = performance.now() - started;
-  if (report.runDirectory) {
+  if (localDirectory) {
+    const exportDirectory = report.runDirectory;
+    const relocateLogs = (from, to) => {
+      for (const step of report.steps) {
+        for (const field of ["stdoutLog", "stderrLog"])
+          if (step[field]?.startsWith(from + path.sep)) step[field] = to + step[field].slice(from.length);
+      }
+    };
+    relocateLogs(localDirectory, exportDirectory);
+    const localReceipt = path.join(localDirectory, "report.json");
+    let receiptWritten = false;
     try {
       report.reportWritten = true;
-      await writeFile(path.join(report.runDirectory, "report.json"), JSON.stringify(report, null, 2) + "\n", {
+      await writeFile(localReceipt, JSON.stringify(report, null, 2) + "\n", {
         flag: "wx",
       });
+      receiptWritten = true;
     } catch (error) {
       report.pass = false;
       report.reportWritten = false;
       report.error = `Verification report could not be written: ${error.message}`;
+    }
+    try {
+      // Copy a completed receipt last so a partial export cannot advertise successful verification.
+      await cp(localDirectory, exportDirectory, { recursive: true, filter: (source) => source !== localReceipt });
+      if (receiptWritten)
+        await cp(localReceipt, path.join(exportDirectory, "report.json"), { force: false, errorOnExist: true });
+      await rm(localDirectory, { recursive: true, force: true });
+    } catch (error) {
+      report.pass = false;
+      report.reportWritten = false;
+      report.error = `Verification artifacts could not be exported to ${exportDirectory}: ${error.message}`;
+      report.runDirectory = localDirectory;
+      report.recoveryDirectory = localDirectory;
+      relocateLogs(exportDirectory, localDirectory);
+      try {
+        report.reportWritten = true;
+        await writeFile(localReceipt, JSON.stringify(report, null, 2) + "\n");
+      } catch (writeError) {
+        report.reportWritten = false;
+        report.error += `; recovery receipt could not be written: ${writeError.message}`;
+      }
     }
   }
   return report;
