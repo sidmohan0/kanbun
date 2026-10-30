@@ -60,6 +60,12 @@ An instrumented Actions observation rendered the same working-set size in 2,614 
 target. [The measurement record](ux/issue-views.md#measured-rendering-evidence) retains that result
 alongside the local observations and explains the separate bulk-fixture setup allowance.
 
+The offline recovery proof also covers a reconnect signal arriving while an older refresh is still
+finishing after a failed push. The regression holds that refresh's final pull, delivers the online
+signal before releasing it, then requires one committed comment, an empty persisted outbox, and
+successful reload. Socket hints are disconnected in this case so a separate live-update event cannot
+mask a missed reconnect. [Recovery regression](../packages/verifier/test/recovery/app-discussion.spec.ts).
+
 Implementation proceeds in focused PRs. Frontend, backend, and behavioral tests can run in parallel
 within a slice once their interfaces agree. Access administration precedes hosted multi-user proof;
 semantic issue controls precede activity and notification consumers. Backups and monitoring can

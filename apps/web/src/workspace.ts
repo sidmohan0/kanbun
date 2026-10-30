@@ -409,8 +409,9 @@ function start(): Promise<void> {
       context = await resolveWorkspaceContext();
       if (!navigator.locks)
         throw new Error("This browser cannot safely open the workspace because Web Locks are unavailable.");
-      window.addEventListener("focus", () => void refresh());
-      window.addEventListener("online", () => void refresh());
+      // A reconnect during an older refresh must queue a fresh attempt after it drains.
+      window.addEventListener("focus", requestRealtimeRefresh);
+      window.addEventListener("online", requestRealtimeRefresh);
       window.addEventListener("offline", publish);
       const ownLease = async () => {
         leaseHeld = true;

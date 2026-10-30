@@ -48,6 +48,8 @@ preparation moves them to a dated version heading.
 
 ### Fixed
 
+- Reconnect and focus signals received during an older refresh now queue a fresh synchronization pass, so a failed offline push cannot leave a restored outbox waiting for another user action.
+
 - Verification logs and browser traces now stay inside the devcontainer until completion, then export receipts and diagnostic artifacts on success or failure, avoiding shared-mount permission errors without suppressing failed checks or exports.
 - Deployment credentials now tolerate pasted whitespace and reject malformed values without including secrets in HTTP header errors.
 
