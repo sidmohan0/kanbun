@@ -14,7 +14,7 @@ export type Mutation = {
   ts: string;
   /** Why (mainly for agents). Stored on every log row the mutation writes. */
   reason?: string;
-  /** Log entry this mutation is a response to, if any. */
+  /** Sync-log patch sequence this mutation responds to; not an event-log sequence. */
   causationSeq?: number;
 };
 

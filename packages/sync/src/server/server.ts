@@ -4,7 +4,15 @@
  * except the commit listener, which the DO uses to poke WebSockets.
  */
 import { modelNames, models, type ActorType, type ModelName } from "@kanbun/model";
-import { MutationError, parseArgs, type Actor, type MutatorContext, type MutatorMap } from "../mutators";
+import type { DomainEvent } from "@kanbun/events";
+import {
+  executeMutator,
+  MutationError,
+  parseArgs,
+  type Actor,
+  type MutatorContext,
+  type MutatorMap,
+} from "../mutators";
 import type {
   ActivityEntry,
   BootstrapResponse,
@@ -19,6 +27,7 @@ import type {
 import { tableMeta } from "../rows";
 import { applyMigrations, type SqlDriver, type SqlValue } from "./driver";
 import { SqliteStore, SYSTEM_TAG } from "./sqliteStore";
+import { appendEvent, decodeEvent } from "./eventLog";
 
 export type CommitListener = (seq: number) => void;
 
@@ -111,6 +120,17 @@ export class SyncServer {
     const marks = teamIds.map(() => "?").join(", ");
     const teamClause = teamIds.length ? `(${teamCol} IS NULL OR ${teamCol} IN (${marks}))` : `${teamCol} IS NULL`;
     return { sql: `${teamClause} AND (${userCol} IS NULL OR ${userCol} = ?)`, params: [...teamIds, userId] };
+  }
+
+  /** The wire API uses patch cursors; semantic history references the producing event. */
+  private eventCause(actor: Actor, syncSeq: number | undefined): number | null {
+    if (syncSeq === undefined) return null;
+    const scope = this.scopeSql(this.visibleTeamIds(actor), this.effectiveUserId(actor), "team_id", "scope_user_id");
+    const row = this.opts.driver.all(`SELECT event_seq FROM sync_log WHERE seq = ? AND (${scope.sql})`, [
+      syncSeq,
+      ...scope.params,
+    ])[0];
+    return row?.["event_seq"] == null ? null : Number(row["event_seq"]);
   }
 
   // ---- client bookkeeping ---------------------------------------------------
@@ -252,7 +272,35 @@ export class SyncServer {
           // Each mutation runs in its own savepoint so a rejected one leaves no partial writes.
           try {
             this.opts.driver.savepoint(() => {
-              def.run(ctx, parseArgs(m.name, def, m.args));
+              executeMutator(def, ctx, parseArgs(m.name, def, m.args), (pending, eventIndex, apply) => {
+                const event = appendEvent(this.opts.driver, pending, {
+                  actor,
+                  txnId,
+                  eventIndex,
+                  clientId: req.clientId,
+                  mutationId: m.id,
+                  ts: Date.parse(ctx.now),
+                  causationSeq: this.eventCause(actor, m.causationSeq),
+                  reason: m.reason ?? null,
+                });
+                apply(
+                  {
+                    ...ctx,
+                    store: this.store.withTag({
+                      actorId: actor.id,
+                      actorType: actor.type,
+                      clientId: req.clientId,
+                      mutationId: m.id,
+                      txnId,
+                      eventSeq: event.seq,
+                      ts: new Date(event.ts).toISOString(),
+                      causationSeq: m.causationSeq ?? null,
+                      reason: event.reason,
+                    }),
+                  },
+                  event,
+                );
+              });
               if (agent) this.enforceAgentScopes(agent, txnId);
             });
           } catch (e) {
@@ -345,7 +393,31 @@ export class SyncServer {
         server: true,
         ...extra,
       };
-      def.run(ctx, parseArgs(name, def, args));
+      executeMutator(def, ctx, parseArgs(name, def, args), (pending, eventIndex, apply) => {
+        const event = appendEvent(this.opts.driver, pending, {
+          actor: SYSTEM_ACTOR,
+          txnId,
+          eventIndex,
+          clientId: null,
+          mutationId: null,
+          ts: Date.parse(ctx.now),
+          causationSeq: this.eventCause(SYSTEM_ACTOR, extra.causationSeq),
+          reason: extra.reason ?? null,
+        });
+        apply(
+          {
+            ...ctx,
+            store: this.store.withTag({
+              ...SYSTEM_TAG(txnId),
+              eventSeq: event.seq,
+              ts: new Date(event.ts).toISOString(),
+              causationSeq: extra.causationSeq ?? null,
+              reason: event.reason,
+            }),
+          },
+          event,
+        );
+      });
       return this.currentSeq();
     });
     for (const l of this.listeners) l(seq);
@@ -385,6 +457,25 @@ export class SyncServer {
   }
 
   // ---- activity ------------------------------------------------------------------
+
+  /** Committed semantic events visible to this actor, ordered for deterministic replay. */
+  events(actor: Actor, filter: { since?: number; entityId?: string; limit?: number } = {}): DomainEvent[] {
+    const since = filter.since ?? 0;
+    const limit = filter.limit ?? 500;
+    if (!Number.isSafeInteger(since) || since < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 5000)
+      throw new MutationError("Invalid event cursor or limit");
+    const teams = this.visibleTeamIds(actor);
+    const scope = this.scopeSql(teams, this.effectiveUserId(actor), "team_id", "scope_user_id");
+    const clauses = ["branch_id = 'main'", "seq > ?", scope.sql];
+    const params: SqlValue[] = [since, ...scope.params];
+    if (filter.entityId !== undefined) {
+      clauses.push("entity_id = ?");
+      params.push(filter.entityId);
+    }
+    return this.opts.driver
+      .all(`SELECT * FROM event_log WHERE ${clauses.join(" AND ")} ORDER BY seq ASC LIMIT ?`, [...params, limit])
+      .map(decodeEvent);
+  }
 
   /** The activity feed: log entries with provenance, newest first, optionally for one row or one actor type. */
   activity(

@@ -46,6 +46,7 @@ Skipped or unexecuted checks do not count as successful verification.
 ## PR and main checks
 
 The complete verifier runs on every PR and push to `main`, including documentation-only changes.
+Its workspace tests include [semantic issue replay and migration checks](event-replay.md).
 All repository-owned workflows initialize the same devcontainer used locally and execute their
 checks inside it. Run `./scripts/devcontainer.sh verify` from a host terminal or `pnpm verify` in
 the container shell. Changelog and spec-lock commands receive GitHub metadata explicitly; the

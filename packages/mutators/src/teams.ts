@@ -1,5 +1,5 @@
 import type { Row, WorkflowStateType } from "@kanbun/model";
-import { MutationError, defineMutator, type MutatorContext } from "@kanbun/sync";
+import { MutationError, defineMutator, type DecideContext, type MutatorContext } from "@kanbun/sync";
 import { z } from "zod";
 import { firstKey, keyAfter } from "./ordering";
 import { color, id, nullable } from "./schema";
@@ -29,14 +29,14 @@ export function requireTeamAdmin(ctx: MutatorContext, teamId: string): void {
   if (!m?.owner || m.archivedAt) throw new MutationError("team admin required", "forbidden");
 }
 
-export function requireTeamAccess(ctx: MutatorContext, teamId: string): Row<"team"> {
+export function requireTeamAccess(ctx: DecideContext, teamId: string): Row<"team"> {
   const team = ctx.store.get("team", teamId);
   if (!team || team.archivedAt) throw new MutationError("team not found", "not_found");
   if (team.visibility === "private") {
     const userId =
       ctx.actor.type === "agent" ? (ctx.store.get("agent", ctx.actorId)?.ownerId ?? ctx.actorId) : ctx.actorId;
     const m = ctx.store.list("teamMembership", { teamId, userId })[0];
-    if (!m) throw new MutationError("not a member of this private team", "forbidden");
+    if (!m || m.archivedAt) throw new MutationError("not a member of this private team", "forbidden");
   }
   if (ctx.actor.type === "agent") {
     const scoped = ctx.store.get("agent", ctx.actorId)?.scopes.teamIds ?? [];

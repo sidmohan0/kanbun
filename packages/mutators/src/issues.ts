@@ -1,7 +1,14 @@
 import type { Row } from "@kanbun/model";
-import { MutationError, defineMutator, type MutatorContext } from "@kanbun/sync";
+import {
+  MutationError,
+  defineEventMutator,
+  defineMutator,
+  type DecideContext,
+  type MutatorContext,
+} from "@kanbun/sync";
 import { z } from "zod";
 import { afterMax, beforeMin } from "./ordering";
+import { applyIssueEvent } from "./issueEvents";
 import { color, date, id, iso, nullable, priority } from "./schema";
 import { requireTeamAccess, requireTeamAdmin } from "./teams";
 
@@ -24,7 +31,7 @@ export function branchName(format: string, username: string, identifier: string,
     .replace("{issueTitle}", slug);
 }
 
-export function requireIssue(ctx: MutatorContext, issueId: string): Row<"issue"> {
+export function requireIssue(ctx: DecideContext, issueId: string): Row<"issue"> {
   const issue = ctx.store.get("issue", issueId);
   if (!issue) throw new MutationError("issue not found", "not_found");
   requireTeamAccess(ctx, issue.teamId);
@@ -80,7 +87,7 @@ const issuePatch = z
   .partial();
 
 export const mutators = {
-  issueCreate: defineMutator({
+  issueCreate: defineEventMutator({
     args: z.object({
       id,
       teamId: id,
@@ -107,8 +114,9 @@ export const mutators = {
       position: z.enum(["top", "bottom"]).optional(),
     }),
     description: "Create an issue in a team. The DO assigns its number; the identifier KEY-N is derived from it.",
-    run(ctx, args) {
+    decide(ctx, args) {
       const team = requireTeamAccess(ctx, args.teamId);
+      if (ctx.store.get("issue", args.id)) throw new MutationError("issue already exists", "conflict");
       const title = args.title.trim();
       if (!title) throw new MutationError("title is required", "invalid");
       const stateId = args.stateId ?? (team.triageEnabled ? team.triageIssueStateId : null) ?? team.defaultIssueStateId;
@@ -120,53 +128,7 @@ export const mutators = {
       if ((args.labelIds?.length ?? 0) !== (args.labelLinkIds?.length ?? 0))
         throw new MutationError("labelLinkIds must match labelIds", "invalid");
 
-      const now = ctx.now;
-      const row: Partial<Row<"issue">> = {
-        id: args.id,
-        teamId: team.id,
-        number: 0,
-        title,
-        description: args.description ?? null,
-        descriptionContentId: args.descriptionContentId ?? null,
-        priority: args.priority ?? 0,
-        prioritySortOrder: afterMax(ctx.store.maxOf("issue", "prioritySortOrder", { teamId: team.id })),
-        estimate: args.estimate ?? null,
-        dueDate: args.dueDate ?? null,
-        sortOrder:
-          args.position === "top"
-            ? beforeMin(ctx.store.minOf("issue", "sortOrder", { teamId: team.id }))
-            : afterMax(ctx.store.maxOf("issue", "sortOrder", { teamId: team.id })),
-        boardOrder: afterMax(ctx.store.maxOf("issue", "boardOrder", { teamId: team.id, stateId })),
-        stateId,
-        assigneeId: args.assigneeId ?? null,
-        creatorId: ctx.actorId,
-        parentId: args.parentId ?? null,
-        projectId: args.projectId ?? null,
-        projectMilestoneId: args.projectMilestoneId ?? null,
-        cycleId: args.cycleId ?? null,
-        sourceCommentId: args.sourceCommentId ?? null,
-        startedAt: state.type === "started" ? now : null,
-        completedAt: state.type === "completed" ? now : null,
-        canceledAt: state.type === "canceled" ? now : null,
-        triagedAt: state.type === "triage" ? null : team.triageEnabled ? now : null,
-        startedTriageAt: state.type === "triage" ? now : null,
-        addedToTeamAt: now,
-        addedToProjectAt: args.projectId ? now : null,
-        addedToCycleAt: args.cycleId ? now : null,
-        createdAt: now,
-        updatedAt: now,
-      };
-      // The number is authoritative only: the DO owns the counter.
-      if (ctx.server) {
-        row.number = team.issueCounter + 1;
-        ctx.store.patch("team", team.id, { issueCounter: row.number });
-      }
-      if (args.parentId)
-        row.subIssueSortOrder = afterMax(
-          ctx.store.maxOf("issue", "subIssueSortOrder", { parentId: args.parentId }) ?? undefined,
-        );
-      ctx.store.insert("issue", row as Row<"issue">);
-
+      const labelLinks: { id: string; labelId: string }[] = [];
       const seen = new Set<string>();
       (args.labelIds ?? []).forEach((labelId, i) => {
         if (seen.has(labelId)) return;
@@ -175,40 +137,89 @@ export const mutators = {
         if (!label || label.archivedAt) throw new MutationError("label not found", "not_found");
         if (label.teamId && label.teamId !== team.id)
           throw new MutationError("label belongs to another team", "invalid");
-        ctx.store.insert("issueLabelLink", {
-          id: args.labelLinkIds![i]!,
-          teamId: team.id,
-          issueId: args.id,
-          labelId,
-          createdAt: now,
-          updatedAt: now,
-        } as Row<"issueLabelLink">);
+        labelLinks.push({ id: args.labelLinkIds![i]!, labelId });
       });
-      ctx.store.insert("issueSubscription", {
-        id: args.subscriptionId,
-        teamId: team.id,
-        issueId: args.id,
-        userId: ctx.actorId,
-        createdAt: now,
-        updatedAt: now,
-      } as Row<"issueSubscription">);
-      if (args.assigneeId && args.assigneeId !== ctx.actorId && args.assigneeSubscriptionId) {
-        ctx.store.insert("issueSubscription", {
-          id: args.assigneeSubscriptionId,
+      const subscriptions = [{ id: args.subscriptionId, userId: ctx.actorId }];
+      if (args.assigneeId && args.assigneeId !== ctx.actorId && args.assigneeSubscriptionId)
+        subscriptions.push({ id: args.assigneeSubscriptionId, userId: args.assigneeId });
+
+      const now = ctx.now;
+      return [
+        {
+          type: "IssueCreated",
+          entityType: "issue",
+          entityId: args.id,
           teamId: team.id,
-          issueId: args.id,
-          userId: args.assigneeId,
-          createdAt: now,
-          updatedAt: now,
-        } as Row<"issueSubscription">);
-      }
+          scopeUserId: null,
+          payload: {
+            // Numbers are resolved while deciding on the authority and stored as facts for replay.
+            number: ctx.server ? team.issueCounter + 1 : 0,
+            title,
+            description: args.description ?? null,
+            descriptionContentId: args.descriptionContentId ?? null,
+            priority: args.priority ?? 0,
+            prioritySortOrder: afterMax(ctx.store.maxOf("issue", "prioritySortOrder", { teamId: team.id })),
+            estimate: args.estimate ?? null,
+            dueDate: args.dueDate ?? null,
+            sortOrder:
+              args.position === "top"
+                ? beforeMin(ctx.store.minOf("issue", "sortOrder", { teamId: team.id }))
+                : afterMax(ctx.store.maxOf("issue", "sortOrder", { teamId: team.id })),
+            boardOrder: afterMax(ctx.store.maxOf("issue", "boardOrder", { teamId: team.id, stateId })),
+            subIssueSortOrder: args.parentId
+              ? afterMax(ctx.store.maxOf("issue", "subIssueSortOrder", { parentId: args.parentId }) ?? undefined)
+              : null,
+            stateId,
+            assigneeId: args.assigneeId ?? null,
+            creatorId: ctx.actorId,
+            parentId: args.parentId ?? null,
+            projectId: args.projectId ?? null,
+            projectMilestoneId: args.projectMilestoneId ?? null,
+            cycleId: args.cycleId ?? null,
+            sourceCommentId: args.sourceCommentId ?? null,
+            startedAt: state.type === "started" ? now : null,
+            completedAt: state.type === "completed" ? now : null,
+            canceledAt: state.type === "canceled" ? now : null,
+            triagedAt: state.type === "triage" ? null : team.triageEnabled ? now : null,
+            startedTriageAt: state.type === "triage" ? now : null,
+            addedToTeamAt: now,
+            addedToProjectAt: args.projectId ? now : null,
+            addedToCycleAt: args.cycleId ? now : null,
+            labelLinks,
+            subscriptions,
+          },
+        },
+      ];
     },
+    apply: applyIssueEvent,
   }),
 
-  issueUpdate: defineMutator({
+  issueUpdate: defineEventMutator({
     args: z.object({ id, patch: issuePatch, assigneeSubscriptionId: id.optional() }),
     description:
       "Update one or more fields of an issue: title, state, priority, assignee, dates, parent, project, cycle, ordering.",
+    decide(ctx, args) {
+      // Other fields retain the existing mutation path until their event vocabulary is implemented.
+      if (
+        args.patch.title === undefined ||
+        Object.entries(args.patch).some(([key, value]) => key !== "title" && value !== undefined)
+      )
+        return null;
+      const issue = requireIssue(ctx, args.id);
+      const title = args.patch.title.trim();
+      if (!title) throw new MutationError("title is required", "invalid");
+      return [
+        {
+          type: "IssueTitled",
+          entityType: "issue",
+          entityId: issue.id,
+          teamId: issue.teamId,
+          scopeUserId: null,
+          payload: { title },
+        },
+      ];
+    },
+    apply: applyIssueEvent,
     run(ctx, args) {
       const issue = requireIssue(ctx, args.id);
       const p = { ...args.patch };

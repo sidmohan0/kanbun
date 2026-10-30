@@ -18,6 +18,7 @@ Contributions must not include third-party assets (icon sets, illustrations, CSS
 apps/
   web/        React + Vite web shell; routing and Worker integration are planned
 packages/
+  events/     Typed semantic issue events and their validated envelopes
   model/      Drizzle schema: one definition of every entity, for D1 and for DO SQLite
   sync/       The sync engine: protocol, server push/pull/log, client object pool + mutation queue + rebase
   mutators/   Every write in the system, defined once, run on the client (optimistic) and in the DO (authoritative)
@@ -30,6 +31,7 @@ Current workspace packages:
 <!-- workspace-inventory:start -->
 
 - `apps/web`
+- `packages/events`
 - `packages/model`
 - `packages/mutators`
 - `packages/seed`
@@ -38,13 +40,18 @@ Current workspace packages:
 
 <!-- workspace-inventory:end -->
 
-The Worker (`apps/worker`: Hono router, WorkspaceDO with SQLite + sync log + WebSocket hub, DocumentDO with Yjs) is not written yet. The engine is exercised today over `node:sqlite` by the tests and the seed; the Durable Object driver in `packages/sync/src/server/driver.ts` is the only piece that changes when it moves into the Worker.
+The Worker (`apps/worker`: Hono router, WorkspaceDO with SQLite + sync log + WebSocket hub, DocumentDO with Yjs) is not written yet. The engine is exercised today over `node:sqlite` by the tests and the seed; the Durable Object driver in `packages/sync/src/server/driver.ts` is the SQL portability boundary for the future Worker.
+
+Issue creation and title-only updates now record `IssueCreated` and `IssueTitled` events and apply
+shared reducers. Their recorded history can reproduce the same projections in memory and SQLite.
+Other mutations still use the original patch-based path during the incremental migration. See
+[semantic event replay](docs/event-replay.md) for the supported scope and invariants.
 
 ## How a write flows
 
-1. The client runs a mutator against its in-memory object pool and re-renders. The mutation is appended to a persisted queue.
+1. The client runs a command against its in-memory object pool and re-renders. For migrated commands, a read-only decision produces events that a shared reducer applies optimistically. The command is appended to a persisted queue.
 2. The queue is pushed to `/sync/push`; the Worker forwards it to the workspace's Durable Object.
-3. The DO runs the same mutator inside a SQLite transaction (one savepoint per mutation, so a rejected one leaves nothing behind), assigns server-owned fields (issue numbers), appends to `sync_log` with who did it and why, and pokes every connected WebSocket.
+3. The authority runs the same command inside a SQLite transaction (one savepoint per mutation, so a rejected one leaves nothing behind). Migrated commands record finalized semantic events and apply their reducers, including server-owned issue numbers. Derived patches enter `sync_log` with provenance; the future Worker will poke connected WebSockets after commit.
 4. Clients pull `/sync/pull?since=<seq>`, apply the log, drop confirmed mutations from their queue and re-apply any still pending.
 
 Everything else (notifications, email, webhooks) hangs off the change events the DO emits to Queues.

@@ -360,19 +360,18 @@ describe("client", () => {
     const a = mk(ALICE);
     await a.start();
     const issueId = uuidv7();
-    a.mutate("issueCreate", { id: issueId, teamId: publicTeam, title: "t", subscriptionId: uuidv7() });
-    // issueCreate with a bad label: the issue row is written before the label check throws.
+    const subscriptionId = uuidv7();
+    a.mutate("issueCreate", { id: issueId, teamId: publicTeam, title: "t", subscriptionId });
+    // The second reducer inserts its issue, then the duplicate subscription id throws.
     const bad = uuidv7();
     expect(() =>
       a.mutate("issueCreate", {
         id: bad,
         teamId: publicTeam,
         title: "half",
-        subscriptionId: uuidv7(),
-        labelIds: [uuidv7()],
-        labelLinkIds: [uuidv7()],
+        subscriptionId,
       }),
-    ).toThrow(/label not found/);
+    ).toThrow(/already exists/);
     expect(a.get("issue", bad)).toBeUndefined();
     expect(a.list("issue")).toHaveLength(1);
     expect(a.pendingCount()).toBe(1);

@@ -32,3 +32,5 @@ export function tools(only?: string[]) {
 export { issueIdentifier, branchName } from "./issues";
 export { DEFAULT_STATES } from "./teams";
 export * from "./ordering";
+
+export { applyIssueEvent } from "./issueEvents";
