@@ -98,6 +98,30 @@ rollback command to restore a known working Worker version from the same devcont
 and workspace storage intact; reverting code must not delete user data or reverse an applied
 migration. A failed initial deployment has no previous application version to restore.
 
-The existing runtime and browser recovery checks continue to run locally and in PR CI. Deployment
-smoke tests and automated rollback policy can be added independently without weakening the Access
-or workspace identity boundary.
+## Automatic releases
+
+After successful push CI on current main, `Deploy preview` checks out that exact SHA and uses the
+same devcontainer to build and deploy. Superseded workflow runs do not publish. The scoped
+`CLOUDFLARE_API_TOKEN` Actions secret is required; it is never committed or included in receipts.
+It expires January 28, 2027 and must be rotated before then. Its Worker permission covers only
+`kanbun-preview`, its route/zone permissions cover only `kanbun.ai`, and D1 Write is account-wide
+because the token dashboard does not offer a per-database selector.
+
+The live smoke checks validate HTTPS, anonymous Access redirects on the app/context/bootstrap/
+connect paths, available verification keys, disabled alternative URLs, and the exact active
+Worker version. They verify the hosted security boundary; they do not authenticate as the owner
+or mutate workspace data. Authenticated issue flows, convergence, and recovery run in the real
+local runtime in PR CI; owner sign-in and retained workspace data are checked during hosted setup.
+
+Code releases refuse changed SQL migrations, Durable Object migrations, storage bindings, identity
+configuration, or routes, and
+require the remote D1 migration ledger to match local files. Schema rollouts require separate
+compatibility review. Version tags record the source SHA; the first automated release recognizes
+the exact manually verified domain-cutover version as its bootstrap baseline.
+
+If post-deployment smoke fails, automation restores and checks the prior version only while its
+own known candidate is still active. An unknown candidate, unavailable control plane, or newer
+deployment requires operator review. Deployment receipts are retained as Actions artifacts even
+on failure. Automatic runs are serialized; avoid simultaneous manual deployments because
+Cloudflare's rollback API has no atomic compare-and-swap precondition. Rollback never reverses
+database changes or removes workspace data.

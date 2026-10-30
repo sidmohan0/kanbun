@@ -14,6 +14,7 @@
     "deploy:preview": "node scripts/deploy-preview.mjs",
     "test": "pnpm -r test",
     "test:changelog": "node --test scripts/check-changelog.test.mjs",
+    "test:scripts": "node --test scripts/*.test.mjs",
     "test:verifier": "pnpm --filter @kanbun/verifier test",
     "test:recovery": "pnpm --filter @kanbun/verifier test:recovery",
     "typecheck": "pnpm -r typecheck",

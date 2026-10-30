@@ -14,7 +14,7 @@ const expectedCalls = [
   ["lint"],
   ["typecheck"],
   ["test"],
-  ["test:changelog"],
+  ["test:scripts"],
   ["spec:check", "--initial"],
   ["build"],
   ["seed"],
