@@ -3,7 +3,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
-const artifacts = path.resolve(directory, "../../../../artifacts/recovery");
+const artifacts = process.env["KANBUN_RECOVERY_ARTIFACTS"];
+if (!artifacts || !path.isAbsolute(artifacts))
+  throw new Error("Run browser recovery tests with pnpm test:recovery to retain container-local artifacts.");
 
 export default defineConfig({
   testDir: directory,

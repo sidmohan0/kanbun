@@ -40,7 +40,7 @@ function fixture(t) {
   cpSync(path.join(packageRoot, "src"), path.join(root, "packages/verifier/src"), { recursive: true });
   mkdirSync(path.join(root, "apps"));
   write(".nvmrc", process.version.slice(1) + "\n");
-  write(".gitignore", "node_modules/\nartifacts/\n.pnpm-calls\n");
+  write(".gitignore", "node_modules/\nartifacts/\n.pnpm-calls\n.pnpm-local-logs\n");
   write("pnpm-lock.yaml", "lockfileVersion: '9.0'\n");
   write("pnpm-workspace.yaml", "packages:\n  - apps/*\n  - packages/*\n");
   write(
@@ -73,15 +73,20 @@ import fs from "node:fs";
 import path from "node:path";
 const invocation=process.argv.slice(2);
 fs.appendFileSync(".pnpm-calls",JSON.stringify(invocation)+"\\n");
+fs.appendFileSync(".pnpm-local-logs",fs.readlinkSync("/proc/self/fd/1")+"\\n");
 const args=invocation.filter(argument=>argument!=="--reporter=append-only");
 if(args[0]==="--version")console.log(process.env.FIXTURE_PNPM_VERSION || "10.28.0");
 else {
   console.log("stdout from "+args.join(" "));
   console.error("stderr from "+args.join(" "));
   if(args[0]==="build" && (process.env.FIXTURE_REMOVE_LOG || process.env.FIXTURE_BLOCK_REPORT)) {
-    const parent=path.resolve("artifacts/verification"),run=path.join(parent,fs.readdirSync(parent).at(-1));
+    const run=path.dirname(fs.readlinkSync("/proc/self/fd/1"));
     if(process.env.FIXTURE_REMOVE_LOG)fs.unlinkSync(path.join(run,fs.readdirSync(run).find(name=>name.includes("-build.stdout.log"))));
     if(process.env.FIXTURE_BLOCK_REPORT)fs.writeFileSync(path.join(run,"report.json"),"occupied");
+  }
+  if(args[0]==="build" && process.env.FIXTURE_BLOCK_EXPORT) {
+    const parent=path.resolve("artifacts/verification"),run=path.join(parent,fs.readdirSync(parent).at(-1));
+    fs.rmSync(run,{recursive:true});fs.writeFileSync(run,"blocks exported artifacts");
   }
   if(process.env.FIXTURE_FAIL===args[0])process.exitCode=7;
 }
@@ -115,6 +120,17 @@ test("all executes the required gates and emits one JSON receipt with retained l
   assert.equal(build.exitCode, 0);
   assert.match(readFileSync(build.stdoutLog, "utf8"), /stdout from build/);
   assert.match(readFileSync(build.stderrLog, "utf8"), /stderr from build/);
+  const liveLogs = readFileSync(path.join(f.root, ".pnpm-local-logs"), "utf8").trim().split("\n");
+  assert.ok(liveLogs.every((file) => file.startsWith(path.join(os.tmpdir(), "kanbun-verification-"))));
+  assert.ok(liveLogs.every((file) => !file.startsWith(report.runDirectory)));
+  assert.ok(
+    report.steps
+      .filter((step) => step.executed)
+      .every(
+        (step) =>
+          path.dirname(step.stdoutLog) === report.runDirectory && path.dirname(step.stderrLog) === report.runDirectory,
+      ),
+  );
   assert.equal(report.metadata.source.head, null);
   assert.equal(report.metadata.source.branch, "main");
   assert.equal(report.metadata.source.dirty, true);
@@ -248,6 +264,34 @@ test("invalid output destinations fail without pretending any commands ran", (t)
   assert.equal(report.pass, false);
   assert.equal(report.executed, false);
   assert.equal(report.reportWritten, false);
+});
+
+test("completed logs and receipt respect a custom output directory", (t) => {
+  const f = fixture(t);
+  const output = path.join(f.root, "custom-receipts");
+  const { status, report } = f.run(["doctor", "--output", output]);
+  assert.equal(status, 0);
+  assert.equal(path.dirname(report.runDirectory), output);
+  assert.deepEqual(JSON.parse(readFileSync(path.join(report.runDirectory, "report.json"), "utf8")), report);
+  assert.ok(report.steps.every((step) => readFileSync(step.stdoutLog) && readFileSync(step.stderrLog)));
+  assert.ok(Object.keys(report.metadata.source.files).every((file) => !file.startsWith("custom-receipts/")));
+});
+
+test("an export failure fails verification and retains a valid container-local recovery receipt", (t) => {
+  const f = fixture(t);
+  const { status, report } = f.run(["build"], { FIXTURE_BLOCK_EXPORT: "1" });
+  assert.equal(status, 1);
+  assert.equal(report.pass, false);
+  assert.match(report.error, /artifacts could not be exported/);
+  assert.equal(report.reportWritten, true);
+  assert.equal(report.runDirectory, report.recoveryDirectory);
+  t.after(() => rmSync(report.recoveryDirectory, { recursive: true, force: true }));
+  assert.ok(report.runDirectory.startsWith(path.join(os.tmpdir(), "kanbun-verification-")));
+  assert.deepEqual(JSON.parse(readFileSync(path.join(report.runDirectory, "report.json"), "utf8")), report);
+  const build = report.steps.find((step) => step.name === "build");
+  assert.equal(build.pass, true);
+  assert.equal(path.dirname(build.stdoutLog), report.runDirectory);
+  assert.match(readFileSync(build.stdoutLog, "utf8"), /stdout from build/);
 });
 
 test("successive runs have distinct retained report directories", (t) => {

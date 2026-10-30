@@ -13,8 +13,8 @@
   "scripts": {
     "verify": "node src/cli.mjs",
     "test": "node --test test/*.test.mjs",
-    "test:recovery": "playwright test --config test/recovery/playwright.config.ts",
-    "typecheck": "node --check src/cli.mjs && node --check src/index.mjs && node --check src/docs.mjs && tsc --noEmit -p test/recovery/tsconfig.json",
+    "test:recovery": "node src/recovery.mjs",
+    "typecheck": "node --check src/cli.mjs && node --check src/index.mjs && node --check src/docs.mjs && node --check src/recovery.mjs && tsc --noEmit -p test/recovery/tsconfig.json",
     "build": "echo 'source package'"
   },
   "devDependencies": {
