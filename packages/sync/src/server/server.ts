@@ -31,6 +31,7 @@ import type {
   PushRequest,
   PushResponse,
 } from "../protocol";
+import { DEFAULT_EVENT_PAGE_SIZE } from "../protocol";
 import { tableMeta } from "../rows";
 import { applyMigrations, type SqlDriver, type SqlValue } from "./driver";
 import { SqliteStore, SYSTEM_TAG } from "./sqliteStore";
@@ -698,25 +699,92 @@ export class SyncServer {
   /** Committed semantic events visible to this actor, ordered for deterministic replay. */
   events(
     actor: Actor,
-    filter: { since?: number; entityId?: string; limit?: number; branchId?: string } = {},
+    filter: {
+      since?: number;
+      entityId?: string;
+      issueId?: string;
+      before?: number;
+      order?: "asc" | "desc";
+      limit?: number;
+      branchId?: string;
+    } = {},
   ): DomainEvent[] {
     const branchId = this.branchId(filter.branchId);
-    this.view(actor, branchId);
+    const view = this.view(actor, branchId);
     const since = filter.since ?? 0;
-    const limit = filter.limit ?? 500;
+    const limit = filter.limit ?? DEFAULT_EVENT_PAGE_SIZE;
     if (!Number.isSafeInteger(since) || since < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 5000)
       throw new MutationError("Invalid event cursor or limit");
     const teams = this.visibleTeamIds(actor);
+    let issueStart: { column: "seq" | "ts"; value: number } | null = null;
+    if (filter.issueId !== undefined) {
+      const issue = view.get("issue", filter.issueId);
+      if (!issue) throw new MutationError("issue not found", "not_found");
+      if (!teams.includes(issue.teamId)) throw new MutationError("not visible", "forbidden");
+      issueStart =
+        issue.createdSeq > 0
+          ? { column: "seq", value: issue.createdSeq }
+          : { column: "ts", value: Date.parse(issue.createdAt) };
+      if (!Number.isSafeInteger(issueStart.value)) throw new MutationError("Invalid issue creation boundary");
+    }
+    if (
+      (filter.before !== undefined && (!Number.isSafeInteger(filter.before) || filter.before <= 0)) ||
+      (filter.order !== undefined && filter.order !== "asc" && filter.order !== "desc")
+    )
+      throw new MutationError("Invalid event pagination");
     const scope = this.scopeSql(teams, this.effectiveUserId(actor), "team_id", "scope_user_id");
     const clauses = ["branch_id = ?", "seq > ?", scope.sql];
     const params: SqlValue[] = [branchId, since, ...scope.params];
+    if (issueStart) {
+      clauses.push(`${issueStart.column} >= ?`);
+      params.push(issueStart.value);
+    }
     if (filter.entityId !== undefined) {
       clauses.push("entity_id = ?");
       params.push(filter.entityId);
     }
-    return this.opts.driver
-      .all(`SELECT * FROM event_log WHERE ${clauses.join(" AND ")} ORDER BY seq ASC LIMIT ?`, [...params, limit])
-      .map(decodeEvent);
+    if (filter.issueId !== undefined) {
+      clauses.push(
+        "((entity_type = 'issue' AND entity_id = ?) OR (entity_type = 'comment' AND json_extract(payload, '$.issueId') = ?))",
+      );
+      params.push(filter.issueId, filter.issueId);
+    }
+    if (filter.before !== undefined) {
+      clauses.push("seq < ?");
+      params.push(filter.before);
+    }
+    const visible: DomainEvent[] = [];
+    let cursor: number | undefined;
+    const currentIssues = new Map<string, import("@kanbun/model").Row<"issue"> | undefined>();
+    // Recorded scope alone cannot protect a body after its issue moves or its UUID is reused.
+    // Refill filtered pages so an inaccessible fact does not truncate visible history.
+    while (visible.length < limit) {
+      const page = this.opts.driver
+        .all(
+          `SELECT * FROM event_log WHERE ${clauses.join(" AND ")}${cursor === undefined ? "" : ` AND seq ${filter.order === "desc" ? "<" : ">"} ?`} ORDER BY seq ${filter.order === "desc" ? "DESC" : "ASC"} LIMIT ?`,
+          [...params, ...(cursor === undefined ? [] : [cursor]), limit],
+        )
+        .map(decodeEvent);
+      for (const event of page) {
+        const parentId =
+          event.entityType === "issue" ? event.entityId : event.entityType === "comment" ? event.payload.issueId : null;
+        if (parentId !== null) {
+          if (!currentIssues.has(parentId)) currentIssues.set(parentId, view.get("issue", parentId));
+          const issue = currentIssues.get(parentId);
+          if (
+            !issue ||
+            !teams.includes(issue.teamId) ||
+            (issue.createdSeq > 0 ? event.seq < issue.createdSeq : event.ts < Date.parse(issue.createdAt))
+          )
+            continue;
+        }
+        visible.push(event);
+        if (visible.length === limit) break;
+      }
+      if (page.length < limit) break;
+      cursor = page.at(-1)!.seq;
+    }
+    return visible;
   }
 
   /** The activity feed: log entries with provenance, newest first, optionally for one row or one actor type. */
@@ -733,7 +801,7 @@ export class SyncServer {
     } = {},
   ): ActivityEntry[] {
     const branchId = this.branchId(filter.branchId);
-    this.view(actor, branchId);
+    const view = this.view(actor, branchId);
     const teams = this.visibleTeamIds(actor);
     const userId = this.effectiveUserId(actor);
     const scope = this.scopeSql(teams, userId, "team_id", "scope_user_id");
@@ -759,10 +827,50 @@ export class SyncServer {
       clauses.push("seq < ?");
       params.push(filter.before);
     }
-    const rows = this.opts.driver.all(
-      `SELECT * FROM sync_log WHERE ${clauses.join(" AND ")} ORDER BY seq DESC LIMIT ${Math.min(filter.limit ?? 100, 500)}`,
-      params,
-    );
+    const limit = Math.min(filter.limit ?? 100, 500);
+    const rows: Record<string, SqlValue>[] = [];
+    let cursor: number | undefined;
+    while (rows.length < limit) {
+      const page = this.opts.driver.all(
+        `SELECT * FROM sync_log WHERE ${clauses.join(" AND ")}${cursor === undefined ? "" : " AND seq < ?"} ORDER BY seq DESC LIMIT ?`,
+        [...params, ...(cursor === undefined ? [] : [cursor]), limit],
+      );
+      for (const row of page) {
+        const model = row["model"] as ModelName;
+        if (model === "issue" || model === "comment" || model === "documentContent") {
+          const patch = row["patch"] ? (JSON.parse(String(row["patch"])) as Record<string, unknown>) : null;
+          const prev = row["prev"] ? (JSON.parse(String(row["prev"])) as Record<string, unknown>) : null;
+          const parentId =
+            model === "issue"
+              ? String(row["row_id"])
+              : (patch?.["issueId"] ??
+                prev?.["issueId"] ??
+                this.opts.driver.all(
+                  // Partial edits must resolve the parent at that log position, not a reused row's current parent.
+                  "SELECT json_extract(patch, '$.issueId') AS issue_id FROM sync_log WHERE model = ? AND row_id = ? AND seq <= ? AND branch_id IN ('main', ?) AND json_type(patch, '$.issueId') = 'text' ORDER BY seq DESC LIMIT 1",
+                  [model, String(row["row_id"]), Number(row["seq"]), branchId],
+                )[0]?.["issue_id"]);
+          const issue = typeof parentId === "string" ? view.get("issue", parentId) : undefined;
+          if (!issue || !teams.includes(issue.teamId)) continue;
+          if (issue.createdSeq > 0) {
+            if (row["event_seq"] !== null) {
+              if (Number(row["event_seq"]) < issue.createdSeq) continue;
+            } else {
+              // Legacy patches use sync cursors; locate this incarnation's authoritative creation in that log.
+              const creation = this.opts.driver.all(
+                "SELECT MIN(seq) AS seq FROM sync_log WHERE model = 'issue' AND row_id = ? AND event_seq = ? AND branch_id IN ('main', ?)",
+                [issue.id, issue.createdSeq, branchId],
+              )[0]?.["seq"];
+              if (creation == null || Number(row["seq"]) < Number(creation)) continue;
+            }
+          } else if (Date.parse(String(row["ts"])) < Date.parse(issue.createdAt)) continue;
+        }
+        rows.push(row);
+        if (rows.length === limit) break;
+      }
+      if (page.length < limit) break;
+      cursor = Number(page.at(-1)!["seq"]);
+    }
     return rows.map((r) => ({
       seq: Number(r["seq"]),
       model: r["model"] as ModelName,

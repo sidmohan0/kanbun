@@ -4,6 +4,7 @@
  * over WebSocket says "there is something to pull".
  */
 import type { ActorType, ModelName } from "@kanbun/model";
+export const DEFAULT_EVENT_PAGE_SIZE = 500;
 
 export type Mutation = {
   /** Monotonic per client, starting at 1. */

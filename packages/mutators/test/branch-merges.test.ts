@@ -292,9 +292,9 @@ describe("reviewing and merging workspace branches", () => {
       expect(server.store.list("issueSubscription", { issueId: proposedId })).toMatchObject([
         { id: id(322), userId: ALICE.id },
       ]);
-      expect(
-        server.events(ALICE, { entityId: proposedId }).filter((event) => event.type === "IssueCreated"),
-      ).toHaveLength(2);
+      expect(server.events(ALICE, { entityId: proposedId }).filter((event) => event.type === "IssueCreated")).toEqual([
+        expect.objectContaining({ seq: server.store.get("issue", proposedId)!.createdSeq }),
+      ]);
     } finally {
       db.close();
     }

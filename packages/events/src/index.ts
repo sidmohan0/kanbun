@@ -206,9 +206,48 @@ const issueRestoredIntent = z.strictObject({
   type: z.literal("IssueRestored"),
   payload: z.strictObject({ from: z.literal("archive") }),
 });
+const commentSubject = { entityType: z.literal("comment"), entityId: id, teamId: id, scopeUserId: z.null() };
+const commentBody = z
+  .string()
+  .max(20_000)
+  .refine((body) => body.trim().length > 0, "comment is empty");
+const commentBodyData = z.record(z.string(), z.unknown()).nullable();
+const commentPostedIntent = z.strictObject({
+  ...commentSubject,
+  type: z.literal("CommentPosted"),
+  payload: z
+    .strictObject({
+      issueId: id,
+      body: commentBody,
+      bodyData: commentBodyData,
+      parentId: nullableId,
+      quotedText: z.string().max(2000).nullable(),
+      userId: nullableId,
+      agentId: nullableId,
+    })
+    .refine((payload) => (payload.userId === null) !== (payload.agentId === null), "A comment must have one author"),
+});
+const commentEditedIntent = z.strictObject({
+  ...commentSubject,
+  type: z.literal("CommentEdited"),
+  payload: z.strictObject({ issueId: id, body: commentBody, bodyData: commentBodyData }),
+});
+const commentResolvedIntent = z.strictObject({
+  ...commentSubject,
+  type: z.literal("CommentResolved"),
+  payload: z.strictObject({
+    issueId: id,
+    resolved: z.boolean(),
+    resolvingUserId: nullableId,
+    resolvingCommentId: nullableId,
+  }),
+});
 
 /** A decision carries business meaning; the execution boundary supplies provenance. */
 export const pendingEventSchema = z.discriminatedUnion("type", [
+  commentPostedIntent,
+  commentEditedIntent,
+  commentResolvedIntent,
   issueCreatedIntent,
   issueTitledIntent,
   issueDescribedIntent,
@@ -248,6 +287,9 @@ const envelope = {
 
 /** The closed vocabulary accepted by durable storage and deterministic replay. */
 export const eventSchema = z.discriminatedUnion("type", [
+  commentPostedIntent.extend(envelope),
+  commentEditedIntent.extend(envelope),
+  commentResolvedIntent.extend(envelope),
   issueCreatedIntent.extend(envelope),
   issueTitledIntent.extend(envelope),
   issueDescribedIntent.extend(envelope),

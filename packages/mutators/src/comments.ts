@@ -1,20 +1,40 @@
+import type { PendingEvent } from "@kanbun/events";
 import type { Row } from "@kanbun/model";
-import { MutationError, defineMutator, type MutatorContext } from "@kanbun/sync";
+import { MutationError, defineEventMutator, defineMutator, issueIncarnation, type DecideContext } from "@kanbun/sync";
 import { z } from "zod";
 import { requireIssue } from "./issues";
 import { id, nullable, pmDoc } from "./schema";
+import { applyCommentEvent } from "./commentEvents";
 
 /** The issue a comment belongs to, after checking the caller may see it. */
-function requireCommentIssue(ctx: MutatorContext, c: Row<"comment">): Row<"issue"> {
+function requireCommentIssue(ctx: DecideContext, c: Row<"comment">): Row<"issue"> {
   if (!c.issueId) throw new MutationError("comment is not on an issue", "invalid");
   return requireIssue(ctx, c.issueId);
 }
 
+function requireActiveAuthor(ctx: DecideContext) {
+  const agent = ctx.actor.type === "agent" ? ctx.store.get("agent", ctx.actorId) : null;
+  const user = ctx.store.get("user", agent?.ownerId ?? ctx.actorId);
+  if (
+    (ctx.actor.type !== "user" && ctx.actor.type !== "agent") ||
+    !user?.active ||
+    user.archivedAt ||
+    (ctx.actor.type === "agent" && (!agent?.active || agent.archivedAt))
+  )
+    throw new MutationError("Comments require an active author", "forbidden");
+}
+
+function commentSubject(issue: Row<"issue">, commentId: string) {
+  return { entityType: "comment" as const, entityId: commentId, teamId: issue.teamId, scopeUserId: null };
+}
+
 export const mutators = {
-  commentCreate: defineMutator({
+  commentCreate: defineEventMutator({
     args: z.object({
       id,
       issueId: id,
+      /** Browser outboxes bind drafts to the issue incarnation they were written against. */
+      issueIncarnation: z.string().optional(),
       /** Plain-text rendering, for search and previews. */
       body: z.string().max(20_000),
       /** ProseMirror document; optional for agents and API callers who send plain text. */
@@ -25,64 +45,72 @@ export const mutators = {
       subscriptionId: id.optional(),
     }),
     description: "Comment on an issue, optionally as a reply in a thread.",
-    run(ctx, args) {
+    decide(ctx, args) {
+      requireActiveAuthor(ctx);
       const issue = requireIssue(ctx, args.issueId);
-      if (ctx.actor.type !== "user" && ctx.actor.type !== "agent")
-        throw new MutationError("comments need a user or agent author", "forbidden");
+      if (args.issueIncarnation !== undefined && args.issueIncarnation !== issueIncarnation(issue))
+        throw new MutationError("This issue was replaced; the comment was not posted", "conflict");
       if (!args.body.trim()) throw new MutationError("comment is empty", "invalid");
+      if (ctx.store.get("comment", args.id)) throw new MutationError("comment already exists", "conflict");
       if (args.parentId) {
         const parent = ctx.store.get("comment", args.parentId);
         if (!parent || parent.issueId !== args.issueId)
           throw new MutationError("parent comment not on this issue", "invalid");
         if (parent.parentId) throw new MutationError("replies cannot be nested", "invalid");
       }
-      ctx.store.insert("comment", {
-        id: args.id,
-        teamId: issue.teamId,
-        issueId: args.issueId,
-        body: args.body,
-        bodyData: args.bodyData ?? null,
-        parentId: args.parentId ?? null,
-        quotedText: args.quotedText ?? null,
-        userId: ctx.actor.type === "user" ? ctx.actorId : null,
-        agentId: ctx.actor.type === "agent" ? ctx.actorId : null,
-        createdAt: ctx.now,
-        updatedAt: ctx.now,
-      } as Row<"comment">);
-      ctx.store.patch("issue", args.issueId, { updatedAt: ctx.now });
+      const events: PendingEvent[] = [
+        {
+          ...commentSubject(issue, args.id),
+          type: "CommentPosted",
+          payload: {
+            issueId: issue.id,
+            body: args.body,
+            bodyData: args.bodyData ?? null,
+            parentId: args.parentId ?? null,
+            quotedText: args.quotedText ?? null,
+            userId: ctx.actor.type === "user" ? ctx.actorId : null,
+            agentId: ctx.actor.type === "agent" ? ctx.actorId : null,
+          },
+        },
+      ];
       if (
         args.subscriptionId &&
         ctx.actor.type === "user" &&
-        !ctx.store.list("issueSubscription", { issueId: args.issueId, userId: ctx.actorId }).length
-      ) {
-        ctx.store.insert("issueSubscription", {
-          id: args.subscriptionId,
+        !ctx.store.list("issueSubscription", { issueId: issue.id, userId: ctx.actorId }).length
+      )
+        events.push({
+          entityType: "issue",
+          entityId: issue.id,
           teamId: issue.teamId,
-          issueId: args.issueId,
-          userId: ctx.actorId,
-          createdAt: ctx.now,
-          updatedAt: ctx.now,
-        } as Row<"issueSubscription">);
-      }
+          scopeUserId: null,
+          type: "SubscriberAdded",
+          payload: { id: args.subscriptionId, userId: ctx.actorId },
+        });
+      return events;
     },
+    apply: applyCommentEvent,
   }),
 
-  commentUpdate: defineMutator({
+  commentUpdate: defineEventMutator({
     args: z.object({ id, body: z.string().min(1).max(20_000), bodyData: nullable(pmDoc).optional() }),
     description: "Edit your own comment.",
-    run(ctx, args) {
+    decide(ctx, args) {
+      requireActiveAuthor(ctx);
       const c = ctx.store.get("comment", args.id);
       if (!c) throw new MutationError("comment not found", "not_found");
-      requireCommentIssue(ctx, c);
+      const issue = requireCommentIssue(ctx, c);
       const mine = ctx.actor.type === "agent" ? c.agentId === ctx.actorId : c.userId === ctx.actorId;
       if (!mine) throw new MutationError("only the author can edit a comment", "forbidden");
-      ctx.store.patch("comment", args.id, {
-        body: args.body,
-        bodyData: args.bodyData ?? c.bodyData,
-        editedAt: ctx.now,
-        updatedAt: ctx.now,
-      });
+      if (!args.body.trim()) throw new MutationError("comment is empty", "invalid");
+      return [
+        {
+          ...commentSubject(issue, c.id),
+          type: "CommentEdited",
+          payload: { issueId: issue.id, body: args.body, bodyData: args.bodyData ?? c.bodyData },
+        },
+      ];
     },
+    apply: applyCommentEvent,
   }),
 
   commentDelete: defineMutator({
@@ -102,26 +130,34 @@ export const mutators = {
     },
   }),
 
-  commentResolve: defineMutator({
+  commentResolve: defineEventMutator({
     args: z.object({ id, resolved: z.boolean(), resolvingCommentId: nullable(id).optional() }),
     description: "Resolve or reopen a comment thread.",
-    run(ctx, args) {
+    decide(ctx, args) {
+      requireActiveAuthor(ctx);
       const c = ctx.store.get("comment", args.id);
       if (!c) throw new MutationError("comment not found", "not_found");
-      requireCommentIssue(ctx, c);
+      const issue = requireCommentIssue(ctx, c);
       if (c.parentId) throw new MutationError("only a thread's top comment can be resolved", "invalid");
       if (args.resolved && args.resolvingCommentId) {
-        const rc = ctx.store.get("comment", args.resolvingCommentId);
-        if (!rc || (rc.id !== c.id && rc.parentId !== c.id))
+        const resolving = ctx.store.get("comment", args.resolvingCommentId);
+        if (!resolving || (resolving.id !== c.id && resolving.parentId !== c.id))
           throw new MutationError("resolving comment must be in the thread", "invalid");
       }
-      ctx.store.patch("comment", args.id, {
-        resolvedAt: args.resolved ? ctx.now : null,
-        resolvingUserId: args.resolved ? ctx.actorId : null,
-        resolvingCommentId: args.resolved ? (args.resolvingCommentId ?? null) : null,
-        updatedAt: ctx.now,
-      });
+      return [
+        {
+          ...commentSubject(issue, c.id),
+          type: "CommentResolved",
+          payload: {
+            issueId: issue.id,
+            resolved: args.resolved,
+            resolvingUserId: args.resolved ? ctx.actorId : null,
+            resolvingCommentId: args.resolved ? (args.resolvingCommentId ?? null) : null,
+          },
+        },
+      ];
     },
+    apply: applyCommentEvent,
   }),
 
   reactionToggle: defineMutator({
