@@ -40,6 +40,9 @@ jobs:
           node-version-file: .nvmrc
       - name: Build and initialize devcontainer
         run: npx --yes @devcontainers/cli@0.90.0 up --workspace-folder .
+      - name: Diagnose container Git metadata on failure
+        if: failure()
+        run: npx --yes @devcontainers/cli@0.90.0 exec --workspace-folder . node .devcontainer/diagnose-git.mjs
       - name: Verify inside devcontainer
         run: npx --yes @devcontainers/cli@0.90.0 exec --workspace-folder . pnpm --silent verify --json
       - name: Upload container verification evidence
