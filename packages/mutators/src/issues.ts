@@ -114,6 +114,38 @@ export const mutators = {
       position: z.enum(["top", "bottom"]).optional(),
     }),
     description: "Create an issue in a team. The DO assigns its number; the identifier KEY-N is derived from it.",
+    replayArgs(event) {
+      if (event.type !== "IssueCreated") return undefined;
+      const fields = event.payload;
+      const creatorSubscription = fields.subscriptions.find((subscription) => subscription.userId === fields.creatorId);
+      if (!creatorSubscription) throw new MutationError("Recorded issue has no creator subscription", "invalid");
+      const assigneeSubscription = fields.subscriptions.find(
+        (subscription) => subscription.userId === fields.assigneeId && subscription.id !== creatorSubscription.id,
+      );
+      return {
+        id: event.entityId,
+        teamId: event.teamId,
+        title: fields.title,
+        description: fields.description,
+        descriptionContentId: fields.descriptionContentId,
+        stateId: fields.stateId,
+        priority: fields.priority,
+        estimate: fields.estimate,
+        dueDate: fields.dueDate,
+        assigneeId: fields.assigneeId,
+        parentId: fields.parentId,
+        projectId: fields.projectId,
+        projectMilestoneId: fields.projectMilestoneId,
+        cycleId: fields.cycleId,
+        sourceCommentId: fields.sourceCommentId,
+        labelIds: fields.labelLinks.map((link) => link.labelId),
+        labelLinkIds: fields.labelLinks.map((link) => link.id),
+        subscriptionId: creatorSubscription.id,
+        ...(assigneeSubscription ? { assigneeSubscriptionId: assigneeSubscription.id } : {}),
+        // Older facts predate recorded placement intent; append rather than reusing branch keys.
+        position: fields.position ?? "bottom",
+      };
+    },
     decide(ctx, args) {
       const team = requireTeamAccess(ctx, args.teamId);
       if (ctx.store.get("issue", args.id)) throw new MutationError("issue already exists", "conflict");
@@ -154,6 +186,7 @@ export const mutators = {
           payload: {
             // Numbers are resolved while deciding on the authority and stored as facts for replay.
             number: ctx.server && (ctx.branchId ?? "main") === "main" ? team.issueCounter + 1 : 0,
+            position: args.position ?? "bottom",
             title,
             description: args.description ?? null,
             descriptionContentId: args.descriptionContentId ?? null,
@@ -198,6 +231,9 @@ export const mutators = {
     args: z.object({ id, patch: issuePatch, assigneeSubscriptionId: id.optional() }),
     description:
       "Update one or more fields of an issue: title, state, priority, assignee, dates, parent, project, cycle, ordering.",
+    replayArgs(event) {
+      return event.type === "IssueTitled" ? { id: event.entityId, patch: { title: event.payload.title } } : undefined;
+    },
     decide(ctx, args) {
       // Other fields retain the existing mutation path until their event vocabulary is implemented.
       if (

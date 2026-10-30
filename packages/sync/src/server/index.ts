@@ -2,6 +2,15 @@ export { SyncServer, SYSTEM_ACTOR, compact, type ServerOptions, type CommitListe
 export { SYSTEM_TAG } from "./sqliteStore";
 export { SqliteStore, type LogTag } from "./sqliteStore";
 export type { CreateBranchOptions } from "./branches";
+export type {
+  MergeBranchOptions,
+  BranchResolution,
+  BranchChange,
+  BranchConflict,
+  BranchPreview,
+  BranchMergeReceipt,
+  BranchMergeResult,
+} from "./branchMerge";
 export {
   applyMigrations,
   durableObjectDriver,

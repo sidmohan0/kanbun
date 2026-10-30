@@ -48,6 +48,8 @@ export const workspaceBranch = sqliteTable(
     name: text("name").notNull(),
     /** Semantic main event sequence at creation; distinct from the sync patch cursor. */
     baseSeq: integer("base_seq").notNull(),
+    /** Main patch cursor at creation; null marks branches created before merge-safe conflict tracking. */
+    baseSyncSeq: integer("base_sync_seq"),
     ownerId: text("owner_id").notNull(),
     ownerType: text("owner_type").$type<ActorType>().notNull(),
     ownerUserId: text("owner_user_id").notNull(),
@@ -59,12 +61,26 @@ export const workspaceBranch = sqliteTable(
     index("workspace_branch_owner").on(t.ownerUserId),
     check("workspace_branch_id_not_main", sql`${t.id} <> 'main'`),
     check("workspace_branch_base_seq_nonnegative", sql`${t.baseSeq} >= 0`),
+    check("workspace_branch_base_sync_seq_nonnegative", sql`${t.baseSyncSeq} IS NULL OR ${t.baseSyncSeq} >= 0`),
     oneOf("workspace_branch_owner_type_check", t.ownerType, ACTOR_TYPES),
     oneOf("workspace_branch_status_check", t.status, ["open", "merged", "abandoned", "conflicted"]),
   ],
 );
 
 export type WorkspaceBranch = typeof workspaceBranch.$inferSelect;
+
+/** One immutable successful merge receipt per branch, retried by a globally unique merge id. */
+export const branchMerge = sqliteTable(
+  "branch_merge",
+  {
+    branchId: text("branch_id").primaryKey(),
+    id: text("id").notNull(),
+    actorId: text("actor_id").notNull(),
+    request: json<Record<string, unknown>>("request").notNull(),
+    result: json<Record<string, unknown>>("result").notNull(),
+  },
+  (t) => [uniqueIndex("branch_merge_id").on(t.id)],
+);
 
 /** Touched rows shadow live main; tombstones suppress fallback reads. */
 export const branchRow = sqliteTable(

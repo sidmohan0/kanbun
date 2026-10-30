@@ -49,7 +49,8 @@ Other mutations still use the original patch-based path during the incremental m
 
 The same create/rename flow also supports [durable workspace branches](docs/workspace-branches.md).
 Branch rows survive restarts without changing main, while untouched reads follow live main.
-Branch merging and conflict handling are the next slice.
+Human owners can preview and merge the supported changes with explicit conflict choices and durable
+retry receipts. The branch review UI and Cloudflare deployment remain planned.
 
 ## How a write flows
 

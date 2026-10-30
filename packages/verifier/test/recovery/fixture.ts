@@ -1,7 +1,7 @@
 import { test as base, expect } from "@playwright/test";
 import { uuidv7, type Row } from "@kanbun/model";
 import { mutators } from "@kanbun/mutators";
-import type { Actor, PushRequest, PushResponse } from "@kanbun/sync";
+import { MutationError, type Actor, type PushRequest, type PushResponse } from "@kanbun/sync";
 import { SyncServer } from "@kanbun/sync/server";
 import { openWorkspaceDb } from "@kanbun/sync/server/node";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -28,6 +28,16 @@ export type PushObservation = {
   responseDropped: boolean;
 };
 
+export type MergeObservation = {
+  request: Parameters<SyncServer["mergeBranch"]>[1];
+  rawBody: string;
+  actor: Actor;
+  result: ReturnType<SyncServer["mergeBranch"]>;
+  seqBefore: number;
+  seqAfter: number;
+  responseDropped: boolean;
+};
+
 export type RecoveryHarness = {
   origin: string;
   teamId: string;
@@ -35,8 +45,10 @@ export type RecoveryHarness = {
   databasePath: string;
   actors: typeof actors;
   pushes: PushObservation[];
+  merges: MergeObservation[];
   createBranch(owner?: ActorName): string;
   dropNextPushResponse(actor?: ActorName): void;
+  dropNextMergeResponse(actor?: ActorName): void;
   restart(): Promise<void>;
   inspect(): {
     seq: number;
@@ -103,7 +115,9 @@ async function createHarness(seedIssue: boolean) {
   if (!seeded.ok || seeded.rejected.length) throw new Error(`Fixture seed failed: ${JSON.stringify(seeded)}`);
 
   const pushes: PushObservation[] = [];
+  const merges: MergeObservation[] = [];
   let dropActor: ActorName | undefined;
+  let dropMergeActor: ActorName | undefined;
   const vite = await createViteServer({
     configFile: false,
     root: directory,
@@ -137,6 +151,37 @@ async function createHarness(seedIssue: boolean) {
         if (selected !== "alice" && selected !== "bob")
           return json(response, { error: "fixture actor cookie missing" }, 401);
         const actor = actors[selected];
+        if (url.pathname === "/sync/branch/preview")
+          return json(response, active.server.previewBranch(actor, url.searchParams.get("branchId") ?? ""));
+        if (url.pathname === "/sync/branch/merge" && request.method === "POST") {
+          const rawBody = await body(request);
+          const merge = JSON.parse(rawBody) as Parameters<SyncServer["mergeBranch"]>[1];
+          const seqBefore = active.server.currentSeq();
+          const result = active.server.mergeBranch(actor, merge);
+          const responseDropped = dropMergeActor === selected && result.ok;
+          merges.push({
+            request: merge,
+            rawBody,
+            actor,
+            result,
+            seqBefore,
+            seqAfter: active.server.currentSeq(),
+            responseDropped,
+          });
+          if (responseDropped) {
+            dropMergeActor = undefined;
+            const payload = JSON.stringify(result);
+            response.writeHead(200, {
+              "content-type": "application/json; charset=utf-8",
+              "content-length": Buffer.byteLength(payload),
+            });
+            response.write(payload.slice(0, Math.floor(payload.length / 2)), () =>
+              setImmediate(() => response.destroy()),
+            );
+            return;
+          }
+          return json(response, result);
+        }
         if (url.pathname === "/sync/bootstrap")
           return json(
             response,
@@ -203,9 +248,13 @@ async function createHarness(seedIssue: boolean) {
         return;
       }
       vite.middlewares(request, response, () => json(response, { error: "fixture asset missing" }, 404));
-    })().catch((error: unknown) =>
-      json(response, { error: error instanceof Error ? error.message : String(error) }, 500),
-    );
+    })().catch((error: unknown) => {
+      const status =
+        error instanceof MutationError
+          ? { forbidden: 403, not_found: 404, invalid: 400, conflict: 409 }[error.code]
+          : 500;
+      json(response, { error: error instanceof Error ? error.message : String(error) }, status);
+    });
   });
   await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
   const address = http.address();
@@ -217,6 +266,7 @@ async function createHarness(seedIssue: boolean) {
     databasePath,
     actors,
     pushes,
+    merges,
     createBranch(owner = "alice") {
       const id = uuidv7();
       active.server.createBranch(actors[owner], {
@@ -228,6 +278,9 @@ async function createHarness(seedIssue: boolean) {
     },
     dropNextPushResponse(actor = "alice") {
       dropActor = actor;
+    },
+    dropNextMergeResponse(actor = "alice") {
+      dropMergeActor = actor;
     },
     async restart() {
       active.db.close();
@@ -265,7 +318,11 @@ export const test = base.extend<{ seedIssue: boolean; harness: RecoveryHarness }
       try {
         if (testInfo.status !== testInfo.expectedStatus) {
           await testInfo.attach("recovery-server-state", {
-            body: JSON.stringify({ database: fixture.harness.inspect(), pushes: fixture.harness.pushes }, null, 2),
+            body: JSON.stringify(
+              { database: fixture.harness.inspect(), pushes: fixture.harness.pushes, merges: fixture.harness.merges },
+              null,
+              2,
+            ),
             contentType: "application/json",
           });
         }

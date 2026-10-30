@@ -72,6 +72,7 @@ export type Insert<M extends ModelName> = (typeof models)[M]["table"]["$inferIns
 /** Tables that are not synced models but live in the same database. */
 export const internalTables = {
   workspaceBranch: ws.workspaceBranch,
+  branchMerge: ws.branchMerge,
   branchRow: ws.branchRow,
   eventLog: ws.eventLog,
   syncLog: ws.syncLog,

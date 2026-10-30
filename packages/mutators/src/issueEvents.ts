@@ -13,6 +13,7 @@ export function applyIssueEvent(ctx: MutatorContext, event: DomainEvent): void {
   const now = new Date(event.ts).toISOString();
   if (event.type === "IssueCreated") {
     const { labelLinks, subscriptions, ...fields } = event.payload;
+    delete fields.position;
     if (fields.number > 0) ctx.store.patch("team", event.teamId, { issueCounter: fields.number });
     ctx.store.insert("issue", {
       ...fields,

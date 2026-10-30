@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added human-reviewed workspace branch merges for issue creation and renaming, with explicit conflict choices, legacy-write conflict detection, atomic numbering, and durable retry receipts.
+
 - Added durable workspace branches for issue creation and renaming, with private ownership, write scopes, restart-safe overlays and queues, and live-main fallback for untouched rows.
 
 - Added typed issue creation and rename events with atomic durable history, deterministic replay, scoped event reads, and retry-safe projection updates.

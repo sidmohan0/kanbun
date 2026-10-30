@@ -35,6 +35,7 @@ export class WorkspaceBranches {
       id: String(row["id"]),
       name: String(row["name"]),
       baseSeq: Number(row["base_seq"]),
+      baseSyncSeq: row["base_sync_seq"] == null ? null : Number(row["base_sync_seq"]),
       ownerId: String(row["owner_id"]),
       ownerType: row["owner_type"] as WorkspaceBranch["ownerType"],
       ownerUserId: String(row["owner_user_id"]),
@@ -61,15 +62,17 @@ export class WorkspaceBranches {
     const branch: WorkspaceBranch = {
       id: event.entityId,
       ...event.payload,
+      baseSyncSeq: event.payload.baseSyncSeq ?? null,
       status: "open",
       createdAt: new Date(event.ts).toISOString(),
     };
     this.driver.run(
-      "INSERT INTO workspace_branch (id, name, base_seq, owner_id, owner_type, owner_user_id, status, scope, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO workspace_branch (id, name, base_seq, base_sync_seq, owner_id, owner_type, owner_user_id, status, scope, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         branch.id,
         branch.name,
         branch.baseSeq,
+        branch.baseSyncSeq,
         branch.ownerId,
         branch.ownerType,
         branch.ownerUserId,
@@ -116,6 +119,9 @@ export class WorkspaceBranches {
         this.driver.all("SELECT COALESCE(MAX(seq), 0) AS seq FROM event_log WHERE branch_id = 'main'")[0]?.["seq"] ?? 0,
       );
       const createdAt = this.now();
+      const baseSyncSeq = Number(
+        this.driver.all("SELECT COALESCE(MAX(seq), 0) AS seq FROM sync_log WHERE branch_id = 'main'")[0]?.["seq"] ?? 0,
+      );
       const event = appendEvent(
         this.driver,
         {
@@ -127,6 +133,7 @@ export class WorkspaceBranches {
           payload: {
             name: parsed.data.name,
             baseSeq,
+            baseSyncSeq,
             ownerId: actor.id,
             ownerType: actor.type,
             ownerUserId: permission.userId,
