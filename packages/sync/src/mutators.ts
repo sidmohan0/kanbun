@@ -51,6 +51,8 @@ export type EventMutatorDef<S extends z.ZodType = z.ZodType> = MutatorDescriptio
   /** A read-only decision. null explicitly selects the transitional legacy path. */
   decide(ctx: DecideContext, args: z.infer<S>): PendingEvent[] | null;
   apply(ctx: MutatorContext, event: DomainEvent): void;
+  /** Recover command intent for an authorized replay; recorded projections are not written directly. */
+  replayArgs?(event: DomainEvent): z.input<S> | undefined;
   run?(ctx: MutatorContext, args: z.infer<S>): void;
 };
 

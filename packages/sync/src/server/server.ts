@@ -37,6 +37,7 @@ import { SqliteStore, SYSTEM_TAG } from "./sqliteStore";
 import { appendEvent, decodeEvent } from "./eventLog";
 import { SqliteBranchStore } from "./branchStore";
 import { WorkspaceBranches, type CreateBranchOptions } from "./branches";
+import { BranchMerger, type BranchPreview, type BranchMergeResult, type MergeBranchOptions } from "./branchMerge";
 import type { Store } from "../store";
 
 export type CommitListener = (seq: number, branchId: string) => void;
@@ -60,6 +61,7 @@ export class SyncServer {
   private readonly maxBatch: number;
   private readonly newTxnId: () => string;
   private readonly branches: WorkspaceBranches;
+  private readonly branchMerger: BranchMerger;
 
   constructor(private readonly opts: ServerOptions) {
     this.store = new SqliteStore(opts.driver);
@@ -74,6 +76,17 @@ export class SyncServer {
       this.now,
       this.newTxnId,
     );
+    this.branchMerger = new BranchMerger({
+      driver: opts.driver,
+      store: this.store,
+      mutators: opts.mutators,
+      getBranch: (actor, branchId) => this.getBranch(actor, branchId),
+      visibleTeamIds: (actor) => this.visibleTeamIds(actor),
+      enforceScopes: (scope, txnId) => this.enforceScopes(scope, txnId, this.store, "branch", "main"),
+      currentSeq: () => this.currentSeq(),
+      now: this.now,
+      newTxnId: this.newTxnId,
+    });
   }
 
   /** Main is the default; branch subscribers also observe live-main commits. */
@@ -102,6 +115,17 @@ export class SyncServer {
 
   getBranch(actor: Actor, branchId: string): WorkspaceBranch {
     return this.branches.get(actor, branchId);
+  }
+
+  previewBranch(actor: Actor, branchId: string): BranchPreview {
+    return this.branchMerger.preview(actor, branchId);
+  }
+
+  mergeBranch(actor: Actor, input: MergeBranchOptions): BranchMergeResult {
+    const before = this.currentSeq();
+    const result = this.branchMerger.merge(actor, input);
+    if (result.ok && result.mainSyncSeq > before) this.emitCommit(result.mainSyncSeq, "main");
+    return result;
   }
 
   private branchId(value: string | undefined): string {

@@ -37,9 +37,20 @@ stores the semantic sequence in the event's `causationSeq`. A legacy patch or an
 source has no semantic cause, so the event stores null. Derived sync patches retain the original
 patch-based reference. Optimistic events use null until the authority can resolve their cause.
 
-`BranchCreated` records a branch's ownership, scope, and main event base. Issue events on that
+`BranchCreated` records a branch's ownership, scope, and separate main event and patch bases. Issue events on that
 branch are applied to durable overlay rows. See [workspace branches](workspace-branches.md) for
 ownership, live-main reads, client identity, and cursor behavior.
+
+`BranchMerged` records the accepted source event sequences and skipped issues. Merging re-runs
+commands as the human merger against current main, then applies newly finalized issue events.
+Their semantic `causationSeq` points directly to `BranchMerged`; it does not pass through the
+patch-based mutation option. `BranchConflictResolved` records each explicit branch, main, or edited
+title choice. These lifecycle events are visible to the captured human owner. Derived issue patches
+have no source patch cause; their `eventSeq` links to the newly recorded issue facts.
+
+New creation facts retain top/bottom placement intent so merging can recompute ordering on current
+main. Older creation facts remain decodable and use bottom placement when re-decided. This field is
+event metadata and is not an issue projection column.
 
 Issue `createdSeq` and `updatedSeq` identify semantic creation and the latest semantic update.
 The migration preserves existing rows with zero sequence metadata and does not invent historical
@@ -58,5 +69,5 @@ Additional integration checks exercise durable retry after reopening SQLite, rol
 late projection-write failure, and event-history privacy. Existing Chromium tests continue to cover
 offline edit recovery and a lost HTTP acknowledgement through the public sync client.
 
-The remaining vocabulary, complete workspace replay, branch merging and conflict handling, and the
-Cloudflare Worker are later implementation steps.
+The remaining vocabulary, complete workspace replay, branch review UI, and the Cloudflare Worker
+are later implementation steps.

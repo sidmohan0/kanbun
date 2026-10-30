@@ -1,8 +1,8 @@
 # Durable workspace branches
 
 A workspace branch holds proposed issue changes without editing the live workspace. This slice
-supports issue creation and title-only updates. Branch merging, conflict handling, branch review
-UI, and Cloudflare deployment remain later work.
+supports issue creation and title-only updates, including human-reviewed merge and conflict
+handling. Branch review UI and Cloudflare deployment remain later work.
 
 ## Create and inspect
 
@@ -20,8 +20,10 @@ const snapshot = server.bootstrap(alice, "launch-branch-client", branch.id);
 Branch IDs are caller-generated UUIDv7 values. Repeating creation with the same ID, owner, name,
 and scope returns the existing branch without appending another event. Reusing the ID with different
 settings fails. Metadata records the actor owner, owning human, scope, status, creation timestamp,
-and `baseSeq`, the main semantic event sequence at creation. New branches have status `open`.
-Other status names are reserved; this slice exposes no status-transition API.
+and `baseSeq`, the main semantic event sequence at creation. `baseSyncSeq` separately captures the
+main patch cursor so conflicts include legacy mutations that do not emit semantic events. New
+branches have status `open`; a successful merge closes them as `merged`. Other status names remain
+reserved.
 
 `BranchCreated` is recorded on the branch itself. Main event history and projection cursors exclude
 branch activity. The event log's sequence is global, so sequence gaps between a view's events are
@@ -88,6 +90,58 @@ Legacy commands, including mixed title-and-other-field updates, are rejected on 
 they can write. Supported issue events are the only mutation effects accepted there. Configuration,
 planning, rich-text, and other event families retain their existing main behavior until migrated.
 
+## Preview and merge
+
+Only an active human owner can preview or merge a branch, including the captured human owner of an
+agent's branch. Agents cannot merge. Review rechecks current team visibility, and replay re-runs
+the ordinary commands as the merger against current main. The branch's write scopes still apply.
+
+```ts
+const preview = server.previewBranch(alice, branch.id);
+const request = {
+  branchId: branch.id,
+  mergeId: uuidv7(),
+  expectedBranchHeadSeq: preview.branchHeadSeq,
+  expectedMainSyncSeq: preview.mainSyncSeq,
+  // Populate from explicit human choices if the preview contains conflicts.
+  resolutions: [],
+};
+const result = server.mergeBranch(alice, request);
+```
+
+The preview groups proposed creation/rename changes by issue and includes both proposed and main
+titles for conflicts. Every main patch on a touched issue since branch creation counts as a conflict,
+including legacy writes. Missing, trashed, archived, and colliding main issues are also surfaced.
+Untouched main rows remain live; changes to the decision's read set are not treated as conflicts.
+
+Each conflict needs one explicit choice: `branch` replays that issue's proposed events, `main` skips
+all of them, and `edit` replays them with a replacement final title. An edit resolution includes
+`title`. A branch/edit choice still has to pass normal validation; it cannot overwrite an existing
+issue with a creation event or rename a missing, trashed, or archived issue. Such validation errors
+leave the merge unapplied. Other failed dependencies or projection constraints also roll back the
+whole merge. The main choice can discard an inapplicable entity.
+
+The request includes the exact branch head and main patch checkpoint from the preview. A change to
+either requires a fresh preview, even if it affects an unrelated main row. Missing choices return
+`{ ok: false, preview }` without changing main or closing the branch. Invalid, stale, or forbidden
+requests throw. Conflict attempts leave the branch open for further editing and review.
+
+A successful merge records `BranchMerged`, explicit `BranchConflictResolved` facts, and re-decided
+issue events in one transaction. Issue numbers and current ordering are assigned on main. Event
+causation points to the semantic merge fact. Main projections, counters, derived patches, branch
+closure, overlay cleanup, and the durable receipt commit together. Closed branches reject sync
+reads and writes; `getBranch` remains available to their owner.
+
+Persist the request's caller-generated UUIDv7 `mergeId` and retry the same request after an uncertain
+response. The `branch_merge` receipt returns the original result, including after reopening SQLite,
+without allocating another number or appending events. Reusing the ID or closed branch with different
+settings is rejected. The same active human must retry it. Resolution order is normalized for this
+comparison. An older branch without a recorded patch baseline cannot be safely merged; recreate it.
+The migration preserves its overlay and history rather than guessing a baseline.
+
+These are engine methods. The HTTP adapter in the browser recovery fixture exercises them, while
+the product Worker, authentication integration, and review UI remain to be implemented.
+
 ## Verification
 
 Real SQLite tests cover upgrade preservation, durable overlays, live fallback, tombstones, and
@@ -96,3 +150,8 @@ mode, idempotency, branch-bound clients, rollback, and complete first-touch pull
 reject mismatched saved state and response contexts. A Chromium recovery scenario uses real
 IndexedDB and HTTP across page reloads, database reopening, and a lost acknowledgement, while
 asserting that main stays unchanged.
+
+Merge integration checks cover the specification's 500-event clean merge, semantic and legacy
+conflicts, explicit choices, stale previews, current permissions, atomic rollback, and durable retry
+receipts. Browser recovery checks exercise a committed merge with a lost HTTP response, SQLite
+reopening, an identical retry, and convergence through the main client's normal pull path.

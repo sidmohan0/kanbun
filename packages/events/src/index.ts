@@ -14,6 +14,8 @@ const title = z
 /** Initial issue values are finalized by decide before a reducer sees them. */
 export const issueCreatedPayloadSchema = z.strictObject({
   number: z.number().int().nonnegative(),
+  /** Original placement intent for merge-time revalidation; absent on older facts. */
+  position: z.enum(["top", "bottom"]).optional(),
   title,
   description: z.string().nullable(),
   descriptionContentId: nullableId,
@@ -54,6 +56,8 @@ export const branchScopeSchema = z.strictObject({
 export const branchCreatedPayloadSchema = z.strictObject({
   name: z.string().trim().min(1).max(200),
   baseSeq: z.number().int().nonnegative(),
+  /** Absent on historical branch creation facts; never inferred from later patches. */
+  baseSyncSeq: z.number().int().nonnegative().optional(),
   ownerId: id,
   ownerType: z.enum(ACTOR_TYPES),
   ownerUserId: id,
@@ -67,6 +71,43 @@ const branchCreatedIntent = z.strictObject({
   scopeUserId: id,
   type: z.literal("BranchCreated"),
   payload: branchCreatedPayloadSchema,
+});
+
+export const branchMergedPayloadSchema = z.strictObject({
+  mergeId: id,
+  branchHeadSeq: z.number().int().nonnegative(),
+  sourceEventSeqs: z.array(z.number().int().positive()),
+  skippedEntityIds: z.array(id),
+});
+
+const resolution = {
+  mergeId: id,
+  issueId: id,
+  mainSyncSeq: z.number().int().nonnegative(),
+};
+
+export const branchConflictResolvedPayloadSchema = z.discriminatedUnion("choice", [
+  z.strictObject({ ...resolution, choice: z.literal("branch") }),
+  z.strictObject({ ...resolution, choice: z.literal("main") }),
+  z.strictObject({ ...resolution, choice: z.literal("edit"), title }),
+]);
+
+const branchMergedIntent = z.strictObject({
+  entityType: z.literal("workspaceBranch"),
+  entityId: id,
+  teamId: z.null(),
+  scopeUserId: id,
+  type: z.literal("BranchMerged"),
+  payload: branchMergedPayloadSchema,
+});
+
+const branchConflictResolvedIntent = z.strictObject({
+  entityType: z.literal("workspaceBranch"),
+  entityId: id,
+  teamId: z.null(),
+  scopeUserId: id,
+  type: z.literal("BranchConflictResolved"),
+  payload: branchConflictResolvedPayloadSchema,
 });
 
 const subject = {
@@ -92,6 +133,8 @@ export const pendingEventSchema = z.discriminatedUnion("type", [
   issueCreatedIntent,
   issueTitledIntent,
   branchCreatedIntent,
+  branchMergedIntent,
+  branchConflictResolvedIntent,
 ]);
 
 const actorSchema = z.strictObject({ id, type: z.enum(ACTOR_TYPES), via: id.optional() });
@@ -106,7 +149,7 @@ const envelope = {
   mutationId: z.number().int().positive().nullable(),
   sessionId: nullableId,
   sourceRef: nullableId,
-  /** Semantic event sequence, resolved by the authority from the visible source patch. */
+  /** Semantic event sequence, resolved from a visible source patch or assigned to a merge fact by the authority. */
   causationSeq: z.number().int().positive().nullable(),
   reason: z.string().nullable(),
   /** Authoritative milliseconds since epoch, copied into projections at apply. */
@@ -118,6 +161,8 @@ export const eventSchema = z.discriminatedUnion("type", [
   issueCreatedIntent.extend(envelope),
   issueTitledIntent.extend(envelope),
   branchCreatedIntent.extend(envelope),
+  branchMergedIntent.extend(envelope),
+  branchConflictResolvedIntent.extend(envelope),
 ]);
 
 export type PendingEvent = z.infer<typeof pendingEventSchema>;
@@ -126,5 +171,7 @@ export type EventActor = z.infer<typeof actorSchema>;
 export type IssueCreatedEvent = Extract<DomainEvent, { type: "IssueCreated" }>;
 export type IssueTitledEvent = Extract<DomainEvent, { type: "IssueTitled" }>;
 export type BranchCreatedEvent = Extract<DomainEvent, { type: "BranchCreated" }>;
+export type BranchMergedEvent = Extract<DomainEvent, { type: "BranchMerged" }>;
+export type BranchConflictResolvedEvent = Extract<DomainEvent, { type: "BranchConflictResolved" }>;
 export type IssueCreatedPayload = z.infer<typeof issueCreatedPayloadSchema>;
 export type IssueTitledPayload = z.infer<typeof issueTitledPayloadSchema>;
