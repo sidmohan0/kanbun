@@ -49,6 +49,9 @@ export function preparePreview(
         active: true,
         archivedAt: null,
         directoryAdmissionId: admissionId,
+        notificationEventFloor: Number(
+          driver.all("SELECT COALESCE(MAX(seq),0) AS seq FROM event_log WHERE branch_id = 'main'")[0]?.["seq"] ?? 0,
+        ),
       });
       member = server.store.get("user", context.actor.id);
     }

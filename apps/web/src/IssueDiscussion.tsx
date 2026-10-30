@@ -3,6 +3,7 @@ import type { DomainEvent } from "@kanbun/events";
 import type { Row } from "@kanbun/model";
 import { DEFAULT_EVENT_PAGE_SIZE, type WorkspaceContext } from "@kanbun/sync";
 import { workspace, type WorkspaceSnapshot } from "./workspace";
+import { MentionPicker, validateMentions } from "./MentionPicker";
 
 function actorName(actor: DomainEvent["actor"], snapshot: WorkspaceSnapshot): string {
   if (actor.type === "system") return "Kanbun";
@@ -68,6 +69,8 @@ function CommentCard({
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [reply, setReply] = useState<string | null>(null);
+  const [draftMentions, setDraftMentions] = useState<string[]>([]);
+  const [replyMentions, setReplyMentions] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const name = actorName({ id: comment.userId ?? comment.agentId!, type: comment.userId ? "user" : "agent" }, snapshot);
   const pending = snapshot.pendingCommentIds.includes(comment.id);
@@ -83,11 +86,29 @@ function CommentCard({
   }
   function save(event: FormEvent) {
     event.preventDefault();
-    if (draft !== null && change(() => workspace.editComment(comment.id, draft))) setDraft(null);
+    if (
+      draft !== null &&
+      change(() => {
+        validateMentions(snapshot, comment.teamId, draftMentions);
+        workspace.editComment(comment.id, draft, draftMentions);
+      })
+    ) {
+      setDraft(null);
+      setDraftMentions([]);
+    }
   }
   function sendReply(event: FormEvent) {
     event.preventDefault();
-    if (reply !== null && change(() => workspace.postComment(comment.issueId!, reply, comment.id))) setReply(null);
+    if (
+      reply !== null &&
+      change(() => {
+        validateMentions(snapshot, comment.teamId, replyMentions);
+        workspace.postComment(comment.issueId!, reply, comment.id, replyMentions);
+      })
+    ) {
+      setReply(null);
+      setReplyMentions([]);
+    }
   }
   return (
     <article className="comment-card" aria-label={`Comment by ${name}`}>
@@ -111,11 +132,25 @@ function CommentCard({
             onChange={(event) => setDraft(event.target.value)}
             maxLength={20_000}
           />
+          <MentionPicker
+            id={`edit-${comment.id}`}
+            teamId={comment.teamId}
+            snapshot={snapshot}
+            selected={draftMentions}
+            onChange={setDraftMentions}
+          />
           <div className="comment-actions">
             <button className="button compact" disabled={!draft.trim()}>
               Save comment
             </button>
-            <button type="button" className="button quiet compact" onClick={() => setDraft(null)}>
+            <button
+              type="button"
+              className="button quiet compact"
+              onClick={() => {
+                setDraft(null);
+                setDraftMentions([]);
+              }}
+            >
               Cancel edit
             </button>
           </div>
@@ -123,13 +158,25 @@ function CommentCard({
       )}
       <div className="comment-actions">
         {comment.userId === context.actor.id && draft === null && (
-          <button className="button quiet compact" onClick={() => setDraft(comment.body)}>
+          <button
+            className="button quiet compact"
+            onClick={() => {
+              setDraft(comment.body);
+              setDraftMentions(comment.mentionedUserIds);
+            }}
+          >
             Edit comment
           </button>
         )}
         {!comment.parentId && (
           <>
-            <button className="button quiet compact" onClick={() => setReply(reply === null ? "" : null)}>
+            <button
+              className="button quiet compact"
+              onClick={() => {
+                setReply(reply === null ? "" : null);
+                setReplyMentions([]);
+              }}
+            >
               {reply === null ? "Reply" : "Cancel reply"}
             </button>
             <button
@@ -160,6 +207,13 @@ function CommentCard({
             onChange={(event) => setReply(event.target.value)}
             maxLength={20_000}
           />
+          <MentionPicker
+            id={`reply-${comment.id}`}
+            teamId={comment.teamId}
+            snapshot={snapshot}
+            selected={replyMentions}
+            onChange={setReplyMentions}
+          />
           <button className="button compact" disabled={!reply.trim()}>
             Post reply
           </button>
@@ -179,6 +233,7 @@ export function IssueDiscussion({
   snapshot: WorkspaceSnapshot;
 }) {
   const [body, setBody] = useState("");
+  const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([]);
   const [commentStatus, setCommentStatus] = useState("Loading comments…");
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<DomainEvent[]>([]);
@@ -248,8 +303,10 @@ export function IssueDiscussion({
   function post(event: FormEvent) {
     event.preventDefault();
     try {
-      workspace.postComment(issue.id, body);
+      validateMentions(snapshot, issue.teamId, mentionedUserIds);
+      workspace.postComment(issue.id, body, undefined, mentionedUserIds);
       setBody("");
+      setMentionedUserIds([]);
       setError(null);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "This comment could not be posted.");
@@ -316,6 +373,13 @@ export function IssueDiscussion({
             onChange={(event) => setBody(event.target.value)}
             maxLength={20_000}
             placeholder="Share context, a decision, or a question."
+          />
+          <MentionPicker
+            id={`new-${issue.id}`}
+            teamId={issue.teamId}
+            snapshot={snapshot}
+            selected={mentionedUserIds}
+            onChange={setMentionedUserIds}
           />
           <button className="button compact" disabled={!body.trim() || issue.number <= 0}>
             Post comment

@@ -14,8 +14,16 @@ export function applyCommentEvent(ctx: MutatorContext, event: DomainEvent): void
     throw new MutationError("Recorded comment issue is unavailable", "invalid");
   const now = new Date(event.ts).toISOString();
   if (event.type === "CommentPosted") {
+    const { issueId, body, bodyData, parentId, quotedText, userId, agentId, mentionedUserIds } = event.payload;
     ctx.store.insert("comment", {
-      ...event.payload,
+      issueId,
+      body,
+      bodyData,
+      parentId,
+      quotedText,
+      userId,
+      agentId,
+      mentionedUserIds,
       id: event.entityId,
       teamId: event.teamId,
       createdAt: now,
@@ -28,6 +36,7 @@ export function applyCommentEvent(ctx: MutatorContext, event: DomainEvent): void
       ctx.store.patch("comment", comment.id, {
         body: event.payload.body,
         bodyData: event.payload.bodyData,
+        mentionedUserIds: event.payload.mentionedUserIds,
         editedAt: now,
         updatedAt: now,
       });

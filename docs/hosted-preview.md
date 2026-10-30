@@ -69,8 +69,9 @@ Access policy; review that hosted policy as part of the member-access rollout.
 
 ## Invitations and member administration
 
-The owner uses Members to create a targeted invitation, optionally select an expiry, copy its
-one-time link, revoke pending invitations, and remove members. This flow does not send email.
+The owner uses Members to create a targeted invitation without an expiry, copy its one-time link,
+revoke pending invitations, and remove members. The invitation API also accepts an optional expiry.
+This flow does not send email.
 Invitation tokens are stored only as hashes in D1; links use URL fragments and inspection/acceptance
 send the token in a same-origin POST body. Listing invitations never returns their token.
 

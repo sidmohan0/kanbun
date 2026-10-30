@@ -14,6 +14,7 @@ export const memberSyncArgs = z.object({
   role: role.optional(),
   active: z.boolean().optional(),
   directoryAdmissionId: nullable(id).optional(),
+  notificationEventFloor: z.number().int().nonnegative().optional(),
   archivedAt: nullable(iso).optional(),
   avatarUrl: nullable(z.string().url()).optional(),
   timezone: nullable(z.string()).optional(),
@@ -36,6 +37,9 @@ function memberSyncRun(ctx: MutatorContext, args: z.infer<typeof memberSyncArgs>
     if (args.directoryAdmissionId && args.directoryAdmissionId !== existing.directoryAdmissionId) {
       for (const membership of ctx.store.list("teamMembership", { userId: args.id }))
         ctx.store.delete("teamMembership", membership.id);
+      for (const row of ctx.store.list("notification", { userId: args.id })) ctx.store.delete("notification", row.id);
+      for (const row of ctx.store.list("notificationSubscription", { subscriberId: args.id }))
+        ctx.store.delete("notificationSubscription", row.id);
     }
     ctx.store.patch("user", args.id, {
       name: args.name,
@@ -47,6 +51,7 @@ function memberSyncRun(ctx: MutatorContext, args: z.infer<typeof memberSyncArgs>
       archivedAt: args.archivedAt === undefined ? existing.archivedAt : args.archivedAt,
       directoryAdmissionId:
         args.directoryAdmissionId === undefined ? existing.directoryAdmissionId : args.directoryAdmissionId,
+      notificationEventFloor: args.notificationEventFloor ?? existing.notificationEventFloor,
       avatarUrl: args.avatarUrl === undefined ? existing.avatarUrl : args.avatarUrl,
       timezone: args.timezone === undefined ? existing.timezone : args.timezone,
       updatedAt: ctx.now,
@@ -66,6 +71,7 @@ function memberSyncRun(ctx: MutatorContext, args: z.infer<typeof memberSyncArgs>
     guest: args.role === "guest",
     active: args.active ?? true,
     directoryAdmissionId: args.directoryAdmissionId ?? null,
+    notificationEventFloor: args.notificationEventFloor ?? 0,
     timezone: args.timezone ?? null,
     createdAt: ctx.now,
     updatedAt: ctx.now,

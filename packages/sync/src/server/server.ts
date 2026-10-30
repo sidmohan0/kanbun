@@ -7,6 +7,7 @@ import {
   modelNames,
   models,
   type ActorType,
+  type Row,
   type ModelName,
   type BranchScope,
   type WorkspaceBranch,
@@ -33,6 +34,7 @@ import type {
 } from "../protocol";
 import { DEFAULT_EVENT_PAGE_SIZE } from "../protocol";
 import { tableMeta } from "../rows";
+import { notificationSubscriptionVisible, notificationVisible } from "../notifications";
 import { applyMigrations, type SqlDriver, type SqlValue } from "./driver";
 import { SqliteStore, SYSTEM_TAG } from "./sqliteStore";
 import { appendEvent, decodeEvent } from "./eventLog";
@@ -323,6 +325,13 @@ export class SyncServer {
             const record = row as Record<string, unknown>;
             if (def.teamColumn && record[def.teamColumn] != null && !teams.includes(String(record[def.teamColumn])))
               return false;
+            if (name === "notification" && !notificationVisible(view, userId, teams, row as Row<"notification">))
+              return false;
+            if (
+              name === "notificationSubscription" &&
+              !notificationSubscriptionVisible(view, userId, teams, row as Row<"notificationSubscription">)
+            )
+              return false;
             return def.policy.kind !== "perUser" || record[def.policy.userColumn] === userId;
           }) as Record<string, unknown>[];
           continue;
@@ -340,7 +349,14 @@ export class SyncServer {
           clauses.push(`${this.colName(name, def.policy.userColumn)} = ?`);
           params.push(userId);
         }
-        rows[name] = this.store.rawList(name, clauses.join(" AND "), params) as Record<string, unknown>[];
+        rows[name] = this.store
+          .rawList(name, clauses.join(" AND "), params)
+          .filter(
+            (row) =>
+              (name !== "notification" || notificationVisible(view, userId, teams, row as Row<"notification">)) &&
+              (name !== "notificationSubscription" ||
+                notificationSubscriptionVisible(view, userId, teams, row as Row<"notificationSubscription">)),
+          ) as Record<string, unknown>[];
       }
       this.touchClient(clientId, client.lastMutationId, teams.join(","));
       return { seq, lastMutationId: client.lastMutationId, rows, ...(branchId === "main" ? {} : { branchId }) };
@@ -677,13 +693,26 @@ export class SyncServer {
               view.hasOverlay(r["model"] as ModelName, String(r["row_id"]))
             ),
         )
-        .map((r) => ({
-          seq: Number(r["seq"]),
-          model: r["model"] as ModelName,
-          id: r["row_id"] as string,
-          op: r["visible"] ? (r["op"] as "upsert" | "delete") : "delete",
-          patch: r["visible"] && r["patch"] ? (JSON.parse(r["patch"] as string) as Record<string, unknown>) : null,
-        }));
+        .map((r) => {
+          const notification = r["model"] === "notification" ? view.get("notification", String(r["row_id"])) : null;
+          const subscription =
+            r["model"] === "notificationSubscription"
+              ? view.get("notificationSubscription", String(r["row_id"]))
+              : null;
+          const visible =
+            Boolean(r["visible"]) &&
+            (r["model"] !== "notification" ||
+              (!!notification && notificationVisible(view, userId, teams, notification))) &&
+            (r["model"] !== "notificationSubscription" ||
+              (!!subscription && notificationSubscriptionVisible(view, userId, teams, subscription)));
+          return {
+            seq: Number(r["seq"]),
+            model: r["model"] as ModelName,
+            id: r["row_id"] as string,
+            op: visible ? (r["op"] as "upsert" | "delete") : "delete",
+            patch: visible && r["patch"] ? (JSON.parse(String(r["patch"])) as Record<string, unknown>) : null,
+          };
+        });
       return {
         seq,
         lastMutationId: client.lastMutationId,
@@ -837,6 +866,14 @@ export class SyncServer {
       );
       for (const row of page) {
         const model = row["model"] as ModelName;
+        if (model === "notificationSubscription") {
+          const subscription = view.get("notificationSubscription", String(row["row_id"]));
+          if (!subscription || !notificationSubscriptionVisible(view, userId, teams, subscription)) continue;
+        }
+        if (model === "notification") {
+          const notification = view.get("notification", String(row["row_id"]));
+          if (!notification || !notificationVisible(view, userId, teams, notification)) continue;
+        }
         if (model === "issue" || model === "comment" || model === "documentContent") {
           const patch = row["patch"] ? (JSON.parse(String(row["patch"])) as Record<string, unknown>) : null;
           const prev = row["prev"] ? (JSON.parse(String(row["prev"])) as Record<string, unknown>) : null;

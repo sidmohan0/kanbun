@@ -286,6 +286,49 @@ export async function startPreviewRuntime({
           },
         };
       },
+      async notificationProgress() {
+        const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
+        const [checkpoint, events, jobs] = await Promise.all([
+          storage.exec("SELECT last_event_seq FROM notification_cursor WHERE id = 'main'"),
+          storage.exec("SELECT COALESCE(MAX(seq),0) AS seq FROM event_log WHERE branch_id = 'main'"),
+          storage.exec("SELECT COUNT(*) AS count FROM scheduled_job WHERE kind = 'notification-consumer'"),
+        ]);
+        const cursor = Number(checkpoint[0]?.["last_event_seq"] ?? -1),
+          head = Number(events[0]?.["seq"] ?? 0);
+        return {
+          cursor,
+          head,
+          pending: Number(jobs[0]?.["count"] ?? 0),
+          settled: cursor >= head && Number(jobs[0]?.["count"] ?? 0) === 0,
+        };
+      },
+      async notificationFault(enabled: boolean) {
+        const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
+        await storage.exec(
+          enabled
+            ? "CREATE TRIGGER test_notification_failure BEFORE INSERT ON notification BEGIN SELECT RAISE(ABORT, 'fixture-private-notification-detail'); END"
+            : "DROP TRIGGER test_notification_failure",
+        );
+      },
+      async failBackupsForNotifications(enabled: boolean) {
+        const workspace = environment.WORKSPACES.getByName(workspaceId) as unknown as {
+          setNotificationTestBackupFailure(enabled: boolean): Promise<void>;
+        };
+        await workspace.setNotificationTestBackupFailure(enabled);
+        if (enabled) {
+          const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
+          await storage.exec(
+            "UPDATE scheduled_job SET fire_at = ? WHERE kind = 'workspace-backup'",
+            new Date(0).toISOString(),
+          );
+        }
+      },
+      async notificationAlarmResult() {
+        const workspace = environment.WORKSPACES.getByName(workspaceId) as unknown as {
+          notificationTestAlarm(): Promise<{ ok: boolean; error?: string }>;
+        };
+        return workspace.notificationTestAlarm();
+      },
       async connect(
         clientId: string,
         assertion?: string,

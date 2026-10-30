@@ -262,6 +262,9 @@ describe("semantic issue events", () => {
         payload: {
           issueId: ISSUE,
           body: "A recorded decision",
+          mentionedUserIds: [ALICE.id],
+          addedMentionedUserIds: [ALICE.id],
+          replyToUserId: null,
           bodyData: null,
           parentId: null,
           quotedText: "launch",
@@ -277,13 +280,28 @@ describe("semantic issue events", () => {
           entityId: reply,
           seq: 44,
           actor: ALICE,
-          payload: { ...posted.payload, body: "Agreed", parentId: root, userId: ALICE.id, quotedText: null },
+          payload: {
+            ...posted.payload,
+            body: "Agreed",
+            parentId: root,
+            userId: ALICE.id,
+            quotedText: null,
+            mentionedUserIds: [],
+            addedMentionedUserIds: [],
+            replyToUserId: BOB.id,
+          },
         },
         {
           ...posted,
           type: "CommentEdited",
           seq: 45,
-          payload: { issueId: ISSUE, body: "A corrected decision", bodyData: null },
+          payload: {
+            issueId: ISSUE,
+            body: "A corrected decision",
+            bodyData: null,
+            mentionedUserIds: [ALICE.id],
+            addedMentionedUserIds: [],
+          },
         },
         {
           ...posted,
@@ -303,6 +321,7 @@ describe("semantic issue events", () => {
       expect(memory.get("comment", root)).toMatchObject({
         body: "A corrected decision",
         bodyData: null,
+        mentionedUserIds: [ALICE.id],
         userId: BOB.id,
         agentId: null,
         issueId: ISSUE,

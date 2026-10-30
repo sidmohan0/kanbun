@@ -50,7 +50,7 @@ export const models = {
   documentContent: def("documentContent", ws.documentContent, { kind: "full" }, "teamId"),
   customView: def("customView", ws.customView, { kind: "full" }, "teamId"),
   viewPreferences: def("viewPreferences", ws.viewPreferences, { kind: "full" }),
-  notification: def("notification", ws.notification, { kind: "perUser", userColumn: "userId" }),
+  notification: def("notification", ws.notification, { kind: "perUser", userColumn: "userId" }, "teamId"),
   notificationSubscription: def("notificationSubscription", ws.notificationSubscription, {
     kind: "perUser",
     userColumn: "subscriberId",

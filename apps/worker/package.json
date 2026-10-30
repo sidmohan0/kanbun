@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p test/tsconfig.json"
   },
   "dependencies": {
+    "@kanbun/events": "workspace:*",
     "@kanbun/model": "workspace:*",
     "@kanbun/mutators": "workspace:*",
     "@kanbun/sync": "workspace:*",

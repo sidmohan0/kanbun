@@ -18,6 +18,7 @@ import {
 } from "./auth";
 import {
   activeMember,
+  directoryMembership,
   admitMember,
   acceptInvitation,
   inspectInvitation,
@@ -40,6 +41,11 @@ import {
 } from "./backups";
 export { DocumentDO } from "./document";
 import { internalFailure } from "./reporting";
+import {
+  scheduleNotifications as scheduleNotificationJob,
+  consumeNotifications,
+  NOTIFICATION_JOB,
+} from "./notifications";
 import {
   activityQuery,
   body,
@@ -175,6 +181,7 @@ export class WorkspaceDO extends DurableObject<Env> {
   private documentOperation: Promise<unknown> = Promise.resolve();
   private backupTask: Promise<{ key: string; manifestHash: string; mainSeq: number; eventSeq: number }> | null = null;
   private alarmRunning = false;
+  private notificationTask: Promise<void> | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -187,21 +194,55 @@ export class WorkspaceDO extends DurableObject<Env> {
       const server = new SyncServer({ driver: this.driver, mutators, migrations });
       this.server = server;
       this.lastBroadcastSeq = server.currentSeq();
+      if (this.maintenanceEnabled()) scheduleNotificationJob(this.driver, server);
       server.onCommit(() => {
+        // Only a durable wake/checkpoint intent here; recipient fan-out runs later in the alarm.
+        if (this.maintenanceEnabled()) scheduleNotificationJob(this.driver, server);
         this.queueBroadcast();
         queueMicrotask(() =>
-          this.ctx.waitUntil(this.scheduleBackup().catch(() => console.error("workspace_backup_schedule_failed"))),
+          this.ctx.waitUntil(
+            this.scheduleMaintenance().catch(() => console.error("workspace_maintenance_schedule_failed")),
+          ),
         );
       });
       for (const socket of ctx.getWebSockets()) await this.authorizedSocket(socket, server);
       this.ctx.waitUntil(
-        this.scheduleBackup()
-          .then(async () => {
-            if (this.automaticBackups()) await this.armNextJob(true);
-          })
-          .catch(() => console.error("workspace_backup_schedule_failed")),
+        this.scheduleMaintenance().catch(() => console.error("workspace_maintenance_schedule_failed")),
       );
     });
+  }
+
+  private maintenanceEnabled() {
+    return mode(this.env) !== "disabled" && this.env.BACKUP_RESTORE_ISOLATED !== "true";
+  }
+
+  private async scheduleMaintenance() {
+    if (!this.maintenanceEnabled()) return;
+    await this.scheduleBackup();
+    if (!this.backupTask && !this.alarmRunning && this.server && scheduleNotificationJob(this.driver, this.server))
+      await this.armNextJob(true);
+  }
+
+  private async deliverNotifications() {
+    if (this.notificationTask) return this.notificationTask;
+    const task = consumeNotifications(this.driver, this.server!, async (userId, admissionId) => {
+      if (mode(this.env) === "local") return true;
+      const membership = await directoryMembership(this.env, userId);
+      return (
+        !!membership &&
+        membership.removed_at === null &&
+        (membership.role === "owner" || membership.role === "user") &&
+        membership.admission_id === admissionId
+      );
+    }).then((changed) => {
+      if (changed) this.queueBroadcast();
+    });
+    this.notificationTask = task;
+    try {
+      await task;
+    } finally {
+      if (this.notificationTask === task) this.notificationTask = null;
+    }
   }
 
   private automaticBackups() {
@@ -218,7 +259,11 @@ export class WorkspaceDO extends DurableObject<Env> {
   }
 
   private async armNextJob(skipActiveAttempt = false) {
-    const row = this.driver.all("SELECT MIN(fire_at) AS fire_at FROM scheduled_job")[0];
+    if (!this.maintenanceEnabled()) return;
+    const row = this.driver.all("SELECT MIN(fire_at) AS fire_at FROM scheduled_job WHERE kind <> ? OR ?", [
+      BACKUP_JOB,
+      this.automaticBackups() ? 1 : 0,
+    ])[0];
     if (typeof row?.["fire_at"] !== "string") return;
     const fireAt = Date.parse(row["fire_at"]);
     if (!Number.isFinite(fireAt)) throw new Error("Scheduled job time is invalid");
@@ -289,29 +334,57 @@ export class WorkspaceDO extends DurableObject<Env> {
       return await task;
     } finally {
       if (this.backupTask === task) this.backupTask = null;
+      this.ctx.waitUntil(
+        this.scheduleMaintenance().catch(() => console.error("workspace_maintenance_schedule_failed")),
+      );
     }
   }
 
   override async alarm() {
     await this.ready;
-    if (!this.automaticBackups()) return;
+    if (!this.maintenanceEnabled()) return;
     this.alarmRunning = true;
     try {
       const due = this.driver.all("SELECT * FROM scheduled_job WHERE fire_at <= ? ORDER BY fire_at", [
         new Date().toISOString(),
       ]);
+      let failure: Error | null = null;
       for (const job of due) {
-        if (job["kind"] !== BACKUP_JOB) throw new Error("Unsupported scheduled job kind");
+        if (job["kind"] === NOTIFICATION_JOB) {
+          try {
+            if (this.backupTask) await this.backupTask.catch(() => undefined);
+            await this.deliverNotifications();
+          } catch {
+            console.error("workspace_notification_consumer_failed");
+            failure ??= new Error("Workspace notification consumer failed");
+          }
+          continue;
+        }
+        if (job["kind"] !== BACKUP_JOB) {
+          failure ??= new Error("Unsupported scheduled job kind");
+          continue;
+        }
+        if (!this.automaticBackups()) continue;
         try {
           await this.backup(configuration(this.env).workspaceId);
         } catch {
           console.error("workspace_backup_failed");
-          throw new Error("Workspace backup failed");
+          failure ??= new Error("Workspace backup failed");
         }
       }
+      if (failure) throw failure;
       await this.armNextJob();
+    } catch {
+      console.error("workspace_maintenance_failed");
+      throw new Error("Workspace scheduled maintenance failed");
     } finally {
       this.alarmRunning = false;
+    }
+    try {
+      await this.scheduleMaintenance();
+    } catch {
+      console.error("workspace_maintenance_schedule_failed");
+      throw new Error("Workspace maintenance scheduling failed");
     }
   }
 

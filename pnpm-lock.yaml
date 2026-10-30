@@ -81,6 +81,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@kanbun/events':
+        specifier: workspace:*
+        version: link:../../packages/events
       '@kanbun/model':
         specifier: workspace:*
         version: link:../../packages/model

@@ -55,6 +55,7 @@ export const ISSUE_CHILD_MODELS = [
   "reaction",
   "attachment",
   "documentContent",
+  "notification",
 ] as const;
 
 /** The workflow state of `type` in a team, chosen deterministically (lowest position, then id) so both runs agree. */

@@ -219,8 +219,11 @@ const commentPostedIntent = z.strictObject({
     .strictObject({
       issueId: id,
       body: commentBody,
+      mentionedUserIds: z.array(id).default([]),
+      addedMentionedUserIds: z.array(id).default([]),
       bodyData: commentBodyData,
       parentId: nullableId,
+      replyToUserId: nullableId.default(null),
       quotedText: z.string().max(2000).nullable(),
       userId: nullableId,
       agentId: nullableId,
@@ -230,7 +233,13 @@ const commentPostedIntent = z.strictObject({
 const commentEditedIntent = z.strictObject({
   ...commentSubject,
   type: z.literal("CommentEdited"),
-  payload: z.strictObject({ issueId: id, body: commentBody, bodyData: commentBodyData }),
+  payload: z.strictObject({
+    issueId: id,
+    body: commentBody,
+    bodyData: commentBodyData,
+    mentionedUserIds: z.array(id).default([]),
+    addedMentionedUserIds: z.array(id).default([]),
+  }),
 });
 const commentResolvedIntent = z.strictObject({
   ...commentSubject,

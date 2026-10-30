@@ -1,7 +1,14 @@
 import { eventSchema } from "@kanbun/events";
 import { uuidv7, type Row } from "@kanbun/model";
 import { mutators } from "@kanbun/mutators";
-import { isPoke, issueIncarnation, type Mutation, type Transport, type WorkspaceContext } from "@kanbun/sync";
+import {
+  isPoke,
+  issueIncarnation,
+  notificationVisible,
+  type Mutation,
+  type Transport,
+  type WorkspaceContext,
+} from "@kanbun/sync";
 import ReconnectingWebSocket from "partysocket/ws";
 import {
   IndexedDbPersister,
@@ -21,6 +28,8 @@ export type WorkspaceSnapshot = {
   pendingIssueIds: string[];
   issues: Row<"issue">[];
   comments: Row<"comment">[];
+  notifications: Row<"notification">[];
+  unreadNotificationCount: number;
   knownMembers: Row<"user">[];
   knownAgents: Row<"agent">[];
   pendingCommentIds: string[];
@@ -63,6 +72,8 @@ let snapshot: WorkspaceSnapshot = {
   pendingIssueIds: [],
   issues: [],
   comments: [],
+  notifications: [],
+  unreadNotificationCount: 0,
   knownMembers: [],
   knownAgents: [],
   pendingCommentIds: [],
@@ -107,6 +118,31 @@ function publish() {
         : refreshTask || persistenceWrites > 0
           ? "syncing"
           : (client?.getStatus() ?? "idle");
+  const visibleTeamIds = authenticationRequired
+    ? []
+    : (client
+        ?.list("team")
+        .filter(
+          (team) =>
+            !team.archivedAt &&
+            (team.visibility === "public" ||
+              client!
+                .list("teamMembership", { teamId: team.id })
+                .some((membership) => membership.userId === context?.actor.id && !membership.archivedAt)),
+        )
+        .map((team) => team.id) ?? []);
+  const notifications =
+    authenticationRequired || !client || !context
+      ? []
+      : client
+          .list("notification")
+          .filter((row) => !row.archivedAt && notificationVisible(client!.view, context!.actor.id, visibleTeamIds, row))
+          .sort(
+            (left, right) =>
+              right.sourceEventSeq - left.sourceEventSeq ||
+              compare(right.createdAt, left.createdAt) ||
+              compare(right.id, left.id),
+          );
   snapshot = {
     phase,
     status,
@@ -116,6 +152,8 @@ function publish() {
     pendingIssueIds: authenticationRequired
       ? []
       : [...new Set(pending.map(issueId).filter((id): id is string => id !== null))],
+    notifications,
+    unreadNotificationCount: notifications.filter((row) => !row.readAt).length,
     comments: authenticationRequired ? [] : (client?.list("comment").filter((comment) => !comment.archivedAt) ?? []),
     knownMembers: authenticationRequired ? [] : (client?.list("user") ?? []),
     knownAgents: authenticationRequired ? [] : (client?.list("agent") ?? []),
@@ -536,7 +574,13 @@ export const workspace = {
     if (!response.ok) throw new Error("Issue activity could not be loaded. Try again when connected.");
     return eventSchema.array().parse(await response.json());
   },
-  postComment(issueId: string, body: string, parentId?: string): void {
+  markNotificationRead(id: string, read: boolean): void {
+    const active = editableClient();
+    active.mutate("notificationRead", { id, read });
+    publish();
+    flush(active);
+  },
+  postComment(issueId: string, body: string, parentId?: string, mentionedUserIds: string[] = []): void {
     const active = editableClient();
     const issue = active.get("issue", issueId);
     if (!issue || issue.number <= 0) throw new Error("Wait for issue creation to finish syncing before commenting.");
@@ -546,14 +590,15 @@ export const workspace = {
       issueIncarnation: issueIncarnation(issue),
       body,
       subscriptionId: uuidv7(),
+      mentionedUserIds,
       ...(parentId ? { parentId } : {}),
     });
     publish();
     flush(active);
   },
-  editComment(id: string, body: string): void {
+  editComment(id: string, body: string, mentionedUserIds?: string[]): void {
     const active = editableClient();
-    active.mutate("commentUpdate", { id, body });
+    active.mutate("commentUpdate", { id, body, ...(mentionedUserIds ? { mentionedUserIds } : {}) });
     publish();
     flush(active);
   },
