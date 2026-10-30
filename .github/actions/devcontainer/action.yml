@@ -1,0 +1,14 @@
+name: Start development container
+description: Initialize the same pinned development environment used locally.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version-file: .nvmrc
+    - name: Build and initialize development container
+      shell: bash
+      run: ./scripts/devcontainer.sh up
+    - name: Confirm container runtime
+      shell: bash
+      run: ./scripts/devcontainer.sh exec sh -c 'test -f /.dockerenv && test "$(id -un)" = node && uname -sm && node --version && pnpm --version'

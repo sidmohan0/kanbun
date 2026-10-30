@@ -8,14 +8,17 @@ individual commands and non-gating mechanical documentation reports.
 
 ## Development environment
 
-The [devcontainer instructions](README.md#development) provide the same pinned Node/pnpm toolchain
-and browser dependencies for local Dev Containers and Codespaces. Native development remains
-supported. Keep package dependencies in their owning workspace manifest and update the root
+Use the [devcontainer instructions](README.md#development) for local development and verification.
+The same pinned environment runs every repository-owned CI check. Run commands in its shell or
+with `./scripts/devcontainer.sh exec`; use `./scripts/devcontainer.sh verify` for the complete check.
+Keep native troubleshooting in a separate checkout so Linux and host dependencies do not mix.
+Keep package dependencies in their owning workspace manifest and update the root
 `pnpm-lock.yaml`; do not add package-specific lockfiles or use a second package manager.
 
-For container changes, the separate `devcontainer` workflow builds the image, executes its actual
-post-create setup, and runs `pnpm verify` inside it. It runs when the container configuration,
-workflow, toolchain pins, or dependency manifests and lockfile change, and supports manual dispatch.
+The shared devcontainer setup runs in full CI, changelog policy, spec lock, and daily/manual
+documentation reporting. Every run builds or starts the image, executes actual workspace setup,
+and runs its checks inside the container. Checkout, CLI bootstrapping, metadata copying, summary
+publishing, and artifact upload are host runner plumbing.
 
 ## Changelog policy
 
