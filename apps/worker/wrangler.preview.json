@@ -6,7 +6,7 @@
   "compatibility_date": "2026-10-29",
   "workers_dev": false,
   "preview_urls": false,
-  "routes": [{ "pattern": "kanbun.sid-mohan.com", "custom_domain": true }],
+  "routes": [{ "pattern": "kanbun.ai", "custom_domain": true }],
   "assets": {
     "directory": "../web/dist",
     "binding": "ASSETS",
@@ -16,7 +16,7 @@
   "vars": {
     "LOCAL_DEV": "false",
     "AUTH_MODE": "preview",
-    "APP_ORIGIN": "https://kanbun.sid-mohan.com",
+    "APP_ORIGIN": "https://kanbun.ai",
     "ACCESS_ISSUER": "https://kanbun-sid.cloudflareaccess.com",
     "ACCESS_AUDIENCE": "b286feff64cecd9481469601c7fca8c2f5b04e168cf632110a0bde16fd20001d",
     "PREVIEW_OWNER_EMAIL": "sid@datafog.ai",
