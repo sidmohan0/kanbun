@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createTestHarness, type Unstable_RawConfig } from "wrangler";
 
@@ -19,7 +19,9 @@ export async function createRuntimeHarness(workers: Unstable_RawConfig[]) {
         config: {
           ...config,
           ...(config.main ? { main: resolve(sourceRoot, config.main) } : {}),
-          tsconfig: resolve(sourceRoot, config.tsconfig ?? "tsconfig.json"),
+          // Preserve normal source-based discovery unless the shipped config opts in.
+          // Wrangler joins an explicit raw tsconfig to config root, even for absolute input.
+          ...(config.tsconfig ? { tsconfig: relative(root, resolve(sourceRoot, config.tsconfig)) } : {}),
           ...(config.d1_databases
             ? {
                 d1_databases: config.d1_databases.map((database) => ({
