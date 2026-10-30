@@ -55,6 +55,7 @@ it does not publish the Worker. Production access needs a later authenticated en
 | ------ | ---------------------- | --------------------------------------------- |
 | POST   | `/__local/seed`        | Initialize local fixture data                 |
 | GET    | `/sync/bootstrap`      | Bootstrap a branch-bound client               |
+| GET    | `/sync/connect`        | Upgrade a main-branch notification socket     |
 | GET    | `/sync/pull`           | Pull visible patches after `since`            |
 | GET    | `/sync/load`           | Load an on-demand model by parent             |
 | POST   | `/sync/push`           | Execute a mutation batch                      |
@@ -69,7 +70,29 @@ Reads select a branch with the `branchId` query parameter; sync writes carry it 
 it selects main where supported. Branch get/preview require an explicit branch ID. Query/body
 schemas reject unknown fields, repeated query keys, invalid models and cursors, and malformed
 mutation envelopes. Wrong methods return 405. Domain errors retain their normal HTTP status.
-The client currently pulls after pushes or on explicit request; WebSocket pokes remain planned.
+
+## Notifications and reconnect catch-up
+
+The main-branch client opens a same-origin WebSocket at
+`/sync/connect?clientId=<stable-client-id>&branchId=main`. The route checks local mode, active
+membership, the client's actor/branch binding, and any supplied Origin before accepting it.
+Other branches are rejected by this notification endpoint. Branch HTTP APIs remain available.
+
+The socket sends only `{ "type": "poke", "seq": <main-patch-cursor> }`, initially and after a
+main commit advances the cursor. Private branch writes, retries, and rejected-only batches do not
+produce a new main hint. SQLite and the normal pull API remain authoritative. Each broadcast
+rechecks membership and client binding, closing a socket whose access has been revoked.
+
+The browser automatically pushes its queued work before pulling on a new hint or socket open.
+Opening always catches up, even when notifications were missed while disconnected. Hints received
+during an older pull queue a fresh pass. Invalid, duplicate, and older hints are ignored. The
+existing reconnect library supplies bounded retry delays; a socket outage alone does not change
+the save status of successful HTTP writes. Refresh, focus, and online events still request sync.
+
+Only the tab holding the IndexedDB writer lease opens a socket. A waiting tab opens one after
+taking over; a failed storage read opens none. The Durable Object uses the WebSocket Hibernation
+API with serialized identity attachments, so eviction can preserve connections without retaining
+an in-memory client list or a background timer. The Vite proxy forwards WebSocket upgrades.
 
 ## Runtime verification
 
@@ -86,13 +109,15 @@ inspection uses the harness API; the Worker exposes no SQL inspection route.
 
 Worker tests prove fresh migrations, idempotent initialization, client convergence, per-mutation
 rollback within a mixed batch, branch privacy, durable merge receipts, strict request validation,
-and default-disabled access. The four Chromium scenarios use the same Worker, real HTTP, and
+and default-disabled access. The SDK Chromium scenarios use the same Worker, real HTTP, and
 browser IndexedDB. The Node HTTP layer serves assets and can truncate a real Worker acknowledgement
 after commit; it does not execute business mutations.
 
 The actual React app also has browser coverage for create/rename convergence, persisted offline
 edits, authoritative rejection and rollback, same-browser tab handoff, and storage failures. The
-app refreshes on focus, reconnect, or **Refresh**. WebSocket pokes remain later work. One tab at a
+app converges across independent browser contexts without focus or **Refresh**. Recovery checks
+drop notifications, interrupt the socket, and prove automatic catch-up on reopening, then verify
+live delivery after Durable Object hibernation. One tab at a
 time owns the stable Alice/main outbox; another tab waits and automatically restores the queue
 after the owner closes. Independent browser contexts use independent clients.
 

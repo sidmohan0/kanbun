@@ -89,6 +89,19 @@ export type LoadResponse = {
 
 export type Poke = { type: "poke"; seq: number };
 
+/** Cursor hints are untrusted input; rows always arrive through the normal sync API. */
+export function isPoke(value: unknown): value is Poke {
+  if (value === null || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    Object.keys(candidate).length === 2 &&
+    candidate["type"] === "poke" &&
+    typeof candidate["seq"] === "number" &&
+    Number.isSafeInteger(candidate["seq"]) &&
+    candidate["seq"] >= 0
+  );
+}
+
 export type Transport = {
   bootstrap(clientId: string, branchId?: string): Promise<BootstrapResponse>;
   push(req: PushRequest): Promise<PushResponse>;

@@ -17,8 +17,10 @@ explicit Save and Cancel controls, Enter to submit, and Escape to cancel. Focus 
 title control after editing. Inputs have visible
 labels and feedback. Empty titles cannot be submitted.
 
-The header shows connection state and the number of pending changes. Refresh and window focus
-request current data; reconnect retries the queued changes. Cached data remains editable while
+The header shows connection state and the number of pending changes. WebSocket cursor hints
+automatically request current data. Socket reopening retries queued changes before pulling, even
+if hints were missed; Refresh, window focus, and online events also request synchronization.
+Cached data remains editable while
 offline. Rejected changes show an alert with the affected issue and the server reason, and the
 list returns to the authoritative value. Storage failures are visible, rather than presented as a
 successful local save. Loading, empty, and first-use initialization states have direct next actions.
@@ -30,11 +32,12 @@ overwrite one persisted outbox. Independent browser contexts can sync concurrent
 
 The local identity is explicitly Alice. Initializing the local workspace is a separate action when
 the Worker has no fixture members. Production sign-in, workspace switching, branch review, issue
-details, filtering, rich text, and WebSocket notifications remain later flows.
+details, filtering, and rich text remain later flows.
 
 ## Proof
 
-Playwright drives the actual React app and Worker to create and rename issues, refresh two browser
-contexts into convergence, recover an offline edit after reload, display a real server rejection,
+Playwright drives the actual React app and Worker to create and rename issues, automatically
+converge two browser contexts, recover missed notifications after a socket interruption and Durable
+Object hibernation, recover an offline edit after reload, display a real server rejection,
 and hand a saved queue between tabs safely. Verify the light, dark, and narrow layouts against the
 brand tokens. The complete devcontainer verifier and required PR checks must pass.

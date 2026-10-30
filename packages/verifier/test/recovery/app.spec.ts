@@ -1,6 +1,6 @@
 import { uuidv7 } from "@kanbun/model";
 import type { Mutation, PushRequest, PushResponse } from "@kanbun/sync";
-import type { Page } from "@playwright/test";
+import type { Page, WebSocketRoute } from "@playwright/test";
 import { test, expect, syncApi } from "./app.fixture";
 
 async function openApp(page: Page, origin: string) {
@@ -49,7 +49,7 @@ async function expectStoredTitle(page: Page, title: string) {
     .toBe(true);
 }
 
-test("the issue UI creates and renames an issue, then a separate browser session refreshes to the same state", async ({
+test("the issue UI creates and renames an issue, then a separate browser session converges without refresh or focus", async ({
   browser,
   app,
 }, testInfo) => {
@@ -73,7 +73,6 @@ test("the issue UI creates and renames an issue, then a separate browser session
     await expect(first.getByRole("row", { name: "REC-2", exact: true })).toContainText("Renamed through the issue row");
     await expect(first.getByRole("status")).toContainText("Saved");
 
-    await second.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(second.getByRole("row", { name: "REC-2", exact: true })).toContainText(
       "Renamed through the issue row",
     );
@@ -101,7 +100,6 @@ test("the issue UI creates and renames an issue, then a separate browser session
     });
     expect(prioritized.status).toBe(200);
     expect((await prioritized.json()) as PushResponse).toMatchObject({ ok: true, rejected: [] });
-    await first.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(first.locator("tbody tr").first()).toHaveAccessibleName("REC-3");
     await expect(first.locator("tbody tr").first()).toContainText("Prioritized above the existing work");
     const authority = await app.runtime.inspect();
@@ -128,6 +126,125 @@ test("the issue UI creates and renames an issue, then a separate browser session
     }
   } finally {
     await Promise.allSettled([firstContext.close(), secondContext.close()]);
+  }
+});
+
+test("live updates retain hints during a pull, recover after reconnecting, and survive Durable Object hibernation", async ({
+  browser,
+  app,
+}) => {
+  const writerContext = await browser.newContext();
+  const readerContext = await browser.newContext();
+  const writer = await writerContext.newPage();
+  const reader = await readerContext.newPage();
+  const errors: string[] = [];
+  writer.on("pageerror", (error) => errors.push(error.message));
+  reader.on("pageerror", (error) => errors.push(error.message));
+  const connections: { client: WebSocketRoute; server: WebSocketRoute }[] = [];
+  const frames: { message: string | Buffer; dropped: boolean }[] = [];
+  let dropHints = false;
+  let releaseOlderPull!: () => void;
+  const olderPullGate = new Promise<void>((resolve) => {
+    releaseOlderPull = resolve;
+  });
+  let captureOlderPull!: (response: { seq: number }) => void;
+  const olderPull = new Promise<{ seq: number }>((resolve) => {
+    captureOlderPull = resolve;
+  });
+  await reader.routeWebSocket(
+    (url) => url.pathname === "/sync/connect",
+    (client) => {
+      const server = client.connectToServer();
+      connections.push({ client, server });
+      server.onMessage((message) => {
+        frames.push({ message, dropped: dropHints });
+        if (!dropHints) client.send(message);
+      });
+    },
+  );
+  try {
+    await Promise.all([openApp(writer, app.origin), openApp(reader, app.origin)]);
+    await expect.poll(() => frames.length).toBeGreaterThan(0);
+    await expect(reader.getByRole("status")).toContainText("Saved");
+    const initial = await app.runtime.inspect();
+    for (const invalid of [
+      "not JSON",
+      "null",
+      JSON.stringify({ type: "other", seq: Number.MAX_SAFE_INTEGER }),
+      JSON.stringify({ type: "poke", seq: Number.MAX_SAFE_INTEGER, extra: true }),
+      JSON.stringify({ type: "poke", seq: -1 }),
+      JSON.stringify({ type: "poke", seq: 1.5 }),
+      JSON.stringify({ type: "poke", seq: initial.seq }),
+      JSON.stringify({ type: "poke", seq: 0 }),
+    ])
+      connections[0]!.client.send(invalid);
+
+    let holdFirstPull = true;
+    await reader.route("**/sync/pull?*", async (route) => {
+      if (!holdFirstPull) return route.continue();
+      holdFirstPull = false;
+      const response = await route.fetch();
+      captureOlderPull((await response.json()) as { seq: number });
+      await olderPullGate;
+      await route.fulfill({ response });
+    });
+    await rename(writer, "REC-1", "The earlier notification starts a pull");
+    const stale = await olderPull;
+    await rename(writer, "REC-1", "A newer hint arrives during that pull");
+    await expect(writer.getByRole("status")).toContainText("Saved");
+    await expect
+      .poll(() =>
+        frames.some((frame) => {
+          const poke = JSON.parse(frame.message.toString()) as { seq: number };
+          return !frame.dropped && poke.seq > stale.seq;
+        }),
+      )
+      .toBe(true);
+    await expect(reader.getByRole("row", { name: "REC-1", exact: true })).toContainText("Shared issue");
+    releaseOlderPull();
+    await expect(reader.getByRole("row", { name: "REC-1", exact: true })).toContainText(
+      "A newer hint arrives during that pull",
+    );
+    await expect(reader.getByRole("status")).toContainText("Saved");
+    await reader.unroute("**/sync/pull?*");
+    dropHints = true;
+    await rename(writer, "REC-1", "Written while the reader misses notifications");
+    await expect(writer.getByRole("status")).toContainText("Saved");
+    await expect.poll(() => frames.filter((frame) => frame.dropped).length).toBeGreaterThan(0);
+    await expect(reader.getByRole("row", { name: "REC-1", exact: true })).toContainText(
+      "A newer hint arrives during that pull",
+    );
+
+    await connections[0]!.client.close({ code: 1012, reason: "Simulated connection interruption" });
+    await connections[0]!.server.close({ code: 1012, reason: "Simulated connection interruption" });
+    await expect.poll(() => connections.length, { timeout: 15_000 }).toBeGreaterThan(1);
+    // The reconnect's initial hint is also dropped: catching up must come from socket open.
+    await expect(reader.getByRole("row", { name: "REC-1", exact: true })).toContainText(
+      "Written while the reader misses notifications",
+    );
+    await expect(reader.getByRole("status")).toContainText("Saved");
+    dropHints = false;
+
+    const beforeHibernation = connections.length;
+    await app.runtime.hibernate();
+    await rename(writer, "REC-1", "Written after Durable Object hibernation");
+    await expect(reader.getByRole("row", { name: "REC-1", exact: true })).toContainText(
+      "Written after Durable Object hibernation",
+    );
+    await expect(reader.getByRole("status")).toContainText("Saved");
+    expect(connections).toHaveLength(beforeHibernation);
+    const authority = await app.runtime.inspect();
+    expect(authority.issues.find((issue) => issue.id === app.issueId)?.title).toBe(
+      "Written after Durable Object hibernation",
+    );
+    expect(
+      authority.events.filter((event) => event.type === "IssueTitled" && event.entity_id === app.issueId),
+    ).toHaveLength(4);
+    expect(errors).toEqual([]);
+  } finally {
+    releaseOlderPull();
+    await reader.unrouteAll({ behavior: "ignoreErrors" });
+    await Promise.allSettled([writerContext.close(), readerContext.close()]);
   }
 });
 
@@ -295,8 +412,12 @@ test("a second tab waits for the workspace writer and recovers its offline queue
   const first = await context.newPage();
   const second = await context.newPage();
   const errors: string[] = [];
+  const secondSockets: string[] = [];
   first.on("pageerror", (error) => errors.push(error.message));
   second.on("pageerror", (error) => errors.push(error.message));
+  second.on("websocket", (socket) => {
+    if (new URL(socket.url()).pathname === "/sync/connect") secondSockets.push(socket.url());
+  });
   try {
     await openApp(first, app.origin);
     await context.route(syncApi, (route) => route.abort("internetdisconnected"));
@@ -305,6 +426,7 @@ test("a second tab waits for the workspace writer and recovers its offline queue
     await expectStoredTitle(first, "The next tab recovers this offline draft");
     await second.goto(app.origin);
     await expect(second.getByText("Workspace open in another tab", { exact: true })).toBeVisible();
+    expect(secondSockets).toHaveLength(0);
     await expect(
       second.getByRole("button", { name: "Create issue", exact: true }).and(second.locator(":enabled")),
     ).toHaveCount(0);
@@ -313,6 +435,7 @@ test("a second tab waits for the workspace writer and recovers its offline queue
       "The next tab recovers this offline draft",
     );
     await expect(second.getByRole("status")).toContainText("Offline");
+    await expect.poll(() => secondSockets.length).toBe(1);
     await context.unroute(syncApi);
     await second.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(second.getByRole("status")).toContainText("Saved");
@@ -340,7 +463,11 @@ test("unavailable browser storage shows a startup error and keeps issue editing 
   });
   const page = await context.newPage();
   const errors: string[] = [];
+  const sockets: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  page.on("websocket", (socket) => {
+    if (new URL(socket.url()).pathname === "/sync/connect") sockets.push(socket.url());
+  });
   try {
     await page.goto(app.origin);
     await expect(page.getByRole("alert")).toContainText(/IndexedDB|storage/i);
@@ -352,6 +479,7 @@ test("unavailable browser storage shows a startup error and keeps issue editing 
     ).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Edit title for / }).and(page.locator(":enabled"))).toHaveCount(0);
     expect((await app.runtime.inspect()).issues).toMatchObject([{ id: app.issueId, title: "Shared issue" }]);
+    expect(sockets).toHaveLength(0);
     expect(errors).toEqual([]);
   } finally {
     await context.close();

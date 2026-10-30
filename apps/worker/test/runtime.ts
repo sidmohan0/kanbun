@@ -69,6 +69,14 @@ export async function startWorkspaceRuntime({ localDev = true }: { localDev?: bo
       async restart() {
         await harness.getWorker().evictDurableObject("WORKSPACES", { name: "local", webSockets: "close" });
       },
+      async hibernate() {
+        await harness.getWorker().evictDurableObject("WORKSPACES", { name: "local", webSockets: "hibernate" });
+      },
+      async setMemberActive(actor: "alice" | "bob", active: boolean) {
+        // Trusted fixture control for revocation tests; no HTTP administration route.
+        const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: "local" });
+        await storage.exec('UPDATE "user" SET active = ? WHERE id = ?', active ? 1 : 0, `user-${actor}`);
+      },
       close: () => harness.close(),
     };
   } catch (error) {
