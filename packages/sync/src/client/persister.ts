@@ -4,6 +4,8 @@ import type { Mutation } from "../protocol";
 export type PersistedState = {
   clientId: string;
   userId: string;
+  /** Missing on older persisted states, which belong to main. */
+  branchId?: string;
   seq: number;
   lastMutationId: number;
   pending: Mutation[];
@@ -30,7 +32,9 @@ export class MemoryPersister implements Persister {
 }
 
 /**
- * IndexedDB persister: one object store, one record per workspace+user.
+ * IndexedDB persister: one object store, one record per workspace+user+branch.
+ * Callers include the selected branch in the record key. SyncClient also
+ * validates the saved branch before restoring queued mutations.
  * Whole-state writes are fine at this scale (5k issues ≈ 5 MB) and are
  * coalesced so at most one write is in flight.
  */

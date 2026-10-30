@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added durable workspace branches for issue creation and renaming, with private ownership, write scopes, restart-safe overlays and queues, and live-main fallback for untouched rows.
+
 - Added typed issue creation and rename events with atomic durable history, deterministic replay, scoped event reads, and retry-safe projection updates.
 
 - Introduced the workspace model, local-first sync engine, shared mutators, deterministic seed, and branded React web shell.

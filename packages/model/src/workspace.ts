@@ -7,7 +7,7 @@
  * maps 1:1 onto them.
  */
 import { sql } from "drizzle-orm";
-import { check, index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { check, index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import {
   bool,
   json,
@@ -37,6 +37,55 @@ const exactlyOne = (name: string, cols: { name: string }[]) =>
 // Sync bookkeeping (not synced to clients)
 // ---------------------------------------------------------------------------
 
+export type BranchScope = { teamIds: string[]; projectIds: string[] };
+export type WorkspaceBranchStatus = "open" | "merged" | "abandoned" | "conflicted";
+
+/** Durable ownership and write bounds for an isolated workspace overlay. */
+export const workspaceBranch = sqliteTable(
+  "workspace_branch",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    /** Semantic main event sequence at creation; distinct from the sync patch cursor. */
+    baseSeq: integer("base_seq").notNull(),
+    ownerId: text("owner_id").notNull(),
+    ownerType: text("owner_type").$type<ActorType>().notNull(),
+    ownerUserId: text("owner_user_id").notNull(),
+    status: text("status").$type<WorkspaceBranchStatus>().notNull().default("open"),
+    scope: json<BranchScope>("scope").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("workspace_branch_owner").on(t.ownerUserId),
+    check("workspace_branch_id_not_main", sql`${t.id} <> 'main'`),
+    check("workspace_branch_base_seq_nonnegative", sql`${t.baseSeq} >= 0`),
+    oneOf("workspace_branch_owner_type_check", t.ownerType, ACTOR_TYPES),
+    oneOf("workspace_branch_status_check", t.status, ["open", "merged", "abandoned", "conflicted"]),
+  ],
+);
+
+export type WorkspaceBranch = typeof workspaceBranch.$inferSelect;
+
+/** Touched rows shadow live main; tombstones suppress fallback reads. */
+export const branchRow = sqliteTable(
+  "branch_row",
+  {
+    branchId: text("branch_id").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    row: json<Record<string, unknown>>("row"),
+    tombstone: bool("tombstone").notNull().default(false),
+  },
+  (t) => [
+    primaryKey({ columns: [t.branchId, t.entityType, t.entityId] }),
+    index("branch_row_branch").on(t.branchId),
+    check(
+      "branch_row_payload_check",
+      sql`(${t.tombstone} = 1 AND ${t.row} IS NULL) OR (${t.tombstone} = 0 AND ${t.row} IS NOT NULL)`,
+    ),
+  ],
+);
+
 /** Semantic history. Projection writes and their derived sync patches commit with the event. */
 export const eventLog = sqliteTable(
   "event_log",
@@ -48,7 +97,7 @@ export const eventLog = sqliteTable(
     type: text("type").notNull(),
     entityType: text("entity_type").notNull(),
     entityId: text("entity_id").notNull(),
-    teamId: text("team_id").notNull(),
+    teamId: text("team_id"),
     scopeUserId: text("scope_user_id"),
     payload: json<Record<string, unknown>>("payload").notNull(),
     actor: json<{ id: string; type: ActorType; via?: string }>("actor").notNull(),
@@ -74,6 +123,7 @@ export const syncLog = sqliteTable(
   "sync_log",
   {
     seq: integer("seq").primaryKey({ autoIncrement: true }),
+    branchId: text("branch_id").notNull().default("main"),
     model: text("model").notNull(),
     rowId: text("row_id").notNull(),
     op: text("op", { enum: ["upsert", "delete"] }).notNull(),
@@ -102,6 +152,7 @@ export const syncLog = sqliteTable(
     ts: text("ts").notNull(),
   },
   (t) => [
+    index("sync_log_branch_seq").on(t.branchId, t.seq),
     index("sync_log_model_row").on(t.model, t.rowId),
     index("sync_log_team").on(t.teamId),
     index("sync_log_prev_team").on(t.prevTeamId),
@@ -135,6 +186,8 @@ export const scheduledJob = sqliteTable(
 export const syncClient = sqliteTable("sync_client", {
   clientId: text("client_id").primaryKey(),
   userId: text("user_id").notNull(),
+  /** A client identity is permanently bound to its workspace branch. */
+  branchId: text("branch_id").notNull().default("main"),
   lastMutationId: integer("last_mutation_id").notNull().default(0),
   lastSeenAt: text("last_seen_at").notNull(),
   /** Comma-joined sorted team ids visible at last sync; a change forces a re-bootstrap. */

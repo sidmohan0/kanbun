@@ -11,6 +11,7 @@ export const actors = {
 
 export type RecoverySnapshot = {
   clientId: string;
+  branchId: string;
   status: SyncStatus;
   seq: number;
   pending: number;
@@ -21,7 +22,7 @@ export type RecoverySnapshot = {
 };
 
 export type RecoveryApi = {
-  start(actor: ActorName): Promise<RecoverySnapshot>;
+  start(actor: ActorName, branchId?: string): Promise<RecoverySnapshot>;
   snapshot(): RecoverySnapshot;
   mutate(name: keyof typeof mutators, args: unknown, options?: MutateOptions): RecoverySnapshot;
   push(): Promise<RecoverySnapshot>;

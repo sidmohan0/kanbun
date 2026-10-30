@@ -17,7 +17,7 @@ makes a retry of the same `(clientId, mutationId)` a no-op, including after a da
 
 Committed event envelopes contain the authoritative actor, transaction, timestamp, sequence, and
 mutation identity. Each mutation can emit multiple events distinguished by `eventIndex`.
-`branchId` is present from the start; this slice executes only `main`. Session and source-reference
+`branchId` selects main or a durable workspace branch for issue creation and rename. Session and source-reference
 fields are reserved and currently null. Existing actor types are preserved during this migration.
 
 `applyIssueEvent` replays recorded facts through the same reducer in the client's memory store and
@@ -37,6 +37,10 @@ stores the semantic sequence in the event's `causationSeq`. A legacy patch or an
 source has no semantic cause, so the event stores null. Derived sync patches retain the original
 patch-based reference. Optimistic events use null until the authority can resolve their cause.
 
+`BranchCreated` records a branch's ownership, scope, and main event base. Issue events on that
+branch are applied to durable overlay rows. See [workspace branches](workspace-branches.md) for
+ownership, live-main reads, client identity, and cursor behavior.
+
 Issue `createdSeq` and `updatedSeq` identify semantic creation and the latest semantic update.
 The migration preserves existing rows with zero sequence metadata and does not invent historical
 events. Other issue updates, including mixed title-and-other-field updates, remain on the legacy
@@ -54,5 +58,5 @@ Additional integration checks exercise durable retry after reopening SQLite, rol
 late projection-write failure, and event-history privacy. Existing Chromium tests continue to cover
 offline edit recovery and a lost HTTP acknowledgement through the public sync client.
 
-This completes the first event flow. The remaining vocabulary, complete workspace replay, branch
-execution and merging, and the Cloudflare Worker are later implementation steps.
+The remaining vocabulary, complete workspace replay, branch merging and conflict handling, and the
+Cloudflare Worker are later implementation steps.

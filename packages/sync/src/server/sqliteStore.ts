@@ -2,33 +2,13 @@
  * Store over SQLite. Every write is also appended to sync_log, tagged with
  * the mutation that caused it and the row's permission scope (team, user).
  */
-import { models, type ActorType, type ModelName, type Row } from "@kanbun/model";
+import { type ModelName, type Row } from "@kanbun/model";
 import { extremeOf, matches, type Patch, type Store, type Where } from "../store";
 import { fromSql, normalizePatch, normalizeRow, tableMeta, toSql, type TableMeta } from "../rows";
 import type { SqlDriver, SqlRow, SqlValue } from "./driver";
+import { pick, recordChange, sameValue, scopeOf, SYSTEM_TAG, type LogTag } from "./changeLog";
 
-export type LogTag = {
-  actorId: string | null;
-  actorType: ActorType;
-  clientId: string | null;
-  mutationId: number | null;
-  txnId: string;
-  causationSeq: number | null;
-  reason: string | null;
-  /** Present for patches derived from a committed semantic event. */
-  eventSeq?: number;
-  ts?: string;
-};
-
-export const SYSTEM_TAG = (txnId: string): LogTag => ({
-  actorId: null,
-  actorType: "system",
-  clientId: null,
-  mutationId: null,
-  txnId,
-  causationSeq: null,
-  reason: null,
-});
+export { SYSTEM_TAG, type LogTag } from "./changeLog";
 
 const q = (ident: string) => `"${ident}"`;
 
@@ -37,7 +17,10 @@ export class SqliteStore implements Store {
   constructor(
     readonly driver: SqlDriver,
     private tag: LogTag = SYSTEM_TAG("boot"),
-  ) {}
+  ) {
+    if (tag.branchId !== undefined && tag.branchId !== "main")
+      throw new Error("Non-main writes require a durable branch store");
+  }
 
   withTag(tag: LogTag): SqliteStore {
     return new SqliteStore(this.driver, tag);
@@ -179,16 +162,8 @@ export class SqliteStore implements Store {
     // A write that moves the row into another scope is logged as the whole row:
     // viewers of the new scope may never have seen it, and a field-grain patch
     // would leave them with a fragment.
-    const moved = this.scopeOf(model, before).some((v, i) => v !== this.scopeOf(model, after)[i]);
+    const moved = scopeOf(model, before).some((v, i) => v !== scopeOf(model, after)[i]);
     this.log(model, id, "upsert", moved ? after : changed, pick(before, ck), after, before);
-  }
-
-  private scopeOf(model: ModelName, row: Record<string, unknown>): [string | null, string | null] {
-    const def = models[model];
-    return [
-      def.teamColumn ? ((row[def.teamColumn] as string | null) ?? null) : null,
-      def.policy.kind === "perUser" ? ((row[def.policy.userColumn] as string | null) ?? null) : null,
-    ];
   }
 
   delete<M extends ModelName>(model: M, id: string): void {
@@ -208,44 +183,6 @@ export class SqliteStore implements Store {
     scopeRow: Record<string, unknown>,
     beforeRow: Record<string, unknown> | null,
   ): void {
-    const [teamId, scopeUserId] = this.scopeOf(model, scopeRow);
-    const prevTeam = beforeRow ? this.scopeOf(model, beforeRow)[0] : null;
-    const prevTeamId = prevTeam !== null && prevTeam !== teamId ? prevTeam : null;
-    this.driver.run(
-      `INSERT INTO sync_log (model, row_id, op, patch, prev, actor_id, actor_type, client_id, mutation_id, txn_id, causation_seq, reason, team_id, prev_team_id, scope_user_id, ts, event_seq)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        model,
-        rowId,
-        op,
-        patch ? JSON.stringify(patch) : null,
-        prev ? JSON.stringify(prev) : null,
-        this.tag.actorId,
-        this.tag.actorType,
-        this.tag.clientId,
-        this.tag.mutationId,
-        this.tag.txnId,
-        this.tag.causationSeq,
-        this.tag.reason,
-        teamId,
-        prevTeamId,
-        scopeUserId,
-        this.tag.ts ?? new Date().toISOString(),
-        this.tag.eventSeq ?? null,
-      ],
-    );
+    recordChange(this.driver, this.tag, { model, rowId, op, patch, prev, scopeRow, beforeRow });
   }
-}
-
-function pick(row: Record<string, unknown>, keys: string[]): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const k of keys) out[k] = row[k] ?? null;
-  return out;
-}
-
-function sameValue(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (a === undefined || b === undefined) return (a ?? null) === (b ?? null);
-  if (typeof a === "object" && typeof b === "object" && a && b) return JSON.stringify(a) === JSON.stringify(b);
-  return false;
 }

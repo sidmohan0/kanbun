@@ -15,6 +15,13 @@
       "when": 1793335856861,
       "tag": "0001_legal_amphibian",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793338797747,
+      "tag": "0002_tearful_surge",
+      "breakpoints": true
     }
   ]
 }

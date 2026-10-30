@@ -22,12 +22,19 @@ export function httpTransport(baseUrl: string, fetchImpl: typeof fetch = fetch):
     if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
     return (await res.json()) as T;
   };
+  const branchQuery = (branchId: string | undefined) =>
+    branchId === undefined || branchId === "main" ? "" : `&branchId=${encodeURIComponent(branchId)}`;
   return {
-    bootstrap: (clientId) => call<BootstrapResponse>(`/sync/bootstrap?clientId=${encodeURIComponent(clientId)}`),
+    bootstrap: (clientId, branchId) =>
+      call<BootstrapResponse>(`/sync/bootstrap?clientId=${encodeURIComponent(clientId)}${branchQuery(branchId)}`),
     push: (req: PushRequest) => call<PushResponse>("/sync/push", req),
     pull: (req: PullRequest) =>
-      call<PullResponse>(`/sync/pull?clientId=${encodeURIComponent(req.clientId)}&since=${req.since}`),
+      call<PullResponse>(
+        `/sync/pull?clientId=${encodeURIComponent(req.clientId)}&since=${req.since}${branchQuery(req.branchId)}`,
+      ),
     load: (req: LoadRequest) =>
-      call<LoadResponse>(`/sync/load?model=${req.model}&parentId=${encodeURIComponent(req.parentId)}`),
+      call<LoadResponse>(
+        `/sync/load?model=${req.model}&parentId=${encodeURIComponent(req.parentId)}${branchQuery(req.branchId)}`,
+      ),
   };
 }

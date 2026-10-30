@@ -35,6 +35,7 @@ export type RecoveryHarness = {
   databasePath: string;
   actors: typeof actors;
   pushes: PushObservation[];
+  createBranch(owner?: ActorName): string;
   dropNextPushResponse(actor?: ActorName): void;
   restart(): Promise<void>;
   inspect(): {
@@ -137,13 +138,21 @@ async function createHarness(seedIssue: boolean) {
           return json(response, { error: "fixture actor cookie missing" }, 401);
         const actor = actors[selected];
         if (url.pathname === "/sync/bootstrap")
-          return json(response, active.server.bootstrap(actor, url.searchParams.get("clientId") ?? ""));
+          return json(
+            response,
+            active.server.bootstrap(
+              actor,
+              url.searchParams.get("clientId") ?? "",
+              url.searchParams.get("branchId") ?? "main",
+            ),
+          );
         if (url.pathname === "/sync/pull")
           return json(
             response,
             active.server.pull(actor, {
               clientId: url.searchParams.get("clientId") ?? "",
               since: Number(url.searchParams.get("since")),
+              branchId: url.searchParams.get("branchId") ?? "main",
             }),
           );
         if (url.pathname === "/sync/load")
@@ -152,12 +161,13 @@ async function createHarness(seedIssue: boolean) {
             active.server.load(actor, {
               model: url.searchParams.get("model") as Parameters<SyncServer["load"]>[1]["model"],
               parentId: url.searchParams.get("parentId") ?? "",
+              branchId: url.searchParams.get("branchId") ?? "main",
             }),
           );
         if (url.pathname === "/sync/push" && request.method === "POST") {
           const rawBody = await body(request);
           const push = JSON.parse(rawBody) as PushRequest;
-          const seqBefore = active.server.currentSeq();
+          const seqBefore = active.server.currentSeq(push.branchId);
           const result = active.server.push(actor, push);
           const responseDropped = dropActor === selected && result.ok;
           pushes.push({
@@ -168,7 +178,7 @@ async function createHarness(seedIssue: boolean) {
             requestContentType: request.headers["content-type"] ?? "",
             result,
             seqBefore,
-            seqAfter: active.server.currentSeq(),
+            seqAfter: active.server.currentSeq(push.branchId),
             responseDropped,
           });
           if (responseDropped) {
@@ -207,6 +217,15 @@ async function createHarness(seedIssue: boolean) {
     databasePath,
     actors,
     pushes,
+    createBranch(owner = "alice") {
+      const id = uuidv7();
+      active.server.createBranch(actors[owner], {
+        id,
+        name: "Recovery proposal",
+        scope: { teamIds: [teamId], projectIds: [] },
+      });
+      return id;
+    },
     dropNextPushResponse(actor = "alice") {
       dropActor = actor;
     },
@@ -218,7 +237,9 @@ async function createHarness(seedIssue: boolean) {
       return {
         seq: active.server.currentSeq(),
         issues: active.server.store.list("issue"),
-        clients: active.driver.all("SELECT client_id, user_id, last_mutation_id FROM sync_client ORDER BY client_id"),
+        clients: active.driver.all(
+          "SELECT client_id, user_id, branch_id, last_mutation_id FROM sync_client ORDER BY client_id",
+        ),
         log: active.driver.all("SELECT * FROM sync_log ORDER BY seq"),
       };
     },

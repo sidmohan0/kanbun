@@ -4,7 +4,12 @@ import { MutationError, type MutatorContext } from "@kanbun/sync";
 
 /** Apply recorded issue facts without permissions, clocks, generated ids, or counter allocation. */
 export function applyIssueEvent(ctx: MutatorContext, event: DomainEvent): void {
-  if (event.branchId !== "main") throw new MutationError("issue event branches are not implemented", "invalid");
+  if (event.type !== "IssueCreated" && event.type !== "IssueTitled")
+    throw new MutationError("Not an issue event", "invalid");
+  if ((ctx.branchId ?? "main") !== event.branchId)
+    throw new MutationError("Issue event belongs to a different branch", "invalid");
+  if (event.type === "IssueCreated" && event.branchId !== "main" && event.payload.number !== 0)
+    throw new MutationError("Branch issues cannot allocate numbers", "invalid");
   const now = new Date(event.ts).toISOString();
   if (event.type === "IssueCreated") {
     const { labelLinks, subscriptions, ...fields } = event.payload;
