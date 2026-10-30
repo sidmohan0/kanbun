@@ -4,7 +4,7 @@ import { MutationError, type MutatorContext } from "@kanbun/sync";
 
 /** Apply recorded issue facts without permissions, clocks, generated ids, or counter allocation. */
 export function applyIssueEvent(ctx: MutatorContext, event: DomainEvent): void {
-  if (event.type !== "IssueCreated" && event.type !== "IssueTitled")
+  if (event.type !== "IssueCreated" && event.type !== "IssueTitled" && event.type !== "IssueDescribed")
     throw new MutationError("Not an issue event", "invalid");
   if ((ctx.branchId ?? "main") !== event.branchId)
     throw new MutationError("Issue event belongs to a different branch", "invalid");
@@ -44,6 +44,26 @@ export function applyIssueEvent(ctx: MutatorContext, event: DomainEvent): void {
   }
   const issue = ctx.store.get("issue", event.entityId);
   if (!issue || issue.teamId !== event.teamId) throw new MutationError("issue not found in event team", "invalid");
+  if (event.type === "IssueDescribed") {
+    if (event.branchId !== "main") throw new MutationError("Descriptions are not supported on branches", "invalid");
+    const { description, descriptionContentId, contentState } = event.payload;
+    const content = ctx.store.get("documentContent", descriptionContentId);
+    if (content && content.issueId !== issue.id) throw new MutationError("Description owner does not match", "invalid");
+    if (content)
+      ctx.store.patch("documentContent", descriptionContentId, { content: description, contentState, updatedAt: now });
+    else
+      ctx.store.insert("documentContent", {
+        id: descriptionContentId,
+        issueId: issue.id,
+        teamId: issue.teamId,
+        content: description,
+        contentState,
+        createdAt: now,
+        updatedAt: now,
+      } as Row<"documentContent">);
+    ctx.store.patch("issue", issue.id, { description, descriptionContentId, updatedAt: now, updatedSeq: event.seq });
+    return;
+  }
   ctx.store.patch("issue", event.entityId, {
     title: event.payload.title,
     updatedAt: now,

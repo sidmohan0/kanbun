@@ -20,6 +20,7 @@
     "@kanbun/mutators": "workspace:*",
     "@kanbun/sync": "workspace:*",
     "jose": "6.2.14",
+    "yjs": "^13.6.33",
     "zod": "4.6.7"
   },
   "devDependencies": {

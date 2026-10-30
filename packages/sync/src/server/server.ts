@@ -507,7 +507,56 @@ export class SyncServer {
     }
   }
 
-  /** Run a mutation as the system actor (member sync, text mirrors, scheduled jobs). */
+  /** Private adapter entry point: only a DocumentDO result can publish a text mirror.
+   * The current reader is authorized by decide; the durable document retains its original editor
+   * so recovery of a committed body does not attribute that edit to the reader who repaired it.
+   */
+  commitDocument(actor: Actor, args: unknown, editor: Actor = actor): void {
+    if (actor.type !== "user" || editor.type !== "user")
+      throw new MutationError("Only people may edit collaborative descriptions", "forbidden");
+    const def = this.opts.mutators["issueDescribe"];
+    if (!def) throw new MutationError("Document publication is unavailable");
+    const seq = this.opts.driver.transaction(() => {
+      const txnId = this.newTxnId();
+      const tag = {
+        actorId: editor.id,
+        actorType: editor.type,
+        txnId,
+        clientId: null,
+        mutationId: null,
+        causationSeq: null,
+        reason: null,
+      };
+      const ctx: MutatorContext = {
+        store: this.store.withTag(tag),
+        actor,
+        actorId: actor.id,
+        now: this.now(),
+        server: true,
+        documentAuthority: true,
+      };
+      executeMutator(def, ctx, parseArgs("issueDescribe", def, args), (pending, eventIndex, apply) => {
+        const event = appendEvent(this.opts.driver, pending, {
+          actor: editor,
+          txnId,
+          eventIndex,
+          clientId: null,
+          mutationId: null,
+          ts: Date.parse(ctx.now),
+          causationSeq: null,
+          reason: null,
+        });
+        apply(
+          { ...ctx, store: this.store.withTag({ ...tag, eventSeq: event.seq, ts: new Date(event.ts).toISOString() }) },
+          event,
+        );
+      });
+      return this.currentSeq();
+    });
+    this.emitCommit(seq, "main");
+  }
+
+  /** Run a mutation as the system actor (member sync, scheduled jobs). */
   system(name: string, args: unknown, extra: { reason?: string; causationSeq?: number } = {}): void {
     const def = this.opts.mutators[name];
     if (!def) throw new MutationError(`unknown mutator ${name}`);

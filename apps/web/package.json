@@ -17,7 +17,8 @@
     "@kanbun/sync": "workspace:*",
     "partysocket": "^1.1.4",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "@types/react": "^19.2.2",

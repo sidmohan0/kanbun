@@ -47,7 +47,7 @@ export const models = {
   attachment: def("attachment", ws.attachment, { kind: "onDemand", parentColumn: "issueId" }, "teamId"),
   draft: def("draft", ws.draft, { kind: "perUser", userColumn: "userId" }),
   template: def("template", ws.template, { kind: "full" }, "teamId"),
-  documentContent: def("documentContent", ws.documentContent, { kind: "full" }),
+  documentContent: def("documentContent", ws.documentContent, { kind: "full" }, "teamId"),
   customView: def("customView", ws.customView, { kind: "full" }, "teamId"),
   viewPreferences: def("viewPreferences", ws.viewPreferences, { kind: "full" }),
   notification: def("notification", ws.notification, { kind: "perUser", userColumn: "userId" }),

@@ -22,14 +22,14 @@ export const mutators = defineMutators({
 export type Mutators = typeof mutators;
 
 /** Mutators that only the system actor may call; never exposed as agent tools. */
-export const SYSTEM_ONLY = ["workspaceInit", "memberSync"] as const;
+export const SYSTEM_ONLY = ["workspaceInit", "memberSync", "issueDescribe"] as const;
 
 /** Agent tool definitions (JSON schema), optionally restricted to an allow-list. */
 export function tools(only?: string[]) {
   return toolDefinitions(mutators, only).filter((t) => !(SYSTEM_ONLY as readonly string[]).includes(t.name));
 }
 
-export { issueIdentifier, branchName } from "./issues";
+export { issueIdentifier, branchName, requireIssue } from "./issues";
 export { DEFAULT_STATES } from "./teams";
 export * from "./ordering";
 

@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added shareable issue details and collaborative descriptions with durable Yjs storage, offline recovery, attributed mirror events, and private-team authorization checks.
+
 - Moved the protected application deployment hostname to kanbun.ai while retaining the existing workspace and account directory.
 - Added CI-gated preview deployments, live Access and version checks, retained release receipts, and guarded rollback to the previous Worker version.
 

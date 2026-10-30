@@ -1,4 +1,10 @@
 import { z } from "zod";
+import type { Row } from "@kanbun/model";
+
+/** A recreated UUID is a different issue and must never reopen an older body or draft. */
+export function issueIncarnation(issue: Pick<Row<"issue">, "createdSeq" | "createdAt">): string {
+  return issue.createdSeq > 0 ? `seq:${issue.createdSeq}` : `legacy:${issue.createdAt}`;
+}
 
 /** Identity and workspace selected by the server, never by browser mutation arguments. */
 export const workspaceContextSchema = z.strictObject({

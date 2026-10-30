@@ -1,5 +1,5 @@
 import type { Row } from "@kanbun/model";
-import type { BootstrapResponse } from "@kanbun/sync";
+import { issueIncarnation, type BootstrapResponse } from "@kanbun/sync";
 import { createTestHarness } from "wrangler";
 import { fileURLToPath } from "node:url";
 
@@ -70,6 +70,34 @@ export async function startWorkspaceRuntime({ localDev = true }: { localDev?: bo
       },
       async restart() {
         await harness.getWorker().evictDurableObject("WORKSPACES", { name: "local", webSockets: "close" });
+      },
+      async restartDocument(issueId: string) {
+        const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: "local" });
+        const issue = (await storage.exec("SELECT created_seq, created_at FROM issue WHERE id = ?", issueId))[0]!;
+        const incarnation = issueIncarnation({
+          createdSeq: Number(issue["created_seq"]),
+          createdAt: String(issue["created_at"]),
+        });
+        await harness
+          .getWorker()
+          .evictDurableObject("DOCUMENTS", { name: JSON.stringify(["local", issueId, incarnation]) });
+      },
+      async setTeamPrivate(teamId: string) {
+        const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: "local" });
+        await storage.exec("UPDATE team SET visibility = 'private' WHERE id = ?", teamId);
+        await storage.exec(
+          "UPDATE team_membership SET archived_at = ? WHERE team_id = ? AND user_id = 'user-bob'",
+          new Date().toISOString(),
+          teamId,
+        );
+      },
+      async failDocumentPublication(enabled: boolean) {
+        const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: "local" });
+        await storage.exec(
+          enabled
+            ? "CREATE TRIGGER test_fail_document BEFORE UPDATE OF description ON issue BEGIN SELECT RAISE(ABORT, 'fixture mirror failure'); END"
+            : "DROP TRIGGER test_fail_document",
+        );
       },
       async hibernate() {
         await harness.getWorker().evictDurableObject("WORKSPACES", { name: "local", webSockets: "hibernate" });
