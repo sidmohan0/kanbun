@@ -17,7 +17,7 @@ Contributions must not include third-party assets (icon sets, illustrations, CSS
 ```
 apps/
   web/        React issue list, creation, and title editing over the local sync client
-  worker/     Local HTTP sync and branch APIs backed by a SQLite WorkspaceDO
+  worker/     Local HTTP sync, WebSocket notifications, and branch APIs over a SQLite WorkspaceDO
 packages/
   events/     Typed semantic issue events and their validated envelopes
   model/      Drizzle schema: one definition of every entity, for D1 and for DO SQLite
@@ -45,9 +45,9 @@ Current workspace packages:
 The local Worker runs the existing engine in a SQLite-backed `WorkspaceDO`, with HTTP sync and
 branch APIs. Runtime tests and browser recovery checks use actual `workerd`; fast engine tests and
 the seed still use `node:sqlite`. The web app lists, creates, and renames issues with IndexedDB-backed
-offline recovery and visible sync/rejection state. See the [local issue flow](docs/ux/issues.md).
-Production authentication,
-deployment, WebSocket pokes, and DocumentDO/Yjs remain planned. See [local Worker development](docs/local-worker.md).
+offline recovery, automatic cross-browser updates, and visible sync/rejection state. See the
+[local issue flow](docs/ux/issues.md). Production authentication, deployment, and DocumentDO/Yjs
+remain planned. See [local Worker development](docs/local-worker.md).
 
 Issue creation and title-only updates now record `IssueCreated` and `IssueTitled` events and apply
 shared reducers. Their recorded history can reproduce the same projections in memory and SQLite.
@@ -63,8 +63,8 @@ retry receipts. The branch review UI and Cloudflare deployment remain planned.
 
 1. The client runs a command against its in-memory object pool and re-renders. For migrated commands, a read-only decision produces events that a shared reducer applies optimistically. The command is appended to a persisted queue.
 2. The queue is pushed to `/sync/push`; the Worker forwards it to the workspace's Durable Object.
-3. The authority runs the same command inside a SQLite transaction (one savepoint per mutation, so a rejected one leaves nothing behind). Migrated commands record finalized semantic events and apply their reducers, including server-owned issue numbers. Derived patches enter `sync_log` with provenance; WebSocket notifications after commit remain planned.
-4. Clients pull `/sync/pull?since=<seq>`, apply the log, drop confirmed mutations from their queue and re-apply any still pending.
+3. The authority runs the same command inside a SQLite transaction (one savepoint per mutation, so a rejected one leaves nothing behind). Migrated commands record finalized semantic events and apply their reducers, including server-owned issue numbers. Derived patches enter `sync_log` with provenance; main-branch commits send cursor-only WebSocket notifications.
+4. Clients pull `/sync/pull?since=<seq>` after notifications and socket reconnects, apply the log, drop confirmed mutations from their queue and re-apply any still pending. Socket messages never carry rows or replace HTTP synchronization.
 
 Everything else (notifications, email, webhooks) hangs off the change events the DO emits to Queues.
 

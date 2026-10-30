@@ -7,6 +7,9 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     strictPort: true,
-    proxy: { "/sync": "http://127.0.0.1:8787", "/__local": "http://127.0.0.1:8787" },
+    proxy: {
+      "/sync": { target: "http://127.0.0.1:8787", ws: true },
+      "/__local": "http://127.0.0.1:8787",
+    },
   },
 });

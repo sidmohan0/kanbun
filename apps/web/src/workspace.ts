@@ -1,6 +1,7 @@
 import { uuidv7, type Row } from "@kanbun/model";
 import { mutators } from "@kanbun/mutators";
-import type { Mutation, Transport } from "@kanbun/sync";
+import { isPoke, type Mutation, type Transport } from "@kanbun/sync";
+import ReconnectingWebSocket from "partysocket/ws";
 import {
   IndexedDbPersister,
   PENDING,
@@ -37,6 +38,10 @@ let cachedStateAvailable = false;
 let storageReadFailed = false;
 let startTask: Promise<void> | null = null;
 let refreshTask: Promise<void> | null = null;
+let socket: ReconnectingWebSocket | null = null;
+let realtimeTask: Promise<void> | null = null;
+let realtimeRequested = false;
+let latestPokeSeq = 0;
 let persistenceWrites = 0;
 let rejections: WorkspaceRejection[] = [];
 let snapshot: WorkspaceSnapshot = {
@@ -192,7 +197,50 @@ async function initialize() {
     initialized = cachedStateAvailable;
     phase = initialized ? "ready" : "failed";
   }
+  connectRealtime();
   publish();
+}
+
+function requestRealtimeRefresh() {
+  realtimeRequested = true;
+  if (realtimeTask) return;
+  const run = async () => {
+    // An already-running pull may have read before this hint or socket open.
+    // Queue a fresh pass after it, and retain hints received during that pass.
+    if (refreshTask) await refreshTask;
+    while (realtimeRequested) {
+      realtimeRequested = false;
+      await refresh();
+    }
+  };
+  realtimeTask = run().finally(() => {
+    realtimeTask = null;
+    if (realtimeRequested) requestRealtimeRefresh();
+  });
+}
+
+function connectRealtime() {
+  if (socket || !leaseHeld || !initialized || !client || storageReadFailed) return;
+  const url = new URL("/sync/connect", location.origin);
+  url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  url.searchParams.set("clientId", client.clientId);
+  url.searchParams.set("branchId", "main");
+  // PartySocket supplies its existing bounded reconnect delay. Socket availability
+  // does not change whether an HTTP mutation has been saved.
+  socket = new ReconnectingWebSocket(url.toString());
+  socket.addEventListener("open", requestRealtimeRefresh);
+  socket.addEventListener("message", (event) => {
+    if (typeof event.data !== "string") return;
+    let value: unknown;
+    try {
+      value = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    if (!isPoke(value) || value.seq <= client!.getSeq() || value.seq <= latestPokeSeq) return;
+    latestPokeSeq = value.seq;
+    requestRealtimeRefresh();
+  });
 }
 
 /** A page owns its client for its whole lifetime, including React StrictMode remounts. */
@@ -264,6 +312,7 @@ function refresh(): Promise<void> {
       initialized ||= cachedStateAvailable;
       phase = initialized ? "ready" : "failed";
     } finally {
+      connectRealtime();
       publish();
     }
   };

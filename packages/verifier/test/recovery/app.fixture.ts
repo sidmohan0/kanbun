@@ -35,8 +35,13 @@ export const test = base.extend<{ app: AppHarness }>({
           strictPort: false,
           host: "127.0.0.1",
           hmr: false,
-          ws: false,
-          proxy: { "/sync": runtime.origin, "/__local": runtime.origin },
+          proxy: {
+            "/sync": {
+              target: runtime.origin,
+              ws: true,
+            },
+            "/__local": runtime.origin,
+          },
         },
       });
       await vite.listen();

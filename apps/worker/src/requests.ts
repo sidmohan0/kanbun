@@ -13,6 +13,7 @@ const selectedBranch = { branchId: branchId.default("main") };
 const scope = z.strictObject({ teamIds: z.array(nonempty).default([]), projectIds: z.array(nonempty).default([]) });
 
 export const bootstrapQuery = z.strictObject({ clientId: nonempty, ...selectedBranch });
+export const connectQuery = z.strictObject({ clientId: nonempty, branchId: z.literal("main").default("main") });
 export const pullQuery = z.strictObject({ clientId: nonempty, since: querySequence, ...selectedBranch });
 export const loadQuery = z.strictObject({ model: z.enum(modelNames), parentId: nonempty, ...selectedBranch });
 export const branchQuery = z.strictObject({ branchId: z.uuidv7() });
@@ -79,7 +80,7 @@ export class RequestError extends Error {
 }
 
 export function query<S extends z.ZodType>(schema: S, url: URL): z.output<S> {
-  const values: Record<string, string> = {};
+  const values: Record<string, string> = Object.create(null);
   for (const [key, value] of url.searchParams) {
     if (Object.hasOwn(values, key)) throw new RequestError(`Duplicate query parameter: ${key}`);
     values[key] = value;

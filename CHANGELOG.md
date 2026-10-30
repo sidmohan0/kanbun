@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added local main-workspace WebSocket notifications, automatic cross-browser convergence, and reconnect catch-up, with cursor-only hints, hibernation-safe connections, and real-runtime browser recovery checks.
+
 - Added the local issue list, creation form, inline title editing, and visible sync states, with durable browser recovery and actual-app end-to-end checks.
 
 - Added a local Cloudflare Worker and SQLite workspace Durable Object, with validated sync and branch APIs, explicit fixture identities, and real-runtime recovery checks in the devcontainer and CI.
