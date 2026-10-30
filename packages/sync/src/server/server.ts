@@ -109,6 +109,39 @@ export class SyncServer {
     return Number(r?.["seq"] ?? 0);
   }
 
+  /** The storage adapter calls this only after the immutable backup manifest is durable. */
+  recordSnapshot(workspaceId: string, snapshot: { snapshotId: string; sourceSeq: number; contentHash: string }): void {
+    if (this.store.list("organization")[0]?.id !== workspaceId)
+      throw new MutationError("Snapshot workspace does not match", "forbidden");
+    const current = Number(
+      this.opts.driver.all("SELECT COALESCE(MAX(seq),0) AS seq FROM event_log WHERE branch_id='main'")[0]?.["seq"] ?? 0,
+    );
+    if (snapshot.sourceSeq > current) throw new MutationError("Snapshot sequence is unavailable", "invalid");
+    this.opts.driver.transaction(() =>
+      appendEvent(
+        this.opts.driver,
+        {
+          type: "SnapshotTaken",
+          entityType: "organization",
+          entityId: workspaceId,
+          teamId: null,
+          scopeUserId: null,
+          payload: snapshot,
+        },
+        {
+          actor: SYSTEM_ACTOR,
+          txnId: this.newTxnId(),
+          eventIndex: 0,
+          clientId: null,
+          mutationId: null,
+          ts: Date.parse(this.now()),
+          causationSeq: null,
+          reason: null,
+        },
+      ),
+    );
+  }
+
   createBranch(actor: Actor, input: CreateBranchOptions): WorkspaceBranch {
     return this.branches.create(actor, input);
   }

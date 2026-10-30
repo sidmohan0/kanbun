@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import migrations from "@kanbun/model/migrations/workspace/migrations.js";
+import { uuidv7 } from "@kanbun/model";
 import { mutators, requireIssue } from "@kanbun/mutators";
 import { issueIncarnation, MutationError, type Actor, type Poke, type WorkspaceContext } from "@kanbun/sync";
 import { durableObjectDriver, SyncServer, type SqlDriver } from "@kanbun/sync/server";
@@ -29,6 +30,14 @@ import {
 import { localActors, seedWorkspace } from "./local";
 import { preparePreview, projectMembershipRemoval } from "./preview";
 import { DocumentDO, documentName } from "./document";
+import {
+  applyRestore,
+  BACKUP_EVENT_INTERVAL,
+  BACKUP_INTERVAL,
+  BACKUP_JOB,
+  createBackup,
+  prepareRestore,
+} from "./backups";
 export { DocumentDO } from "./document";
 import { internalFailure } from "./reporting";
 import {
@@ -54,6 +63,10 @@ export interface Env extends AuthEnvironment, DirectoryEnvironment {
   WORKSPACES: DurableObjectNamespace<WorkspaceDO>;
   DOCUMENTS: DurableObjectNamespace<DocumentDO>;
   ASSETS?: Fetcher;
+  BACKUPS?: R2Bucket;
+  BACKUP_RESTORE_ISOLATED?: string;
+  BACKUP_RESTORE_SOURCE_COMMIT?: string;
+  CF_VERSION_METADATA?: { id: string; tag: string; timestamp: string };
 }
 
 const routes = new Map<string, string>(
@@ -160,6 +173,8 @@ export class WorkspaceDO extends DurableObject<Env> {
   private broadcastQueued = false;
   private lastBroadcastSeq = 0;
   private documentOperation: Promise<unknown> = Promise.resolve();
+  private backupTask: Promise<{ key: string; manifestHash: string; mainSeq: number; eventSeq: number }> | null = null;
+  private alarmRunning = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -172,9 +187,158 @@ export class WorkspaceDO extends DurableObject<Env> {
       const server = new SyncServer({ driver: this.driver, mutators, migrations });
       this.server = server;
       this.lastBroadcastSeq = server.currentSeq();
-      server.onCommit(() => this.queueBroadcast());
+      server.onCommit(() => {
+        this.queueBroadcast();
+        queueMicrotask(() =>
+          this.ctx.waitUntil(this.scheduleBackup().catch(() => console.error("workspace_backup_schedule_failed"))),
+        );
+      });
       for (const socket of ctx.getWebSockets()) await this.authorizedSocket(socket, server);
+      this.ctx.waitUntil(
+        this.scheduleBackup()
+          .then(async () => {
+            if (this.automaticBackups()) await this.armNextJob(true);
+          })
+          .catch(() => console.error("workspace_backup_schedule_failed")),
+      );
     });
+  }
+
+  private automaticBackups() {
+    return (
+      mode(this.env) === "hosted" &&
+      this.env.BACKUPS &&
+      this.env.ACCOUNTS &&
+      this.env.BACKUP_RESTORE_ISOLATED !== "true"
+    );
+  }
+
+  private backupJob() {
+    return this.driver.all("SELECT * FROM scheduled_job WHERE dedup_key = ?", [BACKUP_JOB])[0];
+  }
+
+  private async armNextJob(skipActiveAttempt = false) {
+    const row = this.driver.all("SELECT MIN(fire_at) AS fire_at FROM scheduled_job")[0];
+    if (typeof row?.["fire_at"] !== "string") return;
+    const fireAt = Date.parse(row["fire_at"]);
+    if (!Number.isFinite(fireAt)) throw new Error("Scheduled job time is invalid");
+    const current = await this.ctx.storage.getAlarm();
+    if (skipActiveAttempt && (this.backupTask || this.alarmRunning)) return;
+    if (current === null || fireAt < current) await this.ctx.storage.setAlarm(fireAt);
+  }
+
+  private async scheduleBackup() {
+    if (
+      !this.automaticBackups() ||
+      !this.server?.store.list("organization").length ||
+      this.backupTask ||
+      this.alarmRunning
+    )
+      return;
+    const job = this.backupJob();
+    if (!job) {
+      const now = new Date().toISOString();
+      this.driver.run(
+        "INSERT INTO scheduled_job (id, fire_at, kind, payload, dedup_key, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        [uuidv7(), now, BACKUP_JOB, JSON.stringify({ lastEventSeq: 0 }), BACKUP_JOB, now],
+      );
+      await this.armNextJob(true);
+      return;
+    }
+    const state = z.object({ lastEventSeq: z.number().int().nonnegative() }).parse(JSON.parse(String(job["payload"])));
+    const seq = Number(
+      this.driver.all("SELECT COALESCE(MAX(seq),0) AS seq FROM event_log WHERE branch_id = 'main'")[0]?.["seq"] ?? 0,
+    );
+    if (seq - state.lastEventSeq >= BACKUP_EVENT_INTERVAL && Date.parse(String(job["fire_at"])) > Date.now()) {
+      this.driver.run("UPDATE scheduled_job SET fire_at = ? WHERE id = ?", [
+        new Date().toISOString(),
+        String(job["id"]),
+      ]);
+      await this.armNextJob(true);
+      return;
+    }
+    // Recover a dropped or exhausted alarm on a later commit without competing with an active attempt.
+    await this.armNextJob(true);
+  }
+
+  /** Private binding RPC; there is deliberately no HTTP backup or restore route. */
+  async backup(workspaceId: string) {
+    await this.ready;
+    this.requireWorkspace(workspaceId);
+    if (this.backupTask) return this.backupTask;
+    const task = createBackup(this.driver, this.env, workspaceId).then(async (receipt) => {
+      this.server!.recordSnapshot(workspaceId, {
+        snapshotId: receipt.key,
+        sourceSeq: receipt.eventSeq,
+        contentHash: receipt.manifestHash,
+      });
+      const next = new Date(Date.now() + BACKUP_INTERVAL).toISOString();
+      this.driver.run("UPDATE scheduled_job SET fire_at = ?, payload = ? WHERE dedup_key = ?", [
+        next,
+        JSON.stringify({ lastEventSeq: receipt.eventSeq, manifestKey: receipt.key }),
+        BACKUP_JOB,
+      ]);
+      if (this.automaticBackups()) {
+        await this.ctx.storage.setAlarm(Date.parse(next));
+        await this.armNextJob();
+      }
+      return receipt;
+    });
+    this.backupTask = task;
+    try {
+      return await task;
+    } finally {
+      if (this.backupTask === task) this.backupTask = null;
+    }
+  }
+
+  override async alarm() {
+    await this.ready;
+    if (!this.automaticBackups()) return;
+    this.alarmRunning = true;
+    try {
+      const due = this.driver.all("SELECT * FROM scheduled_job WHERE fire_at <= ? ORDER BY fire_at", [
+        new Date().toISOString(),
+      ]);
+      for (const job of due) {
+        if (job["kind"] !== BACKUP_JOB) throw new Error("Unsupported scheduled job kind");
+        try {
+          await this.backup(configuration(this.env).workspaceId);
+        } catch {
+          console.error("workspace_backup_failed");
+          throw new Error("Workspace backup failed");
+        }
+      }
+      await this.armNextJob();
+    } finally {
+      this.alarmRunning = false;
+    }
+  }
+
+  /** Private readiness check also prevents edge directory admission before restore completion. */
+  async restoreComplete(workspaceId: string): Promise<boolean> {
+    await this.ready;
+    this.requireWorkspace(workspaceId);
+    return (await this.ctx.storage.get("restore-progress")) === "complete";
+  }
+
+  /** Restores only a fresh, explicitly isolated namespace; normal JWT verification stays enabled. */
+  async restoreBackup(workspaceId: string, key: string) {
+    await this.ready;
+    this.requireWorkspace(workspaceId);
+    if (this.env.BACKUP_RESTORE_ISOLATED !== "true") throw new Error("Isolated restore is not enabled");
+    if ((await this.ctx.storage.get("restore-progress")) !== undefined)
+      throw new Error("Restore target has already been used");
+    const bundle = await prepareRestore(this.driver, this.env, workspaceId, key);
+    await this.ctx.storage.transaction(async (transaction) => {
+      if ((await transaction.get("restore-progress")) !== undefined)
+        throw new Error("Restore target has already been used");
+      await transaction.put("restore-progress", "started");
+    });
+    await applyRestore(this.driver, this.env, workspaceId, bundle);
+    await this.ctx.storage.put("restore-progress", "complete");
+    this.lastBroadcastSeq = this.server?.currentSeq() ?? 0;
+    return { key, mainSeq: bundle.manifest.mainSeq, eventSeq: bundle.manifest.eventSeq };
   }
 
   private requireActiveMember(server: SyncServer, actor: Actor) {
@@ -377,6 +541,8 @@ export class WorkspaceDO extends DurableObject<Env> {
   override async fetch(request: Request): Promise<Response> {
     if (mode(this.env) === "disabled") return disabled();
     await this.ready;
+    if (this.env.BACKUP_RESTORE_ISOLATED === "true" && (await this.ctx.storage.get("restore-progress")) !== "complete")
+      return json({ error: "Isolated restore is not complete" }, 503);
     try {
       const server = this.server;
       if (!server) throw new Error("Workspace initialization did not complete");
@@ -523,6 +689,11 @@ export default {
       const url = new URL(request.url);
       if (runtimeMode === "disabled") return disabled();
       if (runtimeMode === "local") {
+        if (
+          env.BACKUP_RESTORE_ISOLATED === "true" &&
+          !(await env.WORKSPACES.getByName("local").restoreComplete("local"))
+        )
+          return json({ error: "Isolated restore is not complete" }, 503);
         if (url.pathname === "/api/context") {
           if (request.method !== "GET") return json({ error: "Method not allowed" }, 405, { allow: "GET" });
           query(z.strictObject({}), url);
@@ -533,6 +704,11 @@ export default {
       }
       if (localRoute(url.pathname)) return json({ error: "Not found" }, 404);
       const identity = await verifyAccess(request, env);
+      if (env.BACKUP_RESTORE_ISOLATED === "true") {
+        const workspaceId = configuration(env).workspaceId;
+        if (!(await env.WORKSPACES.getByName(workspaceId).restoreComplete(workspaceId)))
+          return json({ error: "Isolated restore is not complete" }, 503);
+      }
       if (request.method === "POST" || url.pathname === "/sync/connect") requireHostedOrigin(request, env);
       if (url.pathname === "/api/invitations/inspect" || url.pathname === "/api/invitations/accept") {
         if (request.method !== "POST") return json({ error: "Method not allowed" }, 405, { allow: "POST" });

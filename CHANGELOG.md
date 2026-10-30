@@ -7,6 +7,7 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added private scheduled workspace backups with full directory, SQL engine state, collaborative bodies, verified manifests, and restoration into fresh isolated namespaces.
 - Added owner-managed targeted invitations, member removal and explicit re-invitation, with individual identities, admission-scoped browser storage, and HTTP/document/WebSocket authorization checks.
 
 - Added issue status, priority, assignee, labels, and reversible archive controls, with semantic history for human status assertions and supported property changes.

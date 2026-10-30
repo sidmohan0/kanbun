@@ -121,6 +121,11 @@ test artifacts. Never add a public test-authentication bypass to perform smoke t
 
 ## Recovery
 
+Application data uses [private workspace backups and isolated restoration](data-recovery.md).
+The recovery bundle includes the account directory, workspace engine state, and collaborative
+description bodies. Its restore path requires a fresh isolated target and preserves normal JWT
+authentication.
+
 Record the deployed Worker version from Wrangler's output. For a later regression, use Wrangler's
 rollback command to restore a known working Worker version from the same devcontainer. Leave D1
 and workspace storage intact; reverting code must not delete user data or reverse an applied
