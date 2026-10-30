@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added a pinned Linux devcontainer with automatic pnpm and Chromium setup, package-management guidance, and CI verification inside the container.
+
 - Introduced the workspace model, local-first sync engine, shared mutators, deterministic seed, and branded React web shell.
 - Added the locked and archived v1.0 specification.
 - Added reproducible Node/pnpm setup, linting, formatting, and CI checks for tests, builds, the seed, spec locking, and changelog policy.

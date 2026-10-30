@@ -6,6 +6,17 @@ Run `pnpm verify` before opening a PR. The same verifier runs in PR CI and retai
 and a machine-readable receipt. See [verification and drift reporting](docs/verification.md) for
 individual commands and non-gating mechanical documentation reports.
 
+## Development environment
+
+The [devcontainer instructions](README.md#development) provide the same pinned Node/pnpm toolchain
+and browser dependencies for local Dev Containers and Codespaces. Native development remains
+supported. Keep package dependencies in their owning workspace manifest and update the root
+`pnpm-lock.yaml`; do not add package-specific lockfiles or use a second package manager.
+
+For container changes, the separate `devcontainer` workflow builds the image, executes its actual
+post-create setup, and runs `pnpm verify` inside it. It runs when the container configuration,
+workflow, toolchain pins, or dependency manifests and lockfile change, and supports manual dispatch.
+
 ## Changelog policy
 
 Every PR that changes user-facing behavior must add a concise, nonblank `- ` bullet under the exact

@@ -1,0 +1,9 @@
+# Only toolchain manifests are needed to build the image.
+**
+!.nvmrc
+!package.json
+!packages/
+!packages/verifier/
+!packages/verifier/package.json
+!.devcontainer/
+!.devcontainer/Dockerfile

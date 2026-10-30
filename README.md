@@ -51,7 +51,21 @@ Everything else (notifications, email, webhooks) hangs off the change events the
 
 ## Development
 
-Use the Node version pinned in `.nvmrc` and pnpm `10.28.0`, as declared in `package.json`.
+For a consistent Linux environment, open this checkout with VS Code's **Dev Containers: Reopen in
+Container** command, or create a GitHub Codespace. The [devcontainer](.devcontainer/devcontainer.json)
+uses the pinned Node image, installs the pnpm version from `package.json`, and runs a frozen workspace
+install, Chromium setup, and `pnpm verify doctor` automatically. Docker must be running for local
+Dev Containers. Once setup finishes, run `pnpm verify` and `pnpm dev` in the container terminal;
+port 5173 is forwarded. Use a separate checkout for native and container work so their installed
+dependencies stay separate. Rebuild the container after changing the Node pin or browser dependency.
+The devcontainer is a development environment; Cloudflare deployment is still planned.
+
+pnpm remains the package manager for both environments: use one root lockfile and declare internal
+dependencies with `workspace:*`. Run installs from the repository root, use
+`pnpm --filter <package-name> add <dependency>` to update an individual package, and commit the
+manifest and lockfile together.
+
+For native development, use the Node version pinned in `.nvmrc` and pnpm `10.28.0`, as declared in `package.json`.
 With nvm installed, `nvm install` and `nvm use` select the same Node version as CI.
 
 ```
