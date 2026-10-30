@@ -1,8 +1,6 @@
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { createTestHarness, type Unstable_RawConfig } from "wrangler";
+import { createRuntimeHarness, localWorkerConfig } from "./harness";
 import type { D1Database } from "@cloudflare/workers-types";
 import type { BootstrapResponse, WorkspaceContext } from "@kanbun/sync";
 
@@ -29,11 +27,10 @@ export async function startPreviewRuntime({
   workspaceId = "019a0000-0000-7000-8000-000000009000",
   localDev = false,
 }: { ownerEmail?: string; subject?: string; name?: string; workspaceId?: string; localDev?: boolean } = {}) {
-  const root = fileURLToPath(new URL("..", import.meta.url));
   const instance = randomUUID().slice(0, 8);
   const certWorker = `preview-test-certs-${instance}`;
   const assetWorker = `preview-test-assets-${instance}`;
-  const local = JSON.parse(await readFile(new URL("../wrangler.json", import.meta.url), "utf8")) as Unstable_RawConfig;
+  const local = await localWorkerConfig();
   const issuer = "https://test-access.cloudflareaccess.com";
   const audience = "protected-preview-test-audience";
   const appOrigin = "https://preview.example.test";
@@ -52,50 +49,43 @@ export async function startPreviewRuntime({
     })
       .setProtectedHeader({ alg: "RS256", kid: "preview-test-key" })
       .sign(pair.privateKey);
-  const harness = createTestHarness({
-    root,
-    workers: [
-      {
-        config: {
-          ...local,
-          name: `kanbun-preview-test-${instance}`,
-          vars: {
-            LOCAL_DEV: localDev ? "true" : "false",
-            AUTH_MODE: "preview",
-            ACCESS_ISSUER: issuer,
-            ACCESS_AUDIENCE: audience,
-            PREVIEW_OWNER_EMAIL: ownerEmail,
-            PREVIEW_WORKSPACE_ID: workspaceId,
-            PREVIEW_WORKSPACE_NAME: "Private preview",
-            APP_ORIGIN: appOrigin,
-          },
-          d1_databases: [
-            {
-              binding: "ACCOUNTS",
-              database_name: "preview-test-accounts",
-              database_id: "00000000-0000-4000-8000-000000000000",
-              migrations_dir: "../../packages/model/migrations/accounts",
-            },
-          ],
-          services: [
-            { binding: "ACCESS_JWKS", service: certWorker },
-            { binding: "ASSETS", service: assetWorker },
-          ],
-        },
+  const harness = await createRuntimeHarness([
+    {
+      ...local,
+      name: `kanbun-preview-test-${instance}`,
+      vars: {
+        LOCAL_DEV: localDev ? "true" : "false",
+        AUTH_MODE: "preview",
+        ACCESS_ISSUER: issuer,
+        ACCESS_AUDIENCE: audience,
+        PREVIEW_OWNER_EMAIL: ownerEmail,
+        PREVIEW_WORKSPACE_ID: workspaceId,
+        PREVIEW_WORKSPACE_NAME: "Private preview",
+        APP_ORIGIN: appOrigin,
       },
-      {
-        config: {
-          name: certWorker,
-          main: "test/certs-worker.ts",
-          compatibility_date: "2026-10-29",
-          vars: {
-            JWKS: JSON.stringify({ keys: [{ ...publicKey, kid: "preview-test-key", alg: "RS256", use: "sig" }] }),
-          },
+      d1_databases: [
+        {
+          binding: "ACCOUNTS",
+          database_name: "preview-test-accounts",
+          database_id: "00000000-0000-4000-8000-000000000000",
+          migrations_dir: "../../packages/model/migrations/accounts",
         },
+      ],
+      services: [
+        { binding: "ACCESS_JWKS", service: certWorker },
+        { binding: "ASSETS", service: assetWorker },
+      ],
+    },
+    {
+      name: certWorker,
+      main: "test/certs-worker.ts",
+      compatibility_date: "2026-10-29",
+      vars: {
+        JWKS: JSON.stringify({ keys: [{ ...publicKey, kid: "preview-test-key", alg: "RS256", use: "sig" }] }),
       },
-      { config: { name: assetWorker, main: "test/assets-worker.ts", compatibility_date: "2026-10-29" } },
-    ],
-  });
+    },
+    { name: assetWorker, main: "test/assets-worker.ts", compatibility_date: "2026-10-29" },
+  ]);
   try {
     const { url } = await harness.listen();
     await harness.getWorker().applyD1Migrations("ACCOUNTS");
