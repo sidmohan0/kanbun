@@ -1,0 +1,12 @@
+# Locked specification and immutable archives
+SPEC.md
+docs/spec/
+
+# Generated migrations and dependency resolution
+packages/model/migrations/
+pnpm-lock.yaml
+
+# Brand masters and exported assets
+/brand/
+apps/web/public/
+apps/web/src/brand/*.svg

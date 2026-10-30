@@ -1,0 +1,27 @@
+{
+  "name": "@kanbun/seed",
+  "version": "0.0.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "build": "echo 'source package'",
+    "seed": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@kanbun/model": "workspace:*",
+    "@kanbun/mutators": "workspace:*",
+    "@kanbun/sync": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.6"
+  }
+}

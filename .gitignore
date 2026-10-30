@@ -1,0 +1,20 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.env
+.env.*
+!.env.example
+*.local
+.DS_Store
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# Local scratch (transfer archives, superseded drafts); never part of the ledger
+_to_delete/
+
+# Local and CI verification evidence
+artifacts/verification/
+artifacts/docs-drift/
+artifacts/recovery/

@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1793327066823,
+      "tag": "0000_marvelous_dark_beast",
+      "breakpoints": true
+    }
+  ]
+}

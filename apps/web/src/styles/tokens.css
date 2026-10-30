@@ -1,0 +1,180 @@
+/*
+ * kanbun design tokens. Source of truth: brand/KIT.txt (logo kit v1).
+ * Palette: Bone & Cinnabar. Type: Shippori Mincho (wordmark, headlines), Inter (UI).
+ *
+ * Semantic tokens only in components; raw palette stays in this file.
+ */
+:root {
+  /* palette */
+  --bone: #f8f6f1;
+  --paper: #efebe2;
+  --ink: #1c1b1a;
+  --stone: #68645d;
+  --cinnabar: #c2321f;
+  --cinnabar-bright: #f0573e;
+
+  /* derived neutrals (mixes of the palette, not new colours) */
+  --bone-2: color-mix(in oklab, var(--bone) 92%, var(--ink));
+  --paper-2: color-mix(in oklab, var(--paper) 94%, var(--ink));
+  --line: color-mix(in oklab, var(--paper) 80%, var(--ink));
+  --line-strong: color-mix(in oklab, var(--paper) 62%, var(--ink));
+  --ink-2: color-mix(in oklab, var(--ink) 88%, var(--bone));
+
+  /* semantic: light (default) */
+  --bg: var(--paper);
+  --surface: var(--bone);
+  --surface-raised: var(--bone);
+  --surface-sunken: var(--paper-2);
+  --text: var(--ink);
+  --text-secondary: var(--stone);
+  --text-tertiary: color-mix(in oklab, var(--stone) 70%, var(--paper));
+  --border: var(--line);
+  --border-strong: var(--line-strong);
+  --accent: var(--cinnabar);
+  --accent-text: var(--bone);
+  --link: var(--cinnabar);
+  --focus: color-mix(in oklab, var(--cinnabar) 55%, transparent);
+  --selection: color-mix(in oklab, var(--cinnabar) 18%, var(--bone));
+  --hover: color-mix(in oklab, var(--ink) 5%, transparent);
+  --active: color-mix(in oklab, var(--ink) 9%, transparent);
+
+  /* workflow status and health */
+  --status-triage: var(--stone);
+  --status-backlog: color-mix(in oklab, var(--stone) 60%, var(--paper));
+  --status-unstarted: var(--line-strong);
+  --status-started: #c9a227;
+  --status-completed: #4c8a5f;
+  --status-canceled: var(--stone);
+  --priority-urgent: var(--cinnabar);
+  --health-on-track: #4c8a5f;
+  --health-at-risk: #c9a227;
+  --health-off-track: var(--cinnabar);
+
+  /* type */
+  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Shippori Mincho", "Noto Serif JP", Georgia, serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-xs: 11px;
+  --text-sm: 12.5px;
+  --text-md: 13.5px;
+  --text-lg: 15px;
+  --text-xl: 18px;
+  --text-display: 28px;
+  --leading: 1.45;
+  --tracking-display: -0.01em;
+
+  /* spacing: 4px grid, dense by default */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --row-h: 36px;
+  --sidebar-w: 240px;
+
+  /* shape */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-card: 12px; /* the lit card in the mark */
+  --shadow-popover: 0 8px 24px color-mix(in oklab, var(--ink) 14%, transparent), 0 0 0 1px var(--border);
+  --shadow-modal: 0 24px 64px color-mix(in oklab, var(--ink) 22%, transparent), 0 0 0 1px var(--border);
+
+  /* motion */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 80ms;
+  --dur: 140ms;
+
+  color-scheme: light;
+}
+
+/* Dark: Ink surfaces, Bone text, Cinnabar Bright as the only accent (kit rule: no standard Cinnabar on Ink). */
+:root[data-theme="dark"],
+:root:not([data-theme="light"]) .dark-auto {
+  --bg: var(--ink);
+  --surface: var(--ink-2);
+  --surface-raised: color-mix(in oklab, var(--ink) 82%, var(--bone));
+  --surface-sunken: color-mix(in oklab, var(--ink) 96%, black);
+  --text: var(--bone);
+  --text-secondary: color-mix(in oklab, var(--bone) 62%, var(--ink));
+  --text-tertiary: color-mix(in oklab, var(--bone) 42%, var(--ink));
+  --border: color-mix(in oklab, var(--bone) 12%, var(--ink));
+  --border-strong: color-mix(in oklab, var(--bone) 22%, var(--ink));
+  --accent: var(--cinnabar-bright);
+  --accent-text: var(--ink);
+  --link: var(--cinnabar-bright);
+  --focus: color-mix(in oklab, var(--cinnabar-bright) 55%, transparent);
+  --selection: color-mix(in oklab, var(--cinnabar-bright) 22%, var(--ink));
+  --hover: color-mix(in oklab, var(--bone) 6%, transparent);
+  --active: color-mix(in oklab, var(--bone) 10%, transparent);
+  --priority-urgent: var(--cinnabar-bright);
+  --health-off-track: var(--cinnabar-bright);
+  --shadow-popover: 0 8px 24px rgb(0 0 0 / 0.5), 0 0 0 1px var(--border);
+  --shadow-modal: 0 24px 64px rgb(0 0 0 / 0.6), 0 0 0 1px var(--border);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: var(--ink);
+    --surface: var(--ink-2);
+    --surface-raised: color-mix(in oklab, var(--ink) 82%, var(--bone));
+    --surface-sunken: color-mix(in oklab, var(--ink) 96%, black);
+    --text: var(--bone);
+    --text-secondary: color-mix(in oklab, var(--bone) 62%, var(--ink));
+    --text-tertiary: color-mix(in oklab, var(--bone) 42%, var(--ink));
+    --border: color-mix(in oklab, var(--bone) 12%, var(--ink));
+    --border-strong: color-mix(in oklab, var(--bone) 22%, var(--ink));
+    --accent: var(--cinnabar-bright);
+    --accent-text: var(--ink);
+    --link: var(--cinnabar-bright);
+    --focus: color-mix(in oklab, var(--cinnabar-bright) 55%, transparent);
+    --selection: color-mix(in oklab, var(--cinnabar-bright) 22%, var(--ink));
+    --hover: color-mix(in oklab, var(--bone) 6%, transparent);
+    --active: color-mix(in oklab, var(--bone) 10%, transparent);
+    --priority-urgent: var(--cinnabar-bright);
+    --health-off-track: var(--cinnabar-bright);
+    --shadow-popover: 0 8px 24px rgb(0 0 0 / 0.5), 0 0 0 1px var(--border);
+    --shadow-modal: 0 24px 64px rgb(0 0 0 / 0.6), 0 0 0 1px var(--border);
+    color-scheme: dark;
+  }
+}
+
+/* base */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 var(--text-md) / var(--leading) var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+::selection {
+  background: var(--selection);
+}
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+h1,
+h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: var(--tracking-display);
+}

@@ -1,0 +1,13 @@
+{
+  "name": "kanbun",
+  "short_name": "kanbun",
+  "description": "An AI-native, local-first issue tracker for people and agents.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#EFEBE2",
+  "theme_color": "#F8F6F1",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
