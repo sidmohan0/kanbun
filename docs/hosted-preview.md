@@ -125,3 +125,20 @@ deployment requires operator review. Deployment receipts are retained as Actions
 on failure. Automatic runs are serialized; avoid simultaneous manual deployments because
 Cloudflare's rollback API has no atomic compare-and-swap precondition. Rollback never reverses
 database changes or removes workspace data.
+
+## Collaborative description rollout
+
+Issue descriptions add a `DOCUMENTS` binding and an appended SQLite `DocumentDO` class migration.
+The workspace schema also adds team scope to description metadata. These are additive changes;
+existing workspace IDs, issue IDs, accounts, and previously applied SQL migrations stay intact.
+The automatic code release correctly refuses this configuration change before publishing.
+
+After the exact merged commit passes CI, review the appended migration and deploy that clean
+commit with `pnpm deploy:preview --sha <green-commit-sha>`. The manual deployment command tags the
+Worker version with its source SHA. Verify owner sign-in, an existing issue, description save and
+reload, and anonymous document denial. Rerun the automatic deployment workflow after the reviewed
+storage rollout; its active version now has the same storage contract as the candidate.
+
+Do not roll code back across this binding migration using the ordinary code-only rollback path.
+Keep the new class and binding in a corrective release. Reverting code does not restore document
+or workspace data; data recovery is a separate operation.

@@ -152,6 +152,59 @@ function push(server: SyncServer, mutationId: number, name: string, args: unknow
 }
 
 describe("semantic issue events", () => {
+  it("replays an independently recorded description and deletion mirror identically in memory and SQLite", () => {
+    const { db, server } = fixture();
+    try {
+      const memory = new MemoryStore();
+      copyProjection(server.store, memory);
+      const titled = GOLDEN[1]!;
+      if (titled.type !== "IssueTitled") throw new Error("Golden title event is missing");
+      const described: Extract<DomainEvent, { type: "IssueDescribed" }> = {
+        ...titled,
+        type: "IssueDescribed",
+        seq: 43,
+        txnId: "golden-description",
+        payload: { description: "A jointly authored plan", descriptionContentId: ISSUE, contentState: "a".repeat(64) },
+      };
+      const cleared: Extract<DomainEvent, { type: "IssueDescribed" }> = {
+        ...described,
+        seq: 44,
+        txnId: "golden-cleared",
+        ts: Date.parse("2026-10-29T14:00:00.000Z"),
+        payload: { description: "", descriptionContentId: ISSUE, contentState: "b".repeat(64) },
+      };
+      for (const event of [...structuredClone(GOLDEN), described]) {
+        applyIssueEvent(context(memory), event);
+        applyIssueEvent(context(server.store), event);
+      }
+      expect(projection(memory)).toEqual(projection(server.store));
+      expect(memory.get("issue", ISSUE)).toMatchObject({
+        description: "A jointly authored plan",
+        descriptionContentId: ISSUE,
+        updatedSeq: 43,
+      });
+      expect(memory.get("documentContent", ISSUE)).toMatchObject({
+        id: ISSUE,
+        issueId: ISSUE,
+        teamId: TEAM,
+        content: "A jointly authored plan",
+        contentState: "a".repeat(64),
+        createdAt: TITLED,
+        updatedAt: TITLED,
+      });
+      for (const store of [memory, server.store]) applyIssueEvent(context(store), cleared);
+      expect(projection(memory)).toEqual(projection(server.store));
+      expect(memory.get("documentContent", ISSUE)).toMatchObject({
+        content: "",
+        contentState: "b".repeat(64),
+        createdAt: TITLED,
+      });
+      expect(memory.get("issue", ISSUE)).toMatchObject({ description: "", updatedSeq: 44 });
+    } finally {
+      db.close();
+    }
+  });
+
   it("rebuilds the same issue projection from a fixed create/rename log in memory and SQLite", () => {
     const { db, server } = fixture();
     try {
@@ -200,7 +253,7 @@ describe("semantic issue events", () => {
         ...create(ISSUE, id(12)),
         title: "  Recorded issue  ",
         description: "Initial text",
-        descriptionContentId: id(15),
+        descriptionContentId: ISSUE,
         priority: 2,
         estimate: 5,
         dueDate: "2026-11-03",
@@ -238,7 +291,7 @@ describe("semantic issue events", () => {
         title: "Titled from events",
         number: 1,
         description: "Initial text",
-        descriptionContentId: id(15),
+        descriptionContentId: ISSUE,
         priority: 2,
         estimate: 5,
         dueDate: "2026-11-03",

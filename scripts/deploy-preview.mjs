@@ -76,5 +76,15 @@ if (values.check) {
     "--config",
     "wrangler.preview.json",
   );
-  run("--filter", "@kanbun/worker", "exec", "wrangler", "deploy", "--config", "wrangler.preview.json");
+  run(
+    "--filter",
+    "@kanbun/worker",
+    "exec",
+    "wrangler",
+    "deploy",
+    "--config",
+    "wrangler.preview.json",
+    "--tag",
+    values.sha,
+  );
 }

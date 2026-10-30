@@ -16,8 +16,8 @@ Contributions must not include third-party assets (icon sets, illustrations, CSS
 
 ```
 apps/
-  web/        React issue list, creation, and title editing over the local sync client
-  worker/     HTTP sync, WebSocket notifications, and protected preview over a SQLite WorkspaceDO
+  web/        React issue list, details, and collaborative descriptions over the local sync client
+  worker/     HTTP sync, notifications, SQLite WorkspaceDO, and Yjs DocumentDO bodies
 packages/
   events/     Typed semantic issue events and their validated envelopes
   model/      Drizzle schema: one definition of every entity, for D1 and for DO SQLite
@@ -47,10 +47,13 @@ branch APIs. Runtime tests and browser recovery checks use actual `workerd`; fas
 the seed still use `node:sqlite`. The web app lists, creates, and renames issues with IndexedDB-backed
 offline recovery, automatic cross-browser updates, and visible sync/rejection state. See the
 [local issue flow](docs/ux/issues.md). A [protected hosted preview](docs/hosted-preview.md) uses
-Cloudflare Access, actual user/workspace context, and a D1 directory. Native sign-in, public
-onboarding, and DocumentDO/Yjs remain planned. See [local Worker development](docs/local-worker.md).
+Cloudflare Access, actual user/workspace context, and a D1 directory. Native sign-in and public
+onboarding remain planned. [Issue details](docs/ux/issue-details.md) add collaborative descriptions
+in a separate SQLite DocumentDO, with Yjs merging and durable browser recovery. See
+[local Worker development](docs/local-worker.md).
 
-Issue creation and title-only updates now record `IssueCreated` and `IssueTitled` events and apply
+Issue creation, title-only updates, and document publication record `IssueCreated`, `IssueTitled`,
+and `IssueDescribed` events and apply
 shared reducers. Their recorded history can reproduce the same projections in memory and SQLite.
 Other mutations still use the original patch-based path during the incremental migration. See
 [semantic event replay](docs/event-replay.md) for the supported scope and invariants.
@@ -59,6 +62,9 @@ The same create/rename flow also supports [durable workspace branches](docs/work
 Branch rows survive restarts without changing main, while untouched reads follow live main.
 Human owners can preview and merge the supported changes with explicit conflict choices and durable
 retry receipts. The branch review UI remains planned.
+
+The [team readiness checklist](docs/team-readiness.md) tracks the remaining product and operational
+gates before an invited team pilot.
 
 ## How a write flows
 

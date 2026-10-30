@@ -47,6 +47,11 @@ export const issueCreatedPayloadSchema = z.strictObject({
 });
 
 export const issueTitledPayloadSchema = z.strictObject({ title });
+export const issueDescribedPayloadSchema = z.strictObject({
+  description: z.string(),
+  descriptionContentId: id,
+  contentState: z.string().regex(/^[a-f0-9]{64}$/),
+});
 
 export const branchScopeSchema = z.strictObject({
   teamIds: z.array(id).default([]),
@@ -127,11 +132,17 @@ const issueTitledIntent = z.strictObject({
   type: z.literal("IssueTitled"),
   payload: issueTitledPayloadSchema,
 });
+const issueDescribedIntent = z.strictObject({
+  ...subject,
+  type: z.literal("IssueDescribed"),
+  payload: issueDescribedPayloadSchema,
+});
 
 /** A decision carries business meaning; the execution boundary supplies provenance. */
 export const pendingEventSchema = z.discriminatedUnion("type", [
   issueCreatedIntent,
   issueTitledIntent,
+  issueDescribedIntent,
   branchCreatedIntent,
   branchMergedIntent,
   branchConflictResolvedIntent,
@@ -160,6 +171,7 @@ const envelope = {
 export const eventSchema = z.discriminatedUnion("type", [
   issueCreatedIntent.extend(envelope),
   issueTitledIntent.extend(envelope),
+  issueDescribedIntent.extend(envelope),
   branchCreatedIntent.extend(envelope),
   branchMergedIntent.extend(envelope),
   branchConflictResolvedIntent.extend(envelope),
@@ -170,6 +182,7 @@ export type DomainEvent = z.infer<typeof eventSchema>;
 export type EventActor = z.infer<typeof actorSchema>;
 export type IssueCreatedEvent = Extract<DomainEvent, { type: "IssueCreated" }>;
 export type IssueTitledEvent = Extract<DomainEvent, { type: "IssueTitled" }>;
+export type IssueDescribedEvent = Extract<DomainEvent, { type: "IssueDescribed" }>;
 export type BranchCreatedEvent = Extract<DomainEvent, { type: "BranchCreated" }>;
 export type BranchMergedEvent = Extract<DomainEvent, { type: "BranchMerged" }>;
 export type BranchConflictResolvedEvent = Extract<DomainEvent, { type: "BranchConflictResolved" }>;

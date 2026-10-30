@@ -34,8 +34,8 @@ In local development the identity is explicitly Alice. Initializing the local wo
 separate action when the Worker has no fixture members. The hosted preview instead displays the
 verified user and workspace, hides local initialization, and opens an empty starter team after
 authorized setup. Authentication failures require signing in and reloading before cached work is
-opened again. Native sign-in, workspace switching, branch review, issue details, filtering, and
-rich text remain later flows.
+opened again. [Issue details](issue-details.md) now provide a plain-text collaborative description.
+Native sign-in, workspace switching, branch review, filtering, and rich formatting remain later flows.
 
 ## Proof
 

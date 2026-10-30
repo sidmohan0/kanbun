@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import migrations from "@kanbun/model/migrations/workspace/migrations.js";
-import { mutators } from "@kanbun/mutators";
-import { MutationError, type Actor, type Poke, type WorkspaceContext } from "@kanbun/sync";
+import { mutators, requireIssue } from "@kanbun/mutators";
+import { issueIncarnation, MutationError, type Actor, type Poke, type WorkspaceContext } from "@kanbun/sync";
 import { durableObjectDriver, SyncServer, type SqlDriver } from "@kanbun/sync/server";
 import { z } from "zod";
 import {
@@ -18,6 +18,8 @@ import {
 import { activeOwner, admitOwner, type DirectoryEnvironment } from "./directory";
 import { localActors, seedWorkspace } from "./local";
 import { preparePreview } from "./preview";
+import { DocumentDO, documentName } from "./document";
+export { DocumentDO } from "./document";
 import {
   activityQuery,
   body,
@@ -39,6 +41,7 @@ export { localActors } from "./local";
 
 export interface Env extends AuthEnvironment, DirectoryEnvironment {
   WORKSPACES: DurableObjectNamespace<WorkspaceDO>;
+  DOCUMENTS: DurableObjectNamespace<DocumentDO>;
   ASSETS?: Fetcher;
 }
 
@@ -57,6 +60,7 @@ const routes = new Map<string, string>(
     "/sync/branch/merge": "POST",
     "/sync/events": "GET",
     "/sync/activity": "GET",
+    "/sync/document": "GET, POST",
   }),
 );
 
@@ -139,6 +143,7 @@ export class WorkspaceDO extends DurableObject<Env> {
   private server: SyncServer | undefined;
   private broadcastQueued = false;
   private lastBroadcastSeq = 0;
+  private documentOperation: Promise<unknown> = Promise.resolve();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -279,6 +284,78 @@ export class WorkspaceDO extends DurableObject<Env> {
     this.closeSocket(socket, 1011, "Workspace connection failed");
   }
 
+  private async document(request: Request, server: SyncServer, url: URL): Promise<Response> {
+    const identity = z.uuidv7();
+    const input: { issueId: string; incarnation: string; update?: string } =
+      request.method === "GET"
+        ? query(z.strictObject({ issueId: identity, incarnation: z.string().min(1) }), url)
+        : await body(
+            z.strictObject({ issueId: identity, incarnation: z.string().min(1), update: z.string() }),
+            request,
+          );
+    const operation = this.documentOperation
+      .catch(() => {})
+      .then(async () => {
+        const authorize = async () => {
+          const context = await this.requestContext(request, server);
+          if (context.actor.type !== "user") throw new RequestError("Only people may edit descriptions", 403);
+          const issue = requireIssue(
+            {
+              store: server.store,
+              actor: context.actor,
+              actorId: context.actor.id,
+              now: new Date().toISOString(),
+              server: true,
+            },
+            input.issueId,
+          );
+          if (issue.trashed || issue.archivedAt) throw new RequestError("Issue is not available", 404);
+          if (issueIncarnation(issue) !== input.incarnation)
+            throw new RequestError("Issue was replaced; reload before editing its description", 409);
+          return { context, issue };
+        };
+        const { context, issue } = await authorize();
+        const incarnation = issueIncarnation(issue);
+        const principal = this.principal(request);
+        const document = this.env.DOCUMENTS.getByName(documentName(context.workspaceId, issue.id, incarnation));
+        const synchronize = async (update?: string) => {
+          try {
+            const state = await document.synchronize(
+              context.workspaceId,
+              issue.id,
+              incarnation,
+              context.actor,
+              issue.description ?? "",
+              update,
+              principal.mode === "hosted" ? principal.expiresAt : undefined,
+            );
+            // Reauthorize after RPC. Publishing a prior durable edit before the next write preserves
+            // its editor if an earlier request committed the body but failed to publish its mirror.
+            const current = await authorize();
+            if (current.issue.createdSeq !== issue.createdSeq || current.issue.createdAt !== issue.createdAt)
+              throw new RequestError("Issue was replaced during document synchronization", 409);
+            server.commitDocument(
+              current.context.actor,
+              { id: issue.id, description: state.mirror, contentState: state.contentState },
+              state.editor,
+            );
+            return state;
+          } catch (error) {
+            if (error instanceof Error && error.message.includes("Invalid document update"))
+              throw new RequestError("Invalid document update");
+            if (error instanceof Error && error.message.includes("Document authorization expired"))
+              throw new RequestError("Workspace identity has expired", 403);
+            throw error;
+          }
+        };
+        let state = await synchronize();
+        if (input.update !== undefined) state = await synchronize(input.update);
+        return json({ update: state.update, mirror: state.mirror, contentState: state.contentState, incarnation });
+      });
+    this.documentOperation = operation;
+    return operation;
+  }
+
   override async fetch(request: Request): Promise<Response> {
     if (mode(this.env) === "disabled") return disabled();
     await this.ready;
@@ -288,7 +365,8 @@ export class WorkspaceDO extends DurableObject<Env> {
       const url = new URL(request.url);
       const method = routes.get(url.pathname);
       if (!method) return json({ error: "Not found" }, 404);
-      if (request.method !== method) return json({ error: "Method not allowed" }, 405, { allow: method });
+      if (!method.split(", ").includes(request.method))
+        return json({ error: "Method not allowed" }, 405, { allow: method });
       if (request.method === "POST" && url.search) throw new RequestError("Unexpected query parameters");
       if (mode(this.env) === "hosted" && request.method === "POST") requireHostedOrigin(request, this.env);
       if (url.pathname === "/__local/seed") {
@@ -297,6 +375,7 @@ export class WorkspaceDO extends DurableObject<Env> {
         return json(seedWorkspace(server, this.driver, input.seedIssue));
       }
       if (url.pathname === "/sync/connect") return await this.upgradeSocket(request, server, url);
+      if (url.pathname === "/sync/document") return await this.document(request, server, url);
       // Read a streaming body before the final membership/expiry check.
       if (url.pathname === "/sync/push") {
         const input = await body(pushBody, request);

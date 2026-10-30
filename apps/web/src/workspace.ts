@@ -387,6 +387,7 @@ export const workspace = {
   getSnapshot: () => snapshot,
   start,
   refresh,
+  requireAuthentication: blockAuthentication,
   createIssue(teamId: string, title: string): void {
     const active = editableClient();
     active.mutate("issueCreate", { id: uuidv7(), teamId, title, subscriptionId: uuidv7() });

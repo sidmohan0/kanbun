@@ -25,6 +25,8 @@ export type MutatorContext = {
   now: string;
   /** True in the authoritative run. Gate server-only side effects (counters, notifications, jobs) on it. */
   server: boolean;
+  /** Private DocumentDO publication boundary; never accepted from sync request arguments. */
+  documentAuthority?: true;
   /** Workspace branch; omitted means main for existing callers. */
   branchId?: string;
   /** Free-text reason supplied with the mutation (mainly agents). */

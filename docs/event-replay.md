@@ -70,5 +70,17 @@ late projection-write failure, and event-history privacy. Existing Chromium test
 offline edit recovery and a lost HTTP acknowledgement through the public sync client, local Worker,
 and SQLite Durable Object. Runtime tests also prove nested rollback and migration startup in `workerd`.
 
-The remaining vocabulary, complete workspace replay, branch review UI, production authentication,
-and deployment are later implementation steps.
+## Description publication
+
+Human description edits synchronize Yjs state through the authorized document route. The private
+document adapter publishes `IssueDescribed` with the plain-text mirror and a hash of the complete
+Yjs state, including deletions. Its reducer updates the issue and team-scoped document metadata.
+Ordinary sync mutations cannot supply a trusted document hash or bypass body synchronization.
+
+The document body is durable before the workspace acknowledges its mirror. Publication retries
+repair a missing workspace event without duplicating an acknowledged state; the durable editor
+identity remains the event actor. Binary Yjs state stays in DocumentDO storage. Description changes
+are initially main-only; the existing create/rename branch merge contract stays unchanged.
+
+The remaining vocabulary, complete workspace replay, and branch review UI remain later steps.
+The [hosted preview](hosted-preview.md) provides deployment and owner authentication.

@@ -49,7 +49,7 @@ describe("workspace Durable Object in workerd", () => {
     try {
       const seeded = await runtime.seed();
       const before = await runtime.inspect();
-      expect(before.migrations).toHaveLength(4);
+      expect(before.migrations).toHaveLength(5);
       expect(before.issues).toMatchObject([{ id: seeded.issueId, teamId: seeded.teamId, number: 1 }]);
       expect(before.teams).toMatchObject([{ id: seeded.teamId, issue_counter: 1 }]);
       expect(before.events).toContainEqual(

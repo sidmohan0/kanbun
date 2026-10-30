@@ -53,6 +53,7 @@ export const ISSUE_CHILD_MODELS = [
   "comment",
   "reaction",
   "attachment",
+  "documentContent",
 ] as const;
 
 /** The workflow state of `type` in a team, chosen deterministically (lowest position, then id) so both runs agree. */
@@ -87,6 +88,29 @@ const issuePatch = z
   .partial();
 
 export const mutators = {
+  issueDescribe: defineEventMutator({
+    args: z.strictObject({ id, description: z.string(), contentState: z.string().regex(/^[a-f0-9]{64}$/) }),
+    description: "Publish an authoritative collaborative description mirror from the Document DO.",
+    decide(ctx, args) {
+      if (!ctx.server || !ctx.documentAuthority || ctx.actor.type !== "user" || (ctx.branchId ?? "main") !== "main")
+        throw new MutationError("Descriptions must be edited through the document endpoint", "forbidden");
+      const issue = requireIssue(ctx, args.id);
+      if (issue.trashed || issue.archivedAt) throw new MutationError("Issue is not editable", "forbidden");
+      const existing = ctx.store.get("documentContent", issue.id);
+      if (existing?.contentState === args.contentState && issue.description === args.description) return [];
+      return [
+        {
+          type: "IssueDescribed",
+          entityType: "issue",
+          entityId: issue.id,
+          teamId: issue.teamId,
+          scopeUserId: null,
+          payload: { description: args.description, descriptionContentId: issue.id, contentState: args.contentState },
+        },
+      ];
+    },
+    apply: applyIssueEvent,
+  }),
   issueCreate: defineEventMutator({
     args: z.object({
       id,
@@ -148,6 +172,8 @@ export const mutators = {
     },
     decide(ctx, args) {
       const team = requireTeamAccess(ctx, args.teamId);
+      if (args.descriptionContentId && args.descriptionContentId !== args.id)
+        throw new MutationError("Description must belong to this issue", "invalid");
       if (ctx.store.get("issue", args.id)) throw new MutationError("issue already exists", "conflict");
       const title = args.title.trim();
       if (!title) throw new MutationError("title is required", "invalid");
@@ -259,6 +285,8 @@ export const mutators = {
     run(ctx, args) {
       const issue = requireIssue(ctx, args.id);
       const p = { ...args.patch };
+      if (p.description !== undefined)
+        throw new MutationError("Descriptions must be edited through the document endpoint", "forbidden");
       const now = ctx.now;
       const patch: Partial<Row<"issue">> = { updatedAt: now };
       let teamForState = ctx.store.get("team", issue.teamId)!;

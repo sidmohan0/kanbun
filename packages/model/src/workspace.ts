@@ -672,6 +672,8 @@ export const documentContent = sqliteTable(
   "document_content",
   {
     ...syncedColumns,
+    /** Denormalized from the body owner for private-team sync filtering. */
+    teamId: text("team_id"),
     /** Exactly one owner. */
     issueId: text("issue_id"),
     documentId: text("document_id"),
@@ -681,7 +683,7 @@ export const documentContent = sqliteTable(
     commentId: text("comment_id"),
     /** Plain-text mirror for search; the Yjs state is in the Document DO. */
     content: text("content"),
-    /** Hash of the Yjs state vector the mirror was taken from. */
+    /** Hash of the complete Yjs state, including deletion sets, used for this mirror. */
     contentState: text("content_state"),
     restoredAt: text("restored_at"),
   },
