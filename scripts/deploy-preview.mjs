@@ -21,6 +21,8 @@ if (
   config.preview_urls !== false ||
   vars.LOCAL_DEV !== "false" ||
   vars.AUTH_MODE !== "preview" ||
+  vars.BACKUP_RESTORE_ISOLATED !== undefined ||
+  vars.BACKUP_RESTORE_SOURCE_COMMIT !== undefined ||
   config.assets?.binding !== "ASSETS" ||
   config.assets?.run_worker_first !== true
 )
@@ -58,6 +60,12 @@ if (
   )
 )
   fail("Configure the dedicated preview accounts database.");
+if (
+  !config.r2_buckets?.some((bucket) => bucket.binding === "BACKUPS" && bucket.bucket_name === "kanbun-preview-backups")
+)
+  fail("Configure the private preview backup bucket.");
+if (config.version_metadata?.binding !== "CF_VERSION_METADATA")
+  fail("Configure deployed source version metadata for backup recovery.");
 if (values.check) {
   console.log(`Preview deployment configuration is ready for ${values.sha}.`);
 } else {
