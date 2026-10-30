@@ -2,7 +2,7 @@ import { test, expect, syncApi } from "./fixture";
 
 test.use({ seedIssue: false });
 
-test("replays an unacknowledged durable mutation once after page reload and SQLite reopen", async ({
+test("replays an unacknowledged durable mutation once after page reload and Durable Object reactivation", async ({
   browser,
   harness,
 }) => {
@@ -16,7 +16,7 @@ test("replays an unacknowledged durable mutation once after page reload and SQLi
     await page.waitForFunction(() => Boolean(window.recovery));
     const initial = await page.evaluate(() => window.recovery.start("alice"));
     expect(initial.pending).toBe(0);
-    expect(harness.inspect().issues).toHaveLength(0);
+    expect((await harness.inspect()).issues).toHaveLength(0);
 
     harness.dropNextPushResponse("alice");
     const issueId = await page.evaluate((teamId) => {
@@ -49,7 +49,7 @@ test("replays an unacknowledged durable mutation once after page reload and SQLi
       .poll(async () => page.evaluate(() => window.recovery.persisted()))
       .toMatchObject({ clientId: initial.clientId, pending: [originalMutation] });
 
-    const committed = harness.inspect();
+    const committed = await harness.inspect();
     expect(committed.issues).toHaveLength(1);
     expect(committed.issues[0]).toMatchObject({ id: issueId, number: 1 });
     const originalLog = committed.log.filter(
@@ -73,7 +73,7 @@ test("replays an unacknowledged durable mutation once after page reload and SQLi
     expect(harness.pushes.filter((push) => push.request.clientId === initial.clientId)).toHaveLength(1);
 
     await harness.restart();
-    const reopened = harness.inspect();
+    const reopened = await harness.inspect();
     expect(reopened.issues).toEqual(committed.issues);
     expect(reopened.log).toEqual(committed.log);
     expect(reopened.clients.find((client) => client["client_id"] === initial.clientId)).toMatchObject({
@@ -91,7 +91,7 @@ test("replays an unacknowledged durable mutation once after page reload and SQLi
     expect(replay.request).toEqual(originalPush.request);
     expect(replay.result).toMatchObject({ ok: true, lastMutationId: originalMutation.id, rejected: [] });
 
-    const afterReplay = harness.inspect();
+    const afterReplay = await harness.inspect();
     expect(afterReplay.issues).toHaveLength(1);
     expect(afterReplay.issues[0]).toMatchObject({ id: issueId, number: 1 });
     expect(afterReplay.log).toEqual(committed.log);
@@ -116,8 +116,9 @@ test("replays an unacknowledged durable mutation once after page reload and SQLi
       return id;
     }, harness.teamId);
     await page.evaluate(() => window.recovery.push());
-    expect(harness.inspect().issues).toHaveLength(2);
-    expect(harness.inspect().issues.find((issue) => issue.id === nextIssueId)).toMatchObject({ number: 2 });
+    const final = await harness.inspect();
+    expect(final.issues).toHaveLength(2);
+    expect(final.issues.find((issue) => issue.id === nextIssueId)).toMatchObject({ number: 2 });
     expect(pageErrors).toEqual([]);
   } finally {
     await context.close();

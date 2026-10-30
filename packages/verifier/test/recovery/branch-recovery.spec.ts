@@ -1,10 +1,10 @@
 import { test, expect, syncApi } from "./fixture";
 
-test("a workspace branch survives offline reloads, SQLite reopening, and an unacknowledged retry without changing main", async ({
+test("a workspace branch survives offline reloads, Durable Object reactivation, and an unacknowledged retry without changing main", async ({
   browser,
   harness,
 }, testInfo) => {
-  const branchId = harness.createBranch();
+  const branchId = await harness.createBranch();
   // Two tabs share one origin and IndexedDB, so branch-specific keys are exercised.
   const context = await browser.newContext();
   const main = await context.newPage();
@@ -30,7 +30,7 @@ test("a workspace branch survives offline reloads, SQLite reopening, and an unac
     expect(initialBranch.branchId).toBe(branchId);
     expect(initialBranch.clientId).not.toBe(initialMain.clientId);
     expect(initialBranch.issues).toEqual(initialMain.issues);
-    const mainBefore = harness.inspect();
+    const mainBefore = await harness.inspect();
 
     await branch.route(syncApi, (route) => route.abort("internetdisconnected"));
     await branch.evaluate(
@@ -55,7 +55,7 @@ test("a workspace branch survives offline reloads, SQLite reopening, and an unac
     expect(restored).toMatchObject({ branchId, clientId: initialBranch.clientId, pending: 1, status: "offline" });
     expect(restored.pendingMutations).toEqual(saved?.pending);
     expect(restored.issues.find((issue) => issue.id === harness.issueId)?.title).toBe("Private branch draft");
-    expect(harness.inspect().issues).toEqual(mainBefore.issues);
+    expect((await harness.inspect()).issues).toEqual(mainBefore.issues);
 
     // The branch commits, but its acknowledgement is deliberately truncated over the real HTTP connection.
     harness.dropNextPushResponse("alice");
@@ -69,7 +69,7 @@ test("a workspace branch survives offline reloads, SQLite reopening, and an unac
     expect(original.responseDropped).toBe(true);
     expect(original.result).toMatchObject({ ok: true, lastMutationId: 1, rejected: [] });
     await expect.poll(() => branch.evaluate(async () => (await window.recovery.persisted())?.pending.length)).toBe(1);
-    const committed = harness.inspect();
+    const committed = await harness.inspect();
     expect(committed.issues).toEqual(mainBefore.issues);
     expect(committed.seq).toBe(mainBefore.seq);
     expect(committed.clients.find((client) => client["client_id"] === initialBranch.clientId)).toMatchObject({
@@ -87,14 +87,14 @@ test("a workspace branch survives offline reloads, SQLite reopening, and an unac
     const reopened = await branch.evaluate((id) => window.recovery.start("alice", id), branchId);
     expect(reopened).toMatchObject({ branchId, clientId: initialBranch.clientId, pending: 1 });
     expect(reopened.pendingMutations).toEqual(saved?.pending);
-    expect(harness.inspect().log).toEqual(committed.log);
+    expect((await harness.inspect()).log).toEqual(committed.log);
     await branch.unroute(syncApi);
     const confirmed = await branch.evaluate(() => window.recovery.push());
     expect(confirmed).toMatchObject({ branchId, pending: 0, status: "idle" });
     const attempts = harness.pushes.filter((push) => push.request.clientId === initialBranch.clientId);
     expect(attempts).toHaveLength(2);
     expect(attempts[1]?.rawBody).toBe(original.rawBody);
-    expect(harness.inspect().log).toEqual(committed.log);
+    expect((await harness.inspect()).log).toEqual(committed.log);
     expect(confirmed.issues.find((issue) => issue.id === harness.issueId)?.title).toBe("Private branch draft");
     await main.evaluate(() => window.recovery.pull());
     expect((await main.evaluate(() => window.recovery.snapshot())).issues).toEqual(initialMain.issues);
@@ -111,7 +111,7 @@ test("a workspace branch survives offline reloads, SQLite reopening, and an unac
     }, harness.teamId);
     const branchCreated = await branch.evaluate(() => window.recovery.push());
     expect(branchCreated.issues.find((issue) => issue.id === branchIssue)?.number).toBe(0);
-    expect(harness.inspect().issues).toEqual(mainBefore.issues);
+    expect((await harness.inspect()).issues).toEqual(mainBefore.issues);
     const nextMainIssue = await main.evaluate((teamId) => {
       const id = window.recovery.newId();
       window.recovery.mutate("issueCreate", {

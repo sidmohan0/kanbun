@@ -3,7 +3,7 @@ import { Mark } from "./brand/Mark";
 
 /**
  * Phase-0 shell. The real app (TanStack Router, sync provider, issue views)
- * lands once the Worker is up; this proves the tokens, fonts and theme toggle.
+ * is still planned; this proves the tokens, fonts and theme toggle.
  */
 export function App() {
   const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
@@ -55,7 +55,7 @@ export function App() {
           The issue tracker where agents pick up the work.
         </h1>
         <p style={{ color: "var(--text-secondary)", margin: "0 0 var(--space-6)" }}>
-          Phase 0: sync engine, schema, tokens. The Worker is next.
+          Phase 0: sync engine, schema, tokens. The local Worker is ready; issue views are next.
         </p>
         <div style={{ display: "flex", gap: 8 }}>
           {(["light", "dark", "system"] as const).map((t) => (

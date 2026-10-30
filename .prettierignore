@@ -6,6 +6,7 @@ docs/spec/
 packages/model/migrations/
 pnpm-lock.yaml
 .pnpm-store/
+.wrangler/
 
 # Brand masters and exported assets
 /brand/

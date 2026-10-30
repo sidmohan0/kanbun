@@ -67,7 +67,8 @@ sequences, labels, and subscriptions.
 
 Additional integration checks exercise durable retry after reopening SQLite, rollback after a real
 late projection-write failure, and event-history privacy. Existing Chromium tests continue to cover
-offline edit recovery and a lost HTTP acknowledgement through the public sync client.
+offline edit recovery and a lost HTTP acknowledgement through the public sync client, local Worker,
+and SQLite Durable Object. Runtime tests also prove nested rollback and migration startup in `workerd`.
 
-The remaining vocabulary, complete workspace replay, branch review UI, and the Cloudflare Worker
-are later implementation steps.
+The remaining vocabulary, complete workspace replay, branch review UI, production authentication,
+and deployment are later implementation steps.

@@ -59,23 +59,26 @@ history-aware checks.
 ## Browser recovery contracts
 
 The recovery suite uses the actual browser `IndexedDbPersister`, `httpTransport`, `SyncClient`, and
-mutators against a local HTTP adapter over a file-backed SQLite `SyncServer`. It verifies:
+mutators through a local Cloudflare Worker and SQLite-backed `WorkspaceDO` in actual `workerd`.
+The Node adapter serves assets, selects synthetic local identities, and can drop acknowledgements;
+it does not execute business mutations. The suite verifies:
 
 - An edit queued while the sync API is unavailable survives a page reload with the same client
   identity and pending mutation, then converges with a second browser context after reconnecting.
-- A committed mutation whose HTTP acknowledgement is lost survives a page reload and SQLite
-  reopening. Retrying the identical request produces no duplicate issue or additional sync-log
+- A committed mutation whose HTTP acknowledgement is lost survives a page reload and Durable
+  Object reactivation. Retrying the identical request produces no duplicate issue or additional sync-log
   rows, and the following issue receives the next number.
 - A private workspace branch recovers an offline edit from IndexedDB and retries an unacknowledged
-  HTTP mutation after SQLite reopening. Main stays unchanged, branch-created issues keep provisional
+  HTTP mutation after Durable Object reactivation. Main stays unchanged, branch-created issues keep provisional
   numbers, and untouched branch reads receive later main changes. Main and branch tabs share one
   browser context and IndexedDB while using separate persistence keys.
 - A human-reviewed merge with an edited conflict choice survives a lost HTTP acknowledgement and
-  SQLite reopening. An identical retry returns the saved receipt, main converges through normal
+  Durable Object reactivation. An identical retry returns the saved receipt, main converges through normal
   pull, the closed branch rejects access, and issue numbering advances only once.
 
 This is a browser integration harness, with synthetic fixture actors. It does not exercise product
-UI, production authentication, or a deployed Worker. Sync API outages leave the test page's assets
+UI, production authentication, or a deployed Worker. Reactivation evicts the Durable Object instance
+while preserving its SQLite storage; it does not simulate a host crash. Sync API outages leave the test page's assets
 available; offline app-asset loading requires a separate product capability and test.
 
 Run `pnpm test:recovery` directly or use `pnpm verify recovery` for a verification receipt. Playwright
