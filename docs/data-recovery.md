@@ -40,6 +40,10 @@ sequence positions, whichever comes first. The payload records the latest succes
 and manifest key; `fire_at` records the next weekly deadline. The alarm handler owns retries through
 Cloudflare's platform behavior. Failed captures leave the previous successful bundle intact and
 emit a content-free `workspace_backup_failed` error.
+If platform retries are exhausted or an alarm is dropped, the next normal workspace commit rearms
+the overdue job when no backup attempt is active. An inactive workspace is also rearmed when its
+Durable Object next starts; operators should investigate repeated failures rather than assume retries
+continue indefinitely. See [Cloudflare's alarm retry contract](https://developers.cloudflare.com/durable-objects/api/alarms/).
 
 Create the dedicated private bucket before deploying the binding:
 

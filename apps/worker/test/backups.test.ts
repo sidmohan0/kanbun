@@ -350,6 +350,39 @@ describe("private coherent workspace backups in workerd", () => {
     }
   }, 30_000);
 
+  it("recovers an overdue job whose alarm was dropped on the next normal commit without restarting", async () => {
+    const runtime = await startPreviewRuntime({ backups: true });
+    try {
+      await initialBackup(runtime);
+      const { issueId } = await createIssue(runtime);
+      await runtime.backup();
+      const before = await manifests(runtime);
+      expect(await runtime.dropDueBackupAlarm()).toBeNull();
+      expect(await manifests(runtime)).toEqual(before);
+      const response = await runtime.fetch(
+        "/sync/push",
+        post({
+          clientId: "backup-source-client",
+          mutations: [
+            {
+              id: 2,
+              name: "issueUpdate",
+              args: { id: issueId, patch: { title: "Resume overdue recovery" } },
+              ts: new Date().toISOString(),
+            },
+          ],
+        }),
+      );
+      expect(await response.json()).toMatchObject({ ok: true, rejected: [] });
+      await expect.poll(async () => (await manifests(runtime)).length, { timeout: 30_000 }).toBe(before.length + 1);
+      await expect
+        .poll(async () => Date.parse(String((await runtime.backupTables())["scheduled_job"]![0]!["fire_at"])))
+        .toBeGreaterThan(Date.now());
+    } finally {
+      await runtime.close();
+    }
+  }, 30_000);
+
   it("keeps an existing body unchanged and quarantines the failed isolated restore", async () => {
     const source = await startPreviewRuntime({ backups: true });
     const target = await startPreviewRuntime({ backups: true, isolatedRestore: true });

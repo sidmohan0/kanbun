@@ -174,6 +174,7 @@ export class WorkspaceDO extends DurableObject<Env> {
   private lastBroadcastSeq = 0;
   private documentOperation: Promise<unknown> = Promise.resolve();
   private backupTask: Promise<{ key: string; manifestHash: string; mainSeq: number; eventSeq: number }> | null = null;
+  private alarmRunning = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -196,7 +197,7 @@ export class WorkspaceDO extends DurableObject<Env> {
       this.ctx.waitUntil(
         this.scheduleBackup()
           .then(async () => {
-            if (this.automaticBackups()) await this.armNextJob();
+            if (this.automaticBackups()) await this.armNextJob(true);
           })
           .catch(() => console.error("workspace_backup_schedule_failed")),
       );
@@ -216,17 +217,24 @@ export class WorkspaceDO extends DurableObject<Env> {
     return this.driver.all("SELECT * FROM scheduled_job WHERE dedup_key = ?", [BACKUP_JOB])[0];
   }
 
-  private async armNextJob() {
+  private async armNextJob(skipActiveAttempt = false) {
     const row = this.driver.all("SELECT MIN(fire_at) AS fire_at FROM scheduled_job")[0];
     if (typeof row?.["fire_at"] !== "string") return;
     const fireAt = Date.parse(row["fire_at"]);
     if (!Number.isFinite(fireAt)) throw new Error("Scheduled job time is invalid");
     const current = await this.ctx.storage.getAlarm();
+    if (skipActiveAttempt && (this.backupTask || this.alarmRunning)) return;
     if (current === null || fireAt < current) await this.ctx.storage.setAlarm(fireAt);
   }
 
   private async scheduleBackup() {
-    if (!this.automaticBackups() || !this.server?.store.list("organization").length || this.backupTask) return;
+    if (
+      !this.automaticBackups() ||
+      !this.server?.store.list("organization").length ||
+      this.backupTask ||
+      this.alarmRunning
+    )
+      return;
     const job = this.backupJob();
     if (!job) {
       const now = new Date().toISOString();
@@ -234,7 +242,7 @@ export class WorkspaceDO extends DurableObject<Env> {
         "INSERT INTO scheduled_job (id, fire_at, kind, payload, dedup_key, created_at) VALUES (?, ?, ?, ?, ?, ?)",
         [uuidv7(), now, BACKUP_JOB, JSON.stringify({ lastEventSeq: 0 }), BACKUP_JOB, now],
       );
-      await this.armNextJob();
+      await this.armNextJob(true);
       return;
     }
     const state = z.object({ lastEventSeq: z.number().int().nonnegative() }).parse(JSON.parse(String(job["payload"])));
@@ -246,11 +254,11 @@ export class WorkspaceDO extends DurableObject<Env> {
         new Date().toISOString(),
         String(job["id"]),
       ]);
-      await this.armNextJob();
+      await this.armNextJob(true);
       return;
     }
-    // A due alarm owns its platform retries; commits do not start competing backup attempts.
-    if (job && Date.parse(String(job["fire_at"])) > Date.now()) await this.armNextJob();
+    // Recover a dropped or exhausted alarm on a later commit without competing with an active attempt.
+    await this.armNextJob(true);
   }
 
   /** Private binding RPC; there is deliberately no HTTP backup or restore route. */
@@ -287,19 +295,24 @@ export class WorkspaceDO extends DurableObject<Env> {
   override async alarm() {
     await this.ready;
     if (!this.automaticBackups()) return;
-    const due = this.driver.all("SELECT * FROM scheduled_job WHERE fire_at <= ? ORDER BY fire_at", [
-      new Date().toISOString(),
-    ]);
-    for (const job of due) {
-      if (job["kind"] !== BACKUP_JOB) throw new Error("Unsupported scheduled job kind");
-      try {
-        await this.backup(configuration(this.env).workspaceId);
-      } catch {
-        console.error("workspace_backup_failed");
-        throw new Error("Workspace backup failed");
+    this.alarmRunning = true;
+    try {
+      const due = this.driver.all("SELECT * FROM scheduled_job WHERE fire_at <= ? ORDER BY fire_at", [
+        new Date().toISOString(),
+      ]);
+      for (const job of due) {
+        if (job["kind"] !== BACKUP_JOB) throw new Error("Unsupported scheduled job kind");
+        try {
+          await this.backup(configuration(this.env).workspaceId);
+        } catch {
+          console.error("workspace_backup_failed");
+          throw new Error("Workspace backup failed");
+        }
       }
+      await this.armNextJob();
+    } finally {
+      this.alarmRunning = false;
     }
-    await this.armNextJob();
   }
 
   /** Private readiness check also prevents edge directory admission before restore completion. */

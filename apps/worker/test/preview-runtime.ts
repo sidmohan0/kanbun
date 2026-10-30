@@ -71,6 +71,7 @@ export async function startPreviewRuntime({
         config: {
           ...local,
           name: `kanbun-preview-test-${instance}`,
+          ...(backups ? { main: "test/backup-runtime-worker.mjs" } : {}),
           vars: {
             LOCAL_DEV: localDev ? "true" : "false",
             AUTH_MODE: "preview",
@@ -130,7 +131,12 @@ export async function startPreviewRuntime({
     const { url } = await harness.listen();
     await harness.getWorker().applyD1Migrations("ACCOUNTS");
     const environment = await harness
-      .getWorker<{ ACCOUNTS: D1Database; BACKUPS?: R2Bucket; DOCUMENTS: DurableObjectNamespace }>()
+      .getWorker<{
+        ACCOUNTS: D1Database;
+        BACKUPS?: R2Bucket;
+        DOCUMENTS: DurableObjectNamespace;
+        WORKSPACES: DurableObjectNamespace;
+      }>()
       .getEnv();
     const documentRpc = (body: BodyBackup) =>
       environment.DOCUMENTS.getByName(JSON.stringify([workspaceId, body.issueId, body.incarnation])) as unknown as {
@@ -172,6 +178,18 @@ export async function startPreviewRuntime({
       primeDocument: (body: BodyBackup) =>
         documentRpc(body).restoreSnapshot(workspaceId, body.issueId, body.incarnation, body.state),
       readDocument: (body: BodyBackup) => documentRpc(body).snapshot(workspaceId, body.issueId, body.incarnation),
+      async dropDueBackupAlarm() {
+        const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
+        await storage.exec(
+          "UPDATE scheduled_job SET fire_at = ? WHERE dedup_key = ?",
+          new Date(0).toISOString(),
+          "workspace-backup",
+        );
+        const workspace = environment.WORKSPACES.getByName(workspaceId) as unknown as {
+          dropBackupAlarmForTest(): Promise<number | null>;
+        };
+        return workspace.dropBackupAlarmForTest();
+      },
       async occupyRestoreTarget() {
         const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
         const now = new Date().toISOString();
