@@ -6,6 +6,73 @@ import { readWorkspaceState, syncApi } from "./app.fixture";
 import { readDescriptionRecord } from "./document-storage";
 
 type Grant = { token: string; url: string; invitation: { id: string; email: string } };
+
+test("a verified person without membership is guided to their invitation without opening workspace storage", async ({
+  browser,
+  membership,
+}) => {
+  await membership.runtime.context();
+  const context = await browser.newContext();
+  await selectPrincipal(context, membership.origin, "member");
+  const page = await context.newPage();
+  const syncRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/sync/")) syncRequests.push(request.url());
+  });
+  try {
+    await page.goto(membership.origin);
+    await expect(page.getByRole("heading", { name: "Workspace access required", exact: true })).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText("Sign-in does not automatically grant workspace access");
+    await expect(page.getByText(/Ask the workspace owner for an invitation link/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Sign in again", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Check access again", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Workspace access required", exact: true })).toBeVisible();
+    expect(syncRequests).toEqual([]);
+    expect(
+      await page.evaluate(async () => (await indexedDB.databases()).map((database) => database.name)),
+    ).not.toContain("kanbun");
+  } finally {
+    await context.close();
+  }
+});
+
+test("invitation retry checks a corrected identity and expired sign-in preserves the complete invitation", async ({
+  browser,
+  membership,
+}) => {
+  await membership.runtime.context();
+  const grant = await invitation(membership);
+  const context = await browser.newContext();
+  await selectPrincipal(context, membership.origin, "outsider");
+  const page = await context.newPage();
+  try {
+    await page.goto(`${membership.origin}/#invite/${encodeURIComponent(grant.token)}`);
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByText(/No separate Kanbun registration is needed/)).toBeVisible();
+    await selectPrincipal(context, membership.origin, "member");
+    await page.getByRole("button", { name: "Check invitation again", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Join Private preview", exact: true })).toBeVisible();
+    await page.route("**/api/invitations/accept", (route) =>
+      route.fulfill({
+        status: 401,
+        contentType: "text/html",
+        body: "<p>Sign in</p>",
+      }),
+    );
+    await page.getByRole("button", { name: "Accept invitation", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Sign in to accept your invitation", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Accept invitation", exact: true })).toHaveCount(0);
+    await page.unroute("**/api/invitations/accept");
+    await page.getByRole("button", { name: "Sign in again", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Join Private preview", exact: true })).toBeVisible();
+    expect(new URL(page.url()).hash).toBe(`#invite/${grant.token}`);
+    await page.getByRole("button", { name: "Accept invitation", exact: true }).click();
+    await expect(page.locator(".sync-indicator")).toContainText("Saved");
+    expect(new URL(page.url()).hash).toBe("#issues");
+  } finally {
+    await context.close();
+  }
+});
 const stateKey = (context: WorkspaceContext) =>
   JSON.stringify([
     "v1",
