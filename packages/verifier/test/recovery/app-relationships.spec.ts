@@ -42,6 +42,45 @@ test("sub-issues and inverse dependencies converge in another browser and reject
     await first.reload();
     await expect(region(first).getByRole("combobox", { name: "Parent issue", exact: true })).toHaveValue("");
     await expect(region(first)).toContainText("No linked issues yet.");
+    // Fractional keys are case-sensitive: aZ precedes aa even when locale sorting disagrees.
+    const upperSibling = uuidv7(),
+      lowerSibling = uuidv7();
+    const seeded = await app.runtime.fetch("/sync/push", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        clientId: "relationship-sibling-order",
+        mutations: [
+          {
+            name: "issueCreate",
+            args: {
+              id: upperSibling,
+              teamId: app.teamId,
+              title: "Uppercase sibling",
+              parentId: app.issueId,
+              subscriptionId: uuidv7(),
+            },
+          },
+          {
+            name: "issueCreate",
+            args: {
+              id: lowerSibling,
+              teamId: app.teamId,
+              title: "Lowercase sibling",
+              parentId: app.issueId,
+              subscriptionId: uuidv7(),
+            },
+          },
+          { name: "issueUpdate", args: { id: upperSibling, patch: { subIssueSortOrder: "aZ" } } },
+          { name: "issueUpdate", args: { id: lowerSibling, patch: { subIssueSortOrder: "aa" } } },
+        ].map((mutation, index) => ({ ...mutation, id: index + 1, ts: new Date().toISOString() })),
+      }),
+    });
+    expect(await seeded.json()).toMatchObject({ ok: true, rejected: [] });
+    await expect(region(second).getByRole("link", { name: /sibling/ })).toHaveText([
+      /Uppercase sibling/,
+      /Lowercase sibling/,
+    ]);
     await testInfo.attach("issue-relationships", {
       body: await second.screenshot({ fullPage: true }),
       contentType: "image/png",

@@ -16,7 +16,11 @@ export function IssueRelationships({ issue, snapshot }: { issue: Row<"issue">; s
   };
   const children = issues
     .filter((row) => row.parentId === issue.id)
-    .sort((a, b) => (a.subIssueSortOrder ?? "").localeCompare(b.subIssueSortOrder ?? "") || a.id.localeCompare(b.id));
+    .sort((a, b) => {
+      const left = a.subIssueSortOrder ?? "",
+        right = b.subIssueSortOrder ?? "";
+      return (left < right ? -1 : left > right ? 1 : 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    });
   const parent = issues.find((row) => row.id === issue.parentId);
   const eligibleParents = issues.filter((candidate) => {
     const seen = new Set<string>([issue.id]);
