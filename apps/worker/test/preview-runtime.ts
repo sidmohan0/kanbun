@@ -182,7 +182,7 @@ export async function startPreviewRuntime({
         const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
         await storage.exec(
           "UPDATE scheduled_job SET fire_at = ? WHERE dedup_key = ?",
-          new Date(0).toISOString(),
+          new Date(Date.now() - 1_000).toISOString(),
           "workspace-backup",
         );
         const workspace = environment.WORKSPACES.getByName(workspaceId) as unknown as {
