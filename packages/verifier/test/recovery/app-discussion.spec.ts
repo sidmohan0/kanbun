@@ -124,6 +124,72 @@ test("a submitted offline comment survives reload, then publishes once after rec
   expect((await app.runtime.inspect()).events.filter((event) => event.type === "CommentPosted")).toHaveLength(1);
 });
 
+test("a reconnect during a failed in-flight refresh queues another attempt for the restored comment", async ({
+  page,
+  app,
+}) => {
+  // Keep socket retries disconnected so a separate open/poke cannot mask the HTTP reconnect.
+  await page.routeWebSocket(
+    (url) => url.pathname === "/sync/connect",
+    (socket) => socket.close(),
+  );
+  await open(page, app);
+  await expect(page.locator(".sync-indicator")).toContainText("Saved");
+  let online = false;
+  let holdPull = false;
+  let oldPullStarted = false;
+  let releaseOldPull!: () => void;
+  const oldPull = new Promise<void>((resolve) => {
+    releaseOldPull = resolve;
+  });
+  await page.route(syncApi, async (route) => {
+    const request = route.request();
+    if (holdPull && new URL(request.url()).pathname === "/sync/pull") {
+      holdPull = false;
+      oldPullStarted = true;
+      await oldPull;
+      await route.continue();
+    } else if (online) await route.continue();
+    else await route.abort("internetdisconnected");
+  });
+  try {
+    await page
+      .getByRole("textbox", { name: "Add a comment", exact: true })
+      .fill("A reconnect cannot lose this queued attempt");
+    await page.getByRole("button", { name: "Post comment", exact: true }).click();
+    const key = "local:user-alice:main";
+    await expect
+      .poll(
+        async () =>
+          (await readWorkspaceState(page, key))?.pending.filter((mutation) => mutation.name === "commentCreate").length,
+      )
+      .toBe(1);
+    await page.reload();
+    await expect(comments(page)).toContainText("A reconnect cannot lose this queued attempt");
+    // Offline is published only after the prior HTTP refresh has drained.
+    await expect(page.locator(".sync-indicator")).toContainText("Offline");
+    holdPull = true;
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await expect.poll(() => oldPullStarted).toBe(true);
+    // This refresh's offline push has failed; its final pull is still in flight.
+    // The reconnect must queue a fresh push after that older cycle completes.
+    online = true;
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    releaseOldPull();
+    await expect
+      .poll(async () => (await app.runtime.inspect()).events.filter((event) => event.type === "CommentPosted").length)
+      .toBe(1);
+    await expect(comments(page).getByText("Pending", { exact: true })).toHaveCount(0);
+    await expect.poll(async () => (await readWorkspaceState(page, key))?.pending.length).toBe(0);
+    await page.reload();
+    await expect(comments(page)).toContainText("A reconnect cannot lose this queued attempt");
+    expect((await app.runtime.inspect()).events.filter((event) => event.type === "CommentPosted")).toHaveLength(1);
+  } finally {
+    releaseOldPull();
+    await page.unroute(syncApi);
+  }
+});
+
 test("activity pages older facts for one issue without downloading workspace history", async ({ page, app }) => {
   const initialIssue = (await app.runtime.inspect()).issues.find((issue) => issue.id === app.issueId)!;
   const initialized = await app.runtime.fetch(
