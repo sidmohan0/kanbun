@@ -6,6 +6,7 @@ export class WorkspaceContextError extends Error {
   constructor(
     message: string,
     readonly authenticationRequired = false,
+    readonly accessDenied = false,
   ) {
     super(message);
   }
@@ -63,6 +64,7 @@ export async function resolveWorkspaceContext(): Promise<WorkspaceContext> {
     throw new WorkspaceContextError(
       `/api/context: HTTP ${response.status}`,
       response.status === 401 || response.status === 403,
+      response.status === 403,
     );
   }
   let value: unknown;

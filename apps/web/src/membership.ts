@@ -40,6 +40,8 @@ export async function membershipRequest(path: string, input?: object): Promise<u
   }
   if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400))
     throw new MembershipError("Sign in again with the invited account, then reopen this link.", 401);
+  if (response.status === 401)
+    throw new MembershipError("Your sign-in has expired. Sign in with the invited email, then reopen this link.", 401);
   let value: unknown;
   try {
     value = await response.json();

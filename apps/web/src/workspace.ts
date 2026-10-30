@@ -43,10 +43,12 @@ export type WorkspaceSnapshot = {
   error: string | null;
   context: WorkspaceContext | null;
   authenticationRequired: boolean;
+  accessDenied: boolean;
 };
 
 let context: WorkspaceContext | null = null;
 let authenticationRequired = false;
+let accessDenied = false;
 const listeners = new Set<() => void>();
 const deferredRejections = new Map<number, WorkspaceRejection>();
 let client: SyncClient<typeof mutators> | null = null;
@@ -87,6 +89,7 @@ let snapshot: WorkspaceSnapshot = {
   error,
   context,
   authenticationRequired,
+  accessDenied,
 };
 
 const message = (value: unknown) => (value instanceof Error ? value.message : String(value));
@@ -148,6 +151,7 @@ function publish() {
     status,
     context: authenticationRequired ? null : context,
     authenticationRequired,
+    accessDenied,
     pending: authenticationRequired ? 0 : pending.length,
     pendingIssueIds: authenticationRequired
       ? []
@@ -221,8 +225,12 @@ function changed() {
   publish();
 }
 
-function blockAuthentication(message = "Your session is no longer authorized. Sign in again and reload this page.") {
+function blockAuthentication(
+  message = "Your session is no longer authorized. Sign in again and reload this page.",
+  denied = false,
+) {
   authenticationRequired = true;
+  accessDenied = denied;
   phase = "failed";
   error = message;
   realtimeRequested = false;
@@ -242,7 +250,7 @@ async function workspaceFetch(input: RequestInfo | URL, init?: RequestInit): Pro
       response.type === "opaqueredirect" ||
       (response.status >= 300 && response.status < 400))
   )
-    blockAuthentication();
+    blockAuthentication(undefined, response.status === 403);
   if (authenticationRequired) throw new Error(error ?? "Authentication required");
   return response;
 }
@@ -439,7 +447,7 @@ function start(): Promise<void> {
         });
     } catch (failure) {
       if (failure instanceof WorkspaceContextError && failure.authenticationRequired)
-        blockAuthentication(message(failure));
+        blockAuthentication(message(failure), failure.accessDenied);
       phase = "failed";
       error = message(failure);
       publish();

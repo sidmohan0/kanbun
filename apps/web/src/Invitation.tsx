@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { workspaceContextSchema } from "@kanbun/sync";
 import { Mark } from "./brand/Mark";
-import { membershipRequest } from "./membership";
+import { MembershipError, membershipRequest } from "./membership";
 
 type InvitationDetails = { email: string; workspaceName: string; expiresAt: string | null; accepted: boolean };
 function enterWorkspace() {
@@ -14,6 +14,8 @@ export function Invitation({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signInRequired, setSignInRequired] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let active = true;
     void membershipRequest("/api/invitations/inspect", { token })
@@ -35,7 +37,10 @@ export function Invitation({ token }: { token: string }) {
         setDetails(value as InvitationDetails);
       })
       .catch((failure: unknown) => {
-        if (active) setError(failure instanceof Error ? failure.message : "This invitation could not be opened.");
+        if (active) {
+          setSignInRequired(failure instanceof MembershipError && failure.status === 401);
+          setError(failure instanceof Error ? failure.message : "This invitation could not be opened.");
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -43,7 +48,7 @@ export function Invitation({ token }: { token: string }) {
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, attempt]);
   async function accept() {
     setAccepting(true);
     setError(null);
@@ -52,6 +57,7 @@ export function Invitation({ token }: { token: string }) {
       if (!result.success) throw new Error("The server returned an invalid workspace identity.");
       enterWorkspace();
     } catch (failure) {
+      setSignInRequired(failure instanceof MembershipError && failure.status === 401);
       setError(failure instanceof Error ? failure.message : "This invitation could not be accepted.");
       setAccepting(false);
     }
@@ -64,12 +70,36 @@ export function Invitation({ token }: { token: string }) {
           <span>kanbun</span>
         </div>
         <p className="eyebrow">WORKSPACE INVITATION</p>
-        <h1>{details ? `Join ${details.workspaceName}` : "Your invitation"}</h1>
+        <h1>
+          {signInRequired
+            ? "Sign in to accept your invitation"
+            : details
+              ? `Join ${details.workspaceName}`
+              : "Your invitation"}
+        </h1>
         {loading && <p>Checking your invitation…</p>}
         {error && (
           <div className="notice" role="alert">
             {error}
           </div>
+        )}
+        {error && (
+          <button
+            className="button"
+            disabled={loading || accepting}
+            onClick={() => {
+              if (signInRequired) location.reload();
+              else {
+                setLoading(true);
+                setDetails(null);
+                setError(null);
+                setSignInRequired(false);
+                setAttempt((value) => value + 1);
+              }
+            }}
+          >
+            {signInRequired ? "Sign in again" : "Check invitation again"}
+          </button>
         )}
         {details && (
           <>
@@ -87,9 +117,11 @@ export function Invitation({ token }: { token: string }) {
                 </button>
               </>
             ) : (
-              <button className="button primary" disabled={accepting} onClick={() => void accept()}>
-                {accepting ? "Joining workspace…" : "Accept invitation"}
-              </button>
+              !signInRequired && (
+                <button className="button primary" disabled={accepting} onClick={() => void accept()}>
+                  {accepting ? "Joining workspace…" : "Accept invitation"}
+                </button>
+              )
             )}
           </>
         )}
@@ -99,6 +131,10 @@ export function Invitation({ token }: { token: string }) {
             is no longer valid.
           </p>
         )}
+        <p className="members-description">
+          No separate Kanbun registration is needed. Use the email your workspace owner invited. To use a different
+          account, open this complete invitation link in a private browser window and sign in there.
+        </p>
       </div>
     </main>
   );

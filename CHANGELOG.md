@@ -48,6 +48,8 @@ preparation moves them to a dated version heading.
 
 ### Fixed
 
+- Workspace entry now distinguishes missing access from expired sign-in, explains invitation sharing, and lets invitees retry with the correct account without losing their invitation link.
+
 - Reconnect and focus signals received during an older refresh now queue a fresh synchronization pass, so a failed offline push cannot leave a restored outbox waiting for another user action.
 
 - Verification logs and browser traces now stay inside the devcontainer until completion, then export receipts and diagnostic artifacts on success or failure, avoiding shared-mount permission errors without suppressing failed checks or exports.
