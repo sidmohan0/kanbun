@@ -138,3 +138,8 @@ offline reload, and real issue-history pagination.
 
 The remaining vocabulary, complete workspace replay, and branch review UI remain later steps.
 The [hosted preview](hosted-preview.md) provides deployment and owner authentication.
+
+Parent changes and issue relationships also use recorded `IssueParentChanged`, `IssueRelationAdded`,
+and `IssueRelationRemoved` facts with the shared issue reducer. Cross-team references are preserved
+in canonical state; viewer projections and historical APIs omit currently inaccessible endpoints.
+See [issue structure and dependencies](ux/issue-relationships.md).

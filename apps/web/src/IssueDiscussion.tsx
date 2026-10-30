@@ -21,6 +21,12 @@ function activityText(event: DomainEvent, snapshot: WorkspaceSnapshot): string {
       return "created the issue";
     case "IssueTitled":
       return `renamed the issue to “${event.payload.title}”`;
+    case "IssueParentChanged":
+      return event.payload.parentId ? "changed the parent issue" : "removed the parent issue";
+    case "IssueRelationAdded":
+      return `added a ${event.payload.relationType === "blocks" ? "blocking dependency" : "related issue"}`;
+    case "IssueRelationRemoved":
+      return "removed an issue relationship";
     case "IssueDescribed":
       return "updated the description";
     case "IssuePrioritized":

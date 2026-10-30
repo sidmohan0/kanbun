@@ -43,6 +43,36 @@ import { WorkspaceBranches, type CreateBranchOptions } from "./branches";
 import { BranchMerger, type BranchPreview, type BranchMergeResult, type MergeBranchOptions } from "./branchMerge";
 import type { Store } from "../store";
 
+/** References never disclose issue identifiers outside the viewer's current team access. */
+function issueVisible(view: Store, teams: string[], id: unknown): boolean {
+  if (typeof id !== "string") return false;
+  const issue = view.get("issue", id);
+  return !!issue && teams.includes(issue.teamId);
+}
+function relationVisible(view: Store, teams: string[], link: Row<"issueRelation">): boolean {
+  return issueVisible(view, teams, link.issueId) && issueVisible(view, teams, link.relatedIssueId);
+}
+function visibleIssue(view: Store, teams: string[], issue: Row<"issue">): Row<"issue"> {
+  return issue.parentId && !issueVisible(view, teams, issue.parentId)
+    ? { ...issue, parentId: null, subIssueSortOrder: null }
+    : issue;
+}
+function referencesVisible(
+  view: Store,
+  teams: string[],
+  model: string,
+  value: Record<string, unknown> | null,
+): boolean {
+  if (!value) return true;
+  const references =
+    model === "issueRelation"
+      ? [value["issueId"], value["relatedIssueId"]]
+      : model === "issue"
+        ? [value["parentId"]]
+        : [value["issueId"]];
+  return references.every((id) => id == null || issueVisible(view, teams, id));
+}
+
 export type CommitListener = (seq: number, branchId: string) => void;
 
 export type ServerOptions = {
@@ -358,6 +388,11 @@ export class SyncServer {
                 notificationSubscriptionVisible(view, userId, teams, row as Row<"notificationSubscription">)),
           ) as Record<string, unknown>[];
       }
+      if (rows.issue) rows.issue = rows.issue.map((issue) => visibleIssue(view, teams, issue as Row<"issue">));
+      if (rows.issueRelation)
+        rows.issueRelation = rows.issueRelation.filter((link) =>
+          relationVisible(view, teams, link as Row<"issueRelation">),
+        );
       this.touchClient(clientId, client.lastMutationId, teams.join(","));
       return { seq, lastMutationId: client.lastMutationId, rows, ...(branchId === "main" ? {} : { branchId }) };
     });
@@ -705,14 +740,68 @@ export class SyncServer {
               (!!notification && notificationVisible(view, userId, teams, notification))) &&
             (r["model"] !== "notificationSubscription" ||
               (!!subscription && notificationSubscriptionVisible(view, userId, teams, subscription)));
+          const model = r["model"] as ModelName;
+          if (model === "issue" || model === "issueRelation") {
+            const current =
+              model === "issue"
+                ? view.get("issue", String(r["row_id"]))
+                : view.get("issueRelation", String(r["row_id"]));
+            const allowed =
+              visible &&
+              !!current &&
+              (model === "issue"
+                ? teams.includes((current as Row<"issue">).teamId)
+                : relationVisible(view, teams, current as Row<"issueRelation">));
+            let patch = allowed && r["patch"] ? (JSON.parse(String(r["patch"])) as Record<string, unknown>) : null;
+            if (allowed && model === "issueRelation") patch = current as Record<string, unknown>;
+            if (allowed && model === "issue" && patch && ("parentId" in patch || (current as Row<"issue">).parentId)) {
+              const projected = visibleIssue(view, teams, current as Row<"issue">);
+              patch.parentId = projected.parentId;
+              patch.subIssueSortOrder = projected.subIssueSortOrder;
+            }
+            return {
+              seq: Number(r["seq"]),
+              model,
+              id: String(r["row_id"]),
+              op: allowed ? ("upsert" as const) : ("delete" as const),
+              patch,
+            };
+          }
           return {
             seq: Number(r["seq"]),
-            model: r["model"] as ModelName,
+            model,
             id: r["row_id"] as string,
             op: visible ? (r["op"] as "upsert" | "delete") : "delete",
             patch: visible && r["patch"] ? (JSON.parse(String(r["patch"])) as Record<string, unknown>) : null,
           };
         });
+      // Moving either endpoint can change a reference's visibility without changing its row.
+      // Refresh those references so existing browser caches revoke and regain them on the same pull.
+      const changedIssues = new Set(entries.filter((entry) => entry.model === "issue").map((entry) => entry.id));
+      if (changedIssues.size) {
+        for (const child of view.list("issue")) {
+          if (!child.parentId || !changedIssues.has(child.parentId) || !teams.includes(child.teamId)) continue;
+          entries.push({
+            seq,
+            model: "issue",
+            id: child.id,
+            op: "upsert",
+            patch: visibleIssue(view, teams, child) as Record<string, unknown>,
+          });
+        }
+        for (const link of view.list("issueRelation")) {
+          if (!changedIssues.has(link.issueId) && !changedIssues.has(link.relatedIssueId)) continue;
+          if (!teams.includes(link.teamId)) continue;
+          const allowed = relationVisible(view, teams, link);
+          entries.push({
+            seq,
+            model: "issueRelation",
+            id: link.id,
+            op: allowed ? "upsert" : "delete",
+            patch: allowed ? (link as Record<string, unknown>) : null,
+          });
+        }
+      }
       return {
         seq,
         lastMutationId: client.lastMutationId,
@@ -795,6 +884,14 @@ export class SyncServer {
         )
         .map(decodeEvent);
       for (const event of page) {
+        if (event.entityType === "issue") {
+          const payload = event.payload as Record<string, unknown>;
+          if (
+            !referencesVisible(view, teams, "issue", payload) ||
+            (typeof payload["relatedIssueId"] === "string" && !issueVisible(view, teams, payload["relatedIssueId"]))
+          )
+            continue;
+        }
         const parentId =
           event.entityType === "issue" ? event.entityId : event.entityType === "comment" ? event.payload.issueId : null;
         if (parentId !== null) {
@@ -874,7 +971,24 @@ export class SyncServer {
           const notification = view.get("notification", String(row["row_id"]));
           if (!notification || !notificationVisible(view, userId, teams, notification)) continue;
         }
-        if (model === "issue" || model === "comment" || model === "documentContent") {
+        {
+          const patch = row["patch"] ? (JSON.parse(String(row["patch"])) as Record<string, unknown>) : null;
+          const prev = row["prev"] ? (JSON.parse(String(row["prev"])) as Record<string, unknown>) : null;
+          if (!referencesVisible(view, teams, model, patch) || !referencesVisible(view, teams, model, prev)) continue;
+        }
+        if (
+          [
+            "issue",
+            "comment",
+            "documentContent",
+            "issueRelation",
+            "issueSubscription",
+            "issueLabelLink",
+            "reaction",
+            "attachment",
+            "notification",
+          ].includes(model)
+        ) {
           const patch = row["patch"] ? (JSON.parse(String(row["patch"])) as Record<string, unknown>) : null;
           const prev = row["prev"] ? (JSON.parse(String(row["prev"])) as Record<string, unknown>) : null;
           const parentId =

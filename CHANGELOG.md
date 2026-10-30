@@ -7,6 +7,7 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Issue details now support sub-issues, parent selection, and cross-team blocking or related links, with inverse views, cycle validation, offline recovery, and access-aware relationship visibility.
 - Added team-scoped issue boards alongside list views, sharing filters and sorting, with drag or keyboard status changes and existing offline recovery.
 - Added owner workspace naming and team/workflow settings, including team creation, custom statuses, default status selection and atomic category reordering, with server permissions and offline team-change recovery.
 

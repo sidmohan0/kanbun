@@ -39,6 +39,19 @@ export function requireIssue(ctx: DecideContext, issueId: string): Row<"issue"> 
   return issue;
 }
 
+/** Validate the whole parent chain, without a depth cap or revealing inaccessible ancestors. */
+function requireParent(ctx: DecideContext, issueId: string, parentId: string): void {
+  if (issueId === parentId) throw new MutationError("an issue cannot be its own parent", "invalid");
+  requireIssue(ctx, parentId);
+  const seen = new Set([issueId]);
+  let cursor: Row<"issue"> | undefined = ctx.store.get("issue", parentId);
+  while (cursor) {
+    if (seen.has(cursor.id)) throw new MutationError("cycle in parent chain", "invalid");
+    seen.add(cursor.id);
+    cursor = cursor.parentId ? ctx.store.get("issue", cursor.parentId) : undefined;
+  }
+}
+
 /** Acting on another user's rows under an issue takes a team admin. */
 function requireTeamAdminOrSelf(ctx: MutatorContext, issueId: string): void {
   const issue = ctx.store.get("issue", issueId);
@@ -246,21 +259,7 @@ function runLegacyIssueUpdate(ctx: MutatorContext, args: IssueUpdateArgs, combin
     }
   }
   if (p.delegateId !== undefined) patch.delegateId = p.delegateId;
-  if (p.parentId !== undefined && p.parentId !== issue.parentId) {
-    if (p.parentId) {
-      if (p.parentId === issue.id) throw new MutationError("an issue cannot be its own parent", "invalid");
-      let cursor = ctx.store.get("issue", p.parentId);
-      if (!cursor) throw new MutationError("parent not found", "not_found");
-      for (let depth = 0; cursor && depth < 64; depth++) {
-        if (cursor.id === issue.id) throw new MutationError("cycle in parent chain", "invalid");
-        cursor = cursor.parentId ? ctx.store.get("issue", cursor.parentId) : undefined;
-      }
-      patch.subIssueSortOrder =
-        p.subIssueSortOrder ??
-        afterMax(ctx.store.maxOf("issue", "subIssueSortOrder", { parentId: p.parentId }) ?? undefined);
-    } else patch.subIssueSortOrder = null;
-    patch.parentId = p.parentId;
-  } else if (p.subIssueSortOrder !== undefined) patch.subIssueSortOrder = p.subIssueSortOrder;
+  if (p.subIssueSortOrder !== undefined) patch.subIssueSortOrder = p.subIssueSortOrder;
   if (p.projectId !== undefined && p.projectId !== issue.projectId) {
     patch.projectId = p.projectId;
     patch.addedToProjectAt = p.projectId ? now : null;
@@ -378,8 +377,7 @@ export const mutators = {
       if (!state || state.teamId !== team.id || state.archivedAt)
         throw new MutationError("state not in team", "invalid");
       if (args.assigneeId) requireAssignee(ctx, team, args.assigneeId);
-      if (args.parentId && !ctx.store.get("issue", args.parentId))
-        throw new MutationError("parent not found", "not_found");
+      if (args.parentId) requireParent(ctx, args.id, args.parentId);
       if ((args.labelIds?.length ?? 0) !== (args.labelLinkIds?.length ?? 0))
         throw new MutationError("labelLinkIds must match labelIds", "invalid");
 
@@ -487,6 +485,20 @@ export const mutators = {
       if (moving && effectiveAssignee) requireAssignee(ctx, team, effectiveAssignee);
       const subject = { entityType: "issue" as const, entityId: issue.id, teamId: team.id, scopeUserId: null };
       const events: PendingEvent[] = [];
+      if (p.parentId) requireParent(ctx, issue.id, p.parentId);
+      if (p.parentId !== undefined && p.parentId !== issue.parentId) {
+        events.push({
+          ...subject,
+          type: "IssueParentChanged",
+          payload: {
+            parentId: p.parentId,
+            subIssueSortOrder: p.parentId
+              ? (p.subIssueSortOrder ??
+                afterMax(ctx.store.maxOf("issue", "subIssueSortOrder", { parentId: p.parentId }) ?? undefined))
+              : null,
+          },
+        });
+      }
       if (p.title !== undefined) {
         const title = p.title.trim();
         if (!title) throw new MutationError("title is required", "invalid");
@@ -523,6 +535,10 @@ export const mutators = {
       delete patch.title;
       delete patch.priority;
       delete patch.assigneeId;
+      if (patch.parentId !== undefined) {
+        if (patch.parentId !== ctx.store.get("issue", args.id)?.parentId) delete patch.subIssueSortOrder;
+        delete patch.parentId;
+      }
       if (ctx.actor.type === "user") delete patch.stateId;
       if (!Object.values(patch).some((value) => value !== undefined)) return;
       if ((ctx.branchId ?? "main") !== "main") throw new MutationError("This command is not supported on branches");
@@ -657,43 +673,76 @@ export const mutators = {
     },
   }),
 
-  issueRelationCreate: defineMutator({
+  issueRelationCreate: defineEventMutator({
     args: z.object({
       id,
       issueId: id,
       relatedIssueId: id,
       type: z.enum(["blocks", "duplicate", "related", "similar"]),
     }),
-    description: "Relate two issues (blocks, duplicate, related, similar).",
-    run(ctx, args) {
-      if (args.issueId === args.relatedIssueId) throw new MutationError("an issue cannot relate to itself", "invalid");
+    description: "Relate two accessible issues. Blocks is directed; other relationships are symmetric.",
+    decide(ctx, args) {
+      if ((ctx.branchId ?? "main") !== "main") throw new MutationError("This command is not supported on branches");
+      if (args.issueId === args.relatedIssueId) throw new MutationError("An issue cannot relate to itself", "invalid");
       const issue = requireIssue(ctx, args.issueId);
       requireIssue(ctx, args.relatedIssueId);
-      const dup = ctx.store
-        .list("issueRelation", { issueId: args.issueId, relatedIssueId: args.relatedIssueId })
-        .some((r) => r.type === args.type);
-      if (dup) return;
-      ctx.store.insert("issueRelation", {
-        id: args.id,
-        teamId: issue.teamId,
-        issueId: args.issueId,
-        relatedIssueId: args.relatedIssueId,
-        type: args.type,
-        createdAt: ctx.now,
-        updatedAt: ctx.now,
-      } as Row<"issueRelation">);
+      const links = ctx.store.list("issueRelation");
+      if (
+        links.some(
+          (r) =>
+            r.type === args.type &&
+            ((r.issueId === args.issueId && r.relatedIssueId === args.relatedIssueId) ||
+              (args.type !== "blocks" && r.issueId === args.relatedIssueId && r.relatedIssueId === args.issueId)),
+        )
+      )
+        return [];
+      if (args.type === "blocks") {
+        const visited = new Set<string>();
+        const remaining = [args.relatedIssueId];
+        while (remaining.length) {
+          const current = remaining.pop()!;
+          if (current === args.issueId) throw new MutationError("This dependency would create a cycle", "invalid");
+          if (visited.has(current)) continue;
+          visited.add(current);
+          for (const link of links)
+            if (link.type === "blocks" && link.issueId === current) remaining.push(link.relatedIssueId);
+        }
+      }
+      return [
+        {
+          type: "IssueRelationAdded",
+          entityType: "issue",
+          entityId: issue.id,
+          teamId: issue.teamId,
+          scopeUserId: null,
+          payload: { linkId: args.id, relatedIssueId: args.relatedIssueId, relationType: args.type },
+        },
+      ];
     },
+    apply: applyIssueEvent,
   }),
 
-  issueRelationDelete: defineMutator({
+  issueRelationDelete: defineEventMutator({
     args: z.object({ id }),
-    description: "Remove an issue relation.",
-    run(ctx, args) {
-      const r = ctx.store.get("issueRelation", args.id);
-      if (!r) return;
-      requireIssue(ctx, r.issueId);
-      ctx.store.delete("issueRelation", args.id);
+    description: "Remove a relation only when both endpoints are accessible.",
+    decide(ctx, args) {
+      if ((ctx.branchId ?? "main") !== "main") throw new MutationError("This command is not supported on branches");
+      const link = ctx.store.get("issueRelation", args.id);
+      if (!link) return [];
+      const issue = requireIssue(ctx, link.issueId);
+      requireIssue(ctx, link.relatedIssueId);
+      return [
+        {
+          type: "IssueRelationRemoved",
+          entityType: "issue",
+          entityId: issue.id,
+          teamId: issue.teamId,
+          scopeUserId: null,
+          payload: { linkId: link.id, relatedIssueId: link.relatedIssueId },
+        },
+      ];
     },
+    apply: applyIssueEvent,
   }),
 
   issueLabelCreate: defineMutator({
