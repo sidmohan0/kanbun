@@ -247,10 +247,28 @@ test("private-team access removal hides cached inbox updates and removes that pe
   await selectPrincipal(memberContext, membership.origin, "member");
   const owner = await ownerContext.newPage(),
     recipient = await memberContext.newPage();
+  let releaseOwnerPull = () => {};
   try {
     await Promise.all([open(owner, membership, `#issues/${issueId}`), open(recipient, membership, "#inbox")]);
     await expect(inbox(recipient)).toContainText("Private inbox material");
     await mention(owner.locator(".comment-compose"), member.actor.id);
+    const selectedMentions = owner
+      .locator(".comment-compose")
+      .getByRole("list", { name: "Mention recipients", exact: true });
+    await expect(selectedMentions).toContainText("Preview member");
+    // Hold the owner's next pull before revocation. The recipient can process removal
+    // while the owner still has the old membership snapshot, matching the CI failure.
+    let ownerPullStarted = false;
+    const ownerPull = new Promise<void>((resolve) => {
+      releaseOwnerPull = resolve;
+    });
+    await owner.route("**/sync/pull?**", async (route) => {
+      ownerPullStarted = true;
+      await ownerPull;
+      await route.continue();
+    });
+    await owner.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect.poll(() => ownerPullStarted).toBe(true);
     await push(membership, [{ name: "teamMembershipDelete", args: { teamId, userId: member.actor.id } }]);
     await expect(inbox(recipient).getByText("Private inbox material", { exact: true })).toHaveCount(0);
     await expect(inbox(recipient)).toContainText("No updates in your inbox yet.");
@@ -260,6 +278,11 @@ test("private-team access removal hides cached inbox updates and removes that pe
         .getByRole("combobox", { name: "Mention teammate", exact: true })
         .locator(`option[value="${member.actor.id}"]`),
     ).toHaveCount(0);
+    // Selected people are already absent from the available-options list, so that
+    // old assertion cannot prove the owner's membership projection is up to date.
+    await expect(selectedMentions).not.toContainText("(unavailable)");
+    releaseOwnerPull();
+    await expect(selectedMentions).toContainText("Preview member (unavailable)");
     await owner
       .getByRole("textbox", { name: "Add a comment", exact: true })
       .fill("This recipient no longer has access.");
@@ -271,6 +294,7 @@ test("private-team access removal hides cached inbox updates and removes that pe
     await recipient.reload();
     await expect(inbox(recipient)).toContainText("No updates in your inbox yet.");
   } finally {
+    releaseOwnerPull();
     await Promise.allSettled([ownerContext.close(), memberContext.close()]);
   }
 });
