@@ -49,6 +49,11 @@ test("discussion edits, replies, resolve and reopen converge automatically and s
     second = await secondContext.newPage();
   try {
     await Promise.all([open(first, app), open(second, app)]);
+    await first.getByRole("combobox", { name: "Assignee", exact: true }).selectOption("user-bob");
+    const assignmentIntent = activity(second).locator("li").filter({ hasText: "assigned the issue to Bob" });
+    await expect(assignmentIntent).toHaveCount(1);
+    await expect(assignmentIntent).toContainText(/subscribed.*to issue updates/);
+    await expect(assignmentIntent.locator("strong")).toHaveCount(1);
     await first.getByRole("textbox", { name: "Add a comment", exact: true }).fill("Please review the launch decision.");
     await first.getByRole("button", { name: "Post comment", exact: true }).click();
     await expect(comments(second)).toContainText("Please review the launch decision.");

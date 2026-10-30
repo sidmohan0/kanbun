@@ -41,7 +41,9 @@ function activityText(event: DomainEvent, snapshot: WorkspaceSnapshot): string {
     case "IssueRestored":
       return "restored the issue from the archive";
     case "SubscriberAdded":
-      return "subscribed to issue updates";
+      return event.payload.userId === event.actor.id
+        ? "subscribed to issue updates"
+        : `subscribed ${actorName({ id: event.payload.userId, type: "user" }, snapshot)} to issue updates`;
     case "CommentPosted":
       return event.payload.parentId ? "replied to a comment" : "posted a comment";
     case "CommentEdited":
@@ -185,6 +187,16 @@ export function IssueDiscussion({
   const [loadingOlder, setLoadingOlder] = useState(false);
   const activityLoaded = useRef(false);
   const newestSeen = useRef(0);
+  const groups = [
+    ...events
+      .reduce((groups, event) => {
+        const group = groups.get(event.txnId) ?? [];
+        group.push(event);
+        groups.set(event.txnId, group);
+        return groups;
+      }, new Map<string, DomainEvent[]>())
+      .values(),
+  ];
   const comments = snapshot.comments
     .filter((comment) => comment.issueId === issue.id)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
@@ -322,12 +334,19 @@ export function IssueDiscussion({
         <h3>Activity</h3>
         {!events.length && !activityError && <p className="description-help">No recorded activity yet.</p>}
         <ol className="issue-activity">
-          {events.map((event) => (
-            <li key={event.seq}>
-              <strong>{actorName(event.actor, snapshot)}</strong> {activityText(event, snapshot)}
-              <time dateTime={new Date(event.ts).toISOString()}>{new Date(event.ts).toLocaleString()}</time>
-            </li>
-          ))}
+          {groups.map((group) => {
+            const event = group[0]!;
+            return (
+              <li key={event.txnId}>
+                <strong>{actorName(event.actor, snapshot)}</strong>{" "}
+                {[...group]
+                  .sort((a, b) => a.eventIndex - b.eventIndex)
+                  .map((fact) => activityText(fact, snapshot))
+                  .join("; ")}
+                <time dateTime={new Date(event.ts).toISOString()}>{new Date(event.ts).toLocaleString()}</time>
+              </li>
+            );
+          })}
         </ol>
         {activityError && (
           <p className="notice" role="alert">

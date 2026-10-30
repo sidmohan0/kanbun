@@ -156,6 +156,12 @@ describe("semantic issue events", () => {
   it("does not deliver an old queued private comment into a recreated public issue", () => {
     const { db, server } = fixture();
     try {
+      expect(
+        server.push(ALICE, {
+          clientId: "older-visible",
+          mutations: [{ id: 1, name: "issueCreate", ts: CREATED, args: create(id(852), id(853)) }],
+        }),
+      ).toMatchObject({ ok: true, rejected: [] });
       push(server, 1, "teamUpdate", { id: TEAM, patch: { visibility: "private" } });
       push(server, 2, "issueCreate", create(ISSUE, id(12)));
       const previous = issueIncarnation(server.store.get("issue", ISSUE)!);
@@ -187,6 +193,11 @@ describe("semantic issue events", () => {
       expect(server.store.list("comment", { issueId: ISSUE })).toEqual([]);
       expect(server.events(BOB, { issueId: ISSUE }).some((event) => event.type === "CommentPosted")).toBe(false);
       expect(server.events(ALICE, { issueId: ISSUE }).map((event) => event.type)).toEqual(["IssueCreated"]);
+      expect(server.events(ALICE, { order: "desc", limit: 2 }).map((event) => event.entityId)).toEqual([
+        ISSUE,
+        id(852),
+      ]);
+      expect(server.activity(ALICE, { model: "issue", limit: 2 }).map((row) => row.id)).toEqual([ISSUE, id(852)]);
     } finally {
       db.close();
     }

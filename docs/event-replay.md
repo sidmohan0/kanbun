@@ -126,6 +126,10 @@ pagination defaults and limits remain unchanged. Human-readable activity resolve
 the workspace's existing user and agent rows, including known inactive authors.
 Issue-scoped history starts at the current issue's creation boundary. Incremental activity refreshes
 fill intervening pages when more than one page of new facts arrived while the browser was away.
+The UI groups facts by transaction, displaying the actor and time once for each intent. Loading an
+older page completes a group split by a page boundary. General semantic history and raw issue/comment
+patch activity also require current parent visibility and incarnation, in addition to recorded event
+scope, so moving or recreating an issue cannot expose retired bodies through an alternate query.
 
 Independent golden facts prove memory/SQLite replay of posting, replies, editing, resolution,
 reopening, and finalized subscriptions. Other checks cover author-only edits, malformed thread
