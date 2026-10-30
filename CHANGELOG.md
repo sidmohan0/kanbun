@@ -34,6 +34,7 @@ preparation moves them to a dated version heading.
 
 ### Fixed
 
+- Verification logs and browser traces now stay inside the devcontainer until completion, then export receipts and diagnostic artifacts on success or failure, avoiding shared-mount permission errors without suppressing failed checks or exports.
 - Deployment credentials now tolerate pasted whitespace and reject malformed values without including secrets in HTTP header errors.
 
 - Persistent clients now advance mutation IDs after server acknowledgements, save drained rejection queues, and report browser-storage failures instead of silently replacing saved state.
