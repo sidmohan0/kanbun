@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added My Issues, text search, combined issue filters, sorting, and responsive property summaries, with measured 5,000-issue working-set rendering.
+
 - Added issue discussion with attributed comments, one-level replies, thread resolution and reopening, durable offline submission, and paginated issue activity backed by replayable semantic facts.
 
 - Added private scheduled workspace backups with full directory, SQL engine state, collaborative bodies, verified manifests, and restoration into fresh isolated namespaces.
