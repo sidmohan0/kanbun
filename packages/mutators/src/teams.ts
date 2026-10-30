@@ -23,6 +23,7 @@ export const DEFAULT_STATES: {
 /** Team admin = workspace admin/owner, or a team owner. Agents never administer teams. */
 export function requireTeamAdmin(ctx: MutatorContext, teamId: string): void {
   if (ctx.actor.type !== "user") throw new MutationError("team admin required", "forbidden");
+  requireTeamAccess(ctx, teamId);
   const me = ctx.store.get("user", ctx.actorId);
   if (me?.role === "admin" || me?.role === "owner") return;
   const m = ctx.store.list("teamMembership", { teamId, userId: ctx.actorId })[0];
@@ -48,8 +49,8 @@ export function requireTeamAccess(ctx: DecideContext, teamId: string): Row<"team
 
 const teamPatch = z
   .object({
-    name: z.string().min(1).max(80),
-    displayName: z.string().min(1).max(80),
+    name: z.string().trim().min(1).max(80),
+    displayName: z.string().trim().min(1).max(80),
     description: nullable(z.string()),
     icon: nullable(z.string()),
     color: nullable(color),
@@ -81,7 +82,7 @@ export const mutators = {
   teamCreate: defineMutator({
     args: z.object({
       id,
-      name: z.string().min(1).max(80),
+      name: z.string().trim().min(1).max(80),
       key: z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,6}$/, "1–7 letters or digits, starting with a letter"),
       icon: nullable(z.string()).optional(),
       color: nullable(color).optional(),
@@ -93,6 +94,14 @@ export const mutators = {
     }),
     description: "Create a team with its default workflow states; the caller becomes its first owner.",
     run(ctx, args) {
+      const creator = ctx.store.get("user", ctx.actorId);
+      if (
+        ctx.actor.type !== "user" ||
+        !creator?.active ||
+        creator.archivedAt ||
+        !["owner", "admin"].includes(creator.role)
+      )
+        throw new MutationError("workspace owner or admin required to create a team", "forbidden");
       const key = args.key.toUpperCase();
       if (ctx.store.list("team", { key }).length) throw new MutationError(`team key ${key} is taken`, "conflict");
       ctx.store.insert("team", {
@@ -207,7 +216,7 @@ export const mutators = {
     args: z.object({
       id,
       teamId: id,
-      name: z.string().min(1).max(40),
+      name: z.string().trim().min(1).max(40),
       type: stateType,
       color,
       description: nullable(z.string()).optional(),
@@ -235,15 +244,41 @@ export const mutators = {
     args: z.object({
       id,
       patch: z
-        .object({ name: z.string().min(1).max(40), color, description: nullable(z.string()), position: z.number() })
+        .object({
+          name: z.string().trim().min(1).max(40),
+          color,
+          description: nullable(z.string()),
+          position: z.number(),
+        })
         .partial(),
     }),
     description: "Rename, recolour or reorder a workflow state.",
     run(ctx, args) {
       const s = ctx.store.get("workflowState", args.id);
-      if (!s) throw new MutationError("state not found", "not_found");
+      if (!s || s.archivedAt) throw new MutationError("state not found", "not_found");
       requireTeamAdmin(ctx, s.teamId);
       ctx.store.patch("workflowState", args.id, { ...args.patch, updatedAt: ctx.now });
+    },
+  }),
+
+  workflowStateReorder: defineMutator({
+    args: z.object({ teamId: id, type: stateType, stateIds: z.array(id) }),
+    description: "Reorder the active states in one team's workflow category atomically.",
+    run(ctx, args) {
+      requireTeamAdmin(ctx, args.teamId);
+      const current = ctx.store
+        .list("workflowState", { teamId: args.teamId, type: args.type })
+        .filter((state) => !state.archivedAt);
+      const requested = new Set(args.stateIds);
+      if (
+        requested.size !== args.stateIds.length ||
+        requested.size !== current.length ||
+        current.some((state) => !requested.has(state.id))
+      )
+        throw new MutationError("workflow changed; refresh and reorder its current states", "conflict");
+      args.stateIds.forEach((stateId, position) =>
+        ctx.store.patch("workflowState", stateId, { position, updatedAt: ctx.now }),
+      );
     },
   }),
 
@@ -252,7 +287,7 @@ export const mutators = {
     description: "Archive a workflow state, moving its issues to another state in the same team.",
     run(ctx, args) {
       const s = ctx.store.get("workflowState", args.id);
-      if (!s) throw new MutationError("state not found", "not_found");
+      if (!s || s.archivedAt) throw new MutationError("state not found", "not_found");
       requireTeamAdmin(ctx, s.teamId);
       const target = ctx.store.get("workflowState", args.moveIssuesToStateId);
       if (!target || target.teamId !== s.teamId || target.archivedAt || target.id === s.id)

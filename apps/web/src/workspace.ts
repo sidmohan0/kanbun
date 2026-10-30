@@ -1,14 +1,16 @@
 import { eventSchema } from "@kanbun/events";
-import { uuidv7, type Row } from "@kanbun/model";
+import { uuidv7, WORKFLOW_STATE_TYPES, type Row } from "@kanbun/model";
 import { mutators } from "@kanbun/mutators";
 import {
   isPoke,
   issueIncarnation,
   notificationVisible,
+  workspaceContextSchema,
   type Mutation,
   type Transport,
   type WorkspaceContext,
 } from "@kanbun/sync";
+import { MembershipError, membershipRequest } from "./membership";
 import ReconnectingWebSocket from "partysocket/ws";
 import {
   IndexedDbPersister,
@@ -104,6 +106,10 @@ function issueId(mutation: Mutation): string | null {
 }
 
 function publish() {
+  const organization = client?.list("organization")[0];
+  if (!authenticationRequired && context?.mode === "hosted" && organization?.id === context.workspaceId)
+    context = { ...context, workspaceName: organization.name };
+
   const pending = client?.layerMutations(PENDING) ?? [];
   const pendingIds = new Set(pending.map((mutation) => mutation.id));
   // A server rejection that has left the outbox is ready to show alongside the
@@ -189,7 +195,12 @@ function publish() {
       (authenticationRequired ? undefined : client)
         ?.list("workflowState")
         .filter((state) => !state.archivedAt)
-        .sort((a, b) => a.position - b.position || compare(a.id, b.id)) ?? [],
+        .sort(
+          (a, b) =>
+            WORKFLOW_STATE_TYPES.indexOf(a.type) - WORKFLOW_STATE_TYPES.indexOf(b.type) ||
+            a.position - b.position ||
+            compare(a.id, b.id),
+        ) ?? [],
     members:
       (authenticationRequired ? undefined : client)
         ?.list("user")
@@ -331,6 +342,7 @@ async function initialize() {
   client.subscribe("issue", changed);
   client.subscribe("team", changed);
   for (const model of [
+    "organization",
     "workflowState",
     "user",
     "issueLabel",
@@ -526,6 +538,64 @@ export const workspace = {
       subscriptionId: uuidv7(),
       ...(assigneeId ? { assigneeId } : {}),
     });
+    publish();
+    flush(active);
+  },
+  async renameWorkspace(name: string): Promise<void> {
+    try {
+      const updated = workspaceContextSchema.parse(await membershipRequest("/api/workspace/name", { name }));
+      if (
+        !context ||
+        updated.workspaceId !== context.workspaceId ||
+        updated.actor.id !== context.actor.id ||
+        updated.admissionId !== context.admissionId
+      )
+        throw new Error("Workspace identity changed. Reload before changing settings.");
+      await refresh();
+    } catch (failure) {
+      if (failure instanceof MembershipError && (failure.status === 401 || failure.status === 403))
+        blockAuthentication(undefined, failure.status === 403);
+      throw failure;
+    }
+  },
+  createTeam(name: string, key: string): string {
+    const active = editableClient();
+    const id = uuidv7();
+    active.mutate("teamCreate", {
+      id,
+      name,
+      key,
+      membershipId: uuidv7(),
+      stateIds: { backlog: uuidv7(), todo: uuidv7(), inProgress: uuidv7(), done: uuidv7(), canceled: uuidv7() },
+    });
+    publish();
+    flush(active);
+    return id;
+  },
+  updateTeam(
+    id: string,
+    patch: { name?: string; displayName?: string; description?: string | null; defaultIssueStateId?: string },
+  ): void {
+    const active = editableClient();
+    active.mutate("teamUpdate", { id, patch });
+    publish();
+    flush(active);
+  },
+  createWorkflowState(teamId: string, name: string, type: Row<"workflowState">["type"], color: string): void {
+    const active = editableClient();
+    active.mutate("workflowStateCreate", { id: uuidv7(), teamId, name, type, color });
+    publish();
+    flush(active);
+  },
+  renameWorkflowState(id: string, name: string): void {
+    const active = editableClient();
+    active.mutate("workflowStateUpdate", { id, patch: { name } });
+    publish();
+    flush(active);
+  },
+  reorderWorkflowStates(teamId: string, type: Row<"workflowState">["type"], stateIds: string[]): void {
+    const active = editableClient();
+    active.mutate("workflowStateReorder", { teamId, type, stateIds });
     publish();
     flush(active);
   },

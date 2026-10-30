@@ -250,6 +250,17 @@ export async function startPreviewRuntime({
         const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
         await storage.exec("UPDATE sqlite_sequence SET seq = ? WHERE name = 'event_log'", sequence - 1);
       },
+      async directoryWorkspace() {
+        return environment.ACCOUNTS.prepare("SELECT id, name FROM workspaces WHERE id = ?").bind(workspaceId).first();
+      },
+      async failWorkspaceNameProjection(enabled: boolean) {
+        const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
+        await storage.exec(
+          enabled
+            ? "CREATE TRIGGER test_fail_workspace_name BEFORE UPDATE OF name ON organization BEGIN SELECT RAISE(ABORT, 'fixture name projection failure'); END"
+            : "DROP TRIGGER test_fail_workspace_name",
+        );
+      },
       async failDocumentPublication(enabled: boolean) {
         const storage = await harness.getWorker().getDurableObjectStorage("WORKSPACES", { name: workspaceId });
         await storage.exec(

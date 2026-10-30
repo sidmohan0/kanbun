@@ -36,6 +36,8 @@ export function preparePreview(
         },
         owner: { id: context.actor.id, name: context.name, email: context.email },
       });
+    if (organization && organization.name !== context.workspaceName)
+      server.system("workspaceNameSync", { id: context.workspaceId, name: context.workspaceName });
     let member = server.store.get("user", context.actor.id);
     const role = context.role === "owner" ? "owner" : "user";
     const newAdmission =
