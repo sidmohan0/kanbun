@@ -40,6 +40,8 @@ export type ClientOptions<M extends MutatorMap> = {
   actor: Actor;
   persister?: Persister;
   clientId?: string;
+  /** Fixed for this client's lifetime; use a separate client and persister per branch. */
+  branchId?: string;
   now?: () => string;
   /** Debounce before a push after a mutation, ms. */
   pushDelayMs?: number;
@@ -59,6 +61,7 @@ export const PENDING = "pending";
 
 export class SyncClient<M extends MutatorMap> {
   readonly canonical = new MemoryStore();
+  readonly branchId: string;
   /** Stable per installation: recovered from the persister on start() unless the caller fixed it. */
   clientId: string;
 
@@ -80,6 +83,8 @@ export class SyncClient<M extends MutatorMap> {
 
   constructor(private readonly opts: ClientOptions<M>) {
     this.clientId = opts.clientId ?? cryptoId();
+    this.branchId = opts.branchId ?? "main";
+    if (!this.branchId) throw new MutationError("branchId must not be empty");
     this.now = opts.now ?? (() => new Date().toISOString());
     this.pushDelayMs = opts.pushDelayMs ?? 10;
     this.layers = [{ name: PENDING, store: new OverlayStore(this.canonical), mutations: [], actor: opts.actor }];
@@ -147,6 +152,10 @@ export class SyncClient<M extends MutatorMap> {
   async start(): Promise<void> {
     const saved = await this.opts.persister?.load();
     const sameUser = saved?.userId === this.opts.actor.id;
+    if (saved && sameUser && (saved.branchId ?? "main") !== this.branchId) {
+      this.setStatus("error");
+      throw new MutationError("Persisted state belongs to another branch; use a separate persister", "conflict");
+    }
     if (saved && sameUser && !this.opts.clientId) this.clientId = saved.clientId;
     if (saved && sameUser && saved.clientId === this.clientId) {
       this.restore(saved);
@@ -168,10 +177,16 @@ export class SyncClient<M extends MutatorMap> {
     this.rebase(modelNames);
   }
 
+  private assertBranch(response: { branchId?: string }): void {
+    if ((response.branchId ?? "main") !== this.branchId)
+      throw new MutationError("Sync response belongs to another branch", "conflict");
+  }
+
   async bootstrap(): Promise<void> {
     this.setStatus("bootstrapping");
     try {
-      const b = await this.opts.transport.bootstrap(this.clientId);
+      const b = await this.opts.transport.bootstrap(this.clientId, this.branchId);
+      this.assertBranch(b);
       this.canonical.tables.clear();
       this.loaded.clear();
       for (const [model, rows] of Object.entries(b.rows) as [ModelName, Record<string, unknown>[]][]) {
@@ -220,6 +235,7 @@ export class SyncClient<M extends MutatorMap> {
       actorId: layer.actor.id,
       now: m.ts,
       server: false,
+      branchId: this.branchId,
       ...(m.reason !== undefined ? { reason: m.reason } : {}),
       ...(m.causationSeq !== undefined ? { causationSeq: m.causationSeq } : {}),
     };
@@ -300,7 +316,11 @@ export class SyncClient<M extends MutatorMap> {
         while (this.pending.mutations.length) {
           const batch = this.pending.mutations.slice(0, 200);
           this.setStatus("syncing");
-          const res = await this.opts.transport.push({ clientId: this.clientId, mutations: batch });
+          const res = await this.opts.transport.push({
+            clientId: this.clientId,
+            mutations: batch,
+            branchId: this.branchId,
+          });
           if (!res.ok) {
             // The server is ahead of us (another tab, or a lost response): resync and retry, but not forever.
             if (res.code === "gap" && ++gaps <= 3) {
@@ -309,6 +329,7 @@ export class SyncClient<M extends MutatorMap> {
             }
             throw new Error(`push failed: ${res.error}`);
           }
+          this.assertBranch(res);
           for (const r of res.rejected) {
             const m = this.pending.mutations.find((p) => p.id === r.id);
             if (m) this.opts.onRejected?.(m, r.error);
@@ -351,7 +372,12 @@ export class SyncClient<M extends MutatorMap> {
       try {
         do {
           this.pullAgain = false;
-          const res = await this.opts.transport.pull({ clientId: this.clientId, since: this.seq });
+          const res = await this.opts.transport.pull({
+            clientId: this.clientId,
+            since: this.seq,
+            branchId: this.branchId,
+          });
+          this.assertBranch(res);
           if (res.reset) {
             await this.bootstrap();
             continue;
@@ -450,7 +476,8 @@ export class SyncClient<M extends MutatorMap> {
     const key = `${model}/${parentId}`;
     if (this.loaded.has(key)) return;
     for (let attempt = 0; ; attempt++) {
-      const res = await this.opts.transport.load({ model, parentId });
+      const res = await this.opts.transport.load({ model, parentId, branchId: this.branchId });
+      this.assertBranch(res);
       if (res.seq >= this.seq || attempt >= 3) {
         for (const r of res.rows) this.canonical.put(model, r as never);
         break;
@@ -487,6 +514,7 @@ export class SyncClient<M extends MutatorMap> {
     await this.opts.persister.save({
       clientId: this.clientId,
       userId: this.opts.actor.id,
+      branchId: this.branchId,
       seq: this.seq,
       lastMutationId: this.lastConfirmed,
       pending: this.pending.mutations,

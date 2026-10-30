@@ -21,12 +21,14 @@ export type Mutation = {
 export type PushRequest = {
   clientId: string;
   mutations: Mutation[];
+  /** Omitted for the live main workspace. A client id belongs to one branch. */
+  branchId?: string;
 };
 
 export type PushRejected = { id: number; error: string };
 
 export type PushResponse =
-  | { ok: true; lastMutationId: number; seq: number; rejected: PushRejected[] }
+  | { ok: true; lastMutationId: number; seq: number; rejected: PushRejected[]; branchId?: string }
   | { ok: false; error: string; code: "unauthorized" | "gap" | "internal" };
 
 export type LogOp = "upsert" | "delete";
@@ -54,9 +56,11 @@ export type ActivityEntry = LogEntry & {
 export type PullRequest = {
   clientId: string;
   since: number;
+  branchId?: string;
 };
 
 export type PullResponse = {
+  branchId?: string;
   seq: number;
   lastMutationId: number;
   entries: LogEntry[];
@@ -65,6 +69,7 @@ export type PullResponse = {
 };
 
 export type BootstrapResponse = {
+  branchId?: string;
   seq: number;
   lastMutationId: number;
   rows: Partial<Record<ModelName, Record<string, unknown>[]>>;
@@ -73,9 +78,11 @@ export type BootstrapResponse = {
 export type LoadRequest = {
   model: ModelName;
   parentId: string;
+  branchId?: string;
 };
 
 export type LoadResponse = {
+  branchId?: string;
   seq: number;
   rows: Record<string, unknown>[];
 };
@@ -83,7 +90,7 @@ export type LoadResponse = {
 export type Poke = { type: "poke"; seq: number };
 
 export type Transport = {
-  bootstrap(clientId: string): Promise<BootstrapResponse>;
+  bootstrap(clientId: string, branchId?: string): Promise<BootstrapResponse>;
   push(req: PushRequest): Promise<PushResponse>;
   pull(req: PullRequest): Promise<PullResponse>;
   load(req: LoadRequest): Promise<LoadResponse>;

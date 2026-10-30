@@ -46,6 +46,29 @@ export const issueCreatedPayloadSchema = z.strictObject({
 
 export const issueTitledPayloadSchema = z.strictObject({ title });
 
+export const branchScopeSchema = z.strictObject({
+  teamIds: z.array(id).default([]),
+  projectIds: z.array(id).default([]),
+});
+
+export const branchCreatedPayloadSchema = z.strictObject({
+  name: z.string().trim().min(1).max(200),
+  baseSeq: z.number().int().nonnegative(),
+  ownerId: id,
+  ownerType: z.enum(ACTOR_TYPES),
+  ownerUserId: id,
+  scope: branchScopeSchema,
+});
+
+const branchCreatedIntent = z.strictObject({
+  entityType: z.literal("workspaceBranch"),
+  entityId: id,
+  teamId: z.null(),
+  scopeUserId: id,
+  type: z.literal("BranchCreated"),
+  payload: branchCreatedPayloadSchema,
+});
+
 const subject = {
   entityType: z.literal("issue"),
   entityId: id,
@@ -65,7 +88,11 @@ const issueTitledIntent = z.strictObject({
 });
 
 /** A decision carries business meaning; the execution boundary supplies provenance. */
-export const pendingEventSchema = z.discriminatedUnion("type", [issueCreatedIntent, issueTitledIntent]);
+export const pendingEventSchema = z.discriminatedUnion("type", [
+  issueCreatedIntent,
+  issueTitledIntent,
+  branchCreatedIntent,
+]);
 
 const actorSchema = z.strictObject({ id, type: z.enum(ACTOR_TYPES), via: id.optional() });
 const envelope = {
@@ -90,6 +117,7 @@ const envelope = {
 export const eventSchema = z.discriminatedUnion("type", [
   issueCreatedIntent.extend(envelope),
   issueTitledIntent.extend(envelope),
+  branchCreatedIntent.extend(envelope),
 ]);
 
 export type PendingEvent = z.infer<typeof pendingEventSchema>;
@@ -97,5 +125,6 @@ export type DomainEvent = z.infer<typeof eventSchema>;
 export type EventActor = z.infer<typeof actorSchema>;
 export type IssueCreatedEvent = Extract<DomainEvent, { type: "IssueCreated" }>;
 export type IssueTitledEvent = Extract<DomainEvent, { type: "IssueTitled" }>;
+export type BranchCreatedEvent = Extract<DomainEvent, { type: "BranchCreated" }>;
 export type IssueCreatedPayload = z.infer<typeof issueCreatedPayloadSchema>;
 export type IssueTitledPayload = z.infer<typeof issueTitledPayloadSchema>;

@@ -153,7 +153,7 @@ export const mutators = {
           scopeUserId: null,
           payload: {
             // Numbers are resolved while deciding on the authority and stored as facts for replay.
-            number: ctx.server ? team.issueCounter + 1 : 0,
+            number: ctx.server && (ctx.branchId ?? "main") === "main" ? team.issueCounter + 1 : 0,
             title,
             description: args.description ?? null,
             descriptionContentId: args.descriptionContentId ?? null,

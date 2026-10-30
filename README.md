@@ -47,6 +47,10 @@ shared reducers. Their recorded history can reproduce the same projections in me
 Other mutations still use the original patch-based path during the incremental migration. See
 [semantic event replay](docs/event-replay.md) for the supported scope and invariants.
 
+The same create/rename flow also supports [durable workspace branches](docs/workspace-branches.md).
+Branch rows survive restarts without changing main, while untouched reads follow live main.
+Branch merging and conflict handling are the next slice.
+
 ## How a write flows
 
 1. The client runs a command against its in-memory object pool and re-renders. For migrated commands, a read-only decision produces events that a shared reducer applies optimistically. The command is appended to a persisted queue.

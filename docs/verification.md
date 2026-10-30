@@ -66,6 +66,10 @@ mutators against a local HTTP adapter over a file-backed SQLite `SyncServer`. It
 - A committed mutation whose HTTP acknowledgement is lost survives a page reload and SQLite
   reopening. Retrying the identical request produces no duplicate issue or additional sync-log
   rows, and the following issue receives the next number.
+- A private workspace branch recovers an offline edit from IndexedDB and retries an unacknowledged
+  HTTP mutation after SQLite reopening. Main stays unchanged, branch-created issues keep provisional
+  numbers, and untouched branch reads receive later main changes. Main and branch tabs share one
+  browser context and IndexedDB while using separate persistence keys.
 
 This is a browser integration harness, with synthetic fixture actors. It does not exercise product
 UI, production authentication, or a deployed Worker. Sync API outages leave the test page's assets

@@ -451,14 +451,14 @@ describe("semantic issue events", () => {
     }
   });
 
-  it("rejects an unsupported branch event before changing a replay projection", () => {
+  it("rejects an event for a different workspace branch before changing a replay projection", () => {
     const { db, server } = fixture();
     try {
       const memory = new MemoryStore();
       copyProjection(server.store, memory);
       const before = projection(memory);
       const branchEvent = { ...structuredClone(GOLDEN[0]!), branchId: "agent-work" };
-      expect(() => applyIssueEvent(context(memory), branchEvent)).toThrow(/branches are not implemented/);
+      expect(() => applyIssueEvent(context(memory), branchEvent)).toThrow(/different branch/);
       expect(projection(memory)).toEqual(before);
     } finally {
       db.close();

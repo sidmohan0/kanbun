@@ -3,7 +3,14 @@
  * living inside the workspace Durable Object. Everything is synchronous
  * except the commit listener, which the DO uses to poke WebSockets.
  */
-import { modelNames, models, type ActorType, type ModelName } from "@kanbun/model";
+import {
+  modelNames,
+  models,
+  type ActorType,
+  type ModelName,
+  type BranchScope,
+  type WorkspaceBranch,
+} from "@kanbun/model";
 import type { DomainEvent } from "@kanbun/events";
 import {
   executeMutator,
@@ -28,8 +35,11 @@ import { tableMeta } from "../rows";
 import { applyMigrations, type SqlDriver, type SqlValue } from "./driver";
 import { SqliteStore, SYSTEM_TAG } from "./sqliteStore";
 import { appendEvent, decodeEvent } from "./eventLog";
+import { SqliteBranchStore } from "./branchStore";
+import { WorkspaceBranches, type CreateBranchOptions } from "./branches";
+import type { Store } from "../store";
 
-export type CommitListener = (seq: number) => void;
+export type CommitListener = (seq: number, branchId: string) => void;
 
 export type ServerOptions = {
   driver: SqlDriver;
@@ -45,10 +55,11 @@ export const SYSTEM_ACTOR: Actor = { id: "system", type: "system" };
 
 export class SyncServer {
   readonly store: SqliteStore;
-  private listeners = new Set<CommitListener>();
+  private listeners = new Set<{ notify: CommitListener; branchId: string }>();
   private readonly now: () => string;
   private readonly maxBatch: number;
   private readonly newTxnId: () => string;
+  private readonly branches: WorkspaceBranches;
 
   constructor(private readonly opts: ServerOptions) {
     this.store = new SqliteStore(opts.driver);
@@ -56,16 +67,68 @@ export class SyncServer {
     this.maxBatch = opts.maxBatch ?? 500;
     this.newTxnId = opts.newTxnId ?? randomId;
     if (opts.migrations) applyMigrations(opts.driver, opts.migrations);
+    this.branches = new WorkspaceBranches(
+      opts.driver,
+      this.store,
+      (actor) => this.branchPermissions(actor),
+      this.now,
+      this.newTxnId,
+    );
   }
 
-  onCommit(l: CommitListener): () => void {
-    this.listeners.add(l);
-    return () => this.listeners.delete(l);
+  /** Main is the default; branch subscribers also observe live-main commits. */
+  onCommit(notify: CommitListener, branchId = "main"): () => void {
+    const subscription = { notify, branchId: this.branchId(branchId) };
+    this.listeners.add(subscription);
+    return () => this.listeners.delete(subscription);
   }
 
-  currentSeq(): number {
-    const r = this.opts.driver.all(`SELECT COALESCE(MAX(seq), 0) AS seq FROM sync_log`)[0];
+  private emitCommit(seq: number, branchId: string): void {
+    for (const subscription of this.listeners) {
+      if (branchId === "main" || subscription.branchId === branchId) subscription.notify(seq, branchId);
+    }
+  }
+
+  currentSeq(branchId = "main"): number {
+    const r = this.opts.driver.all(`SELECT COALESCE(MAX(seq), 0) AS seq FROM sync_log WHERE branch_id IN ('main', ?)`, [
+      branchId,
+    ])[0];
     return Number(r?.["seq"] ?? 0);
+  }
+
+  createBranch(actor: Actor, input: CreateBranchOptions): WorkspaceBranch {
+    return this.branches.create(actor, input);
+  }
+
+  getBranch(actor: Actor, branchId: string): WorkspaceBranch {
+    return this.branches.get(actor, branchId);
+  }
+
+  private branchId(value: string | undefined): string {
+    if (value === undefined) return "main";
+    if (typeof value !== "string" || !value.length) throw new MutationError("Invalid workspace branch id");
+    return value;
+  }
+
+  private branchPermissions(actor: Actor) {
+    if (actor.type !== "user" && actor.type !== "agent")
+      throw new MutationError("Workspace branch access requires a user or agent", "forbidden");
+    const userId = this.effectiveUserId(actor);
+    const user = this.store.get("user", userId);
+    if (!user || !user.active || user.archivedAt)
+      throw new MutationError("Workspace member is not active", "forbidden");
+    return {
+      userId,
+      teamIds: this.visibleTeamIds(actor),
+      projectIds: actor.type === "agent" ? this.agentRow(actor.id).scopes.projectIds : [],
+    };
+  }
+
+  private view(actor: Actor, branchId: string): SqliteStore | SqliteBranchStore {
+    if (branchId === "main") return this.store;
+    const branch = this.getBranch(actor, branchId);
+    if (branch.status !== "open") throw new MutationError("Workspace branch is not open", "forbidden");
+    return new SqliteBranchStore(this.opts.driver, branchId);
   }
 
   // ---- permissions ---------------------------------------------------------
@@ -123,13 +186,13 @@ export class SyncServer {
   }
 
   /** The wire API uses patch cursors; semantic history references the producing event. */
-  private eventCause(actor: Actor, syncSeq: number | undefined): number | null {
+  private eventCause(actor: Actor, syncSeq: number | undefined, branchId = "main"): number | null {
     if (syncSeq === undefined) return null;
     const scope = this.scopeSql(this.visibleTeamIds(actor), this.effectiveUserId(actor), "team_id", "scope_user_id");
-    const row = this.opts.driver.all(`SELECT event_seq FROM sync_log WHERE seq = ? AND (${scope.sql})`, [
-      syncSeq,
-      ...scope.params,
-    ])[0];
+    const row = this.opts.driver.all(
+      `SELECT event_seq FROM sync_log WHERE seq = ? AND branch_id IN ('main', ?) AND (${scope.sql})`,
+      [syncSeq, branchId, ...scope.params],
+    )[0];
     return row?.["event_seq"] == null ? null : Number(row["event_seq"]);
   }
 
@@ -141,19 +204,24 @@ export class SyncServer {
    * `reset` and leaves it alone, so the client keeps being told to reset
    * until it actually bootstraps again.
    */
-  private clientRow(clientId: string, actor: Actor): { lastMutationId: number; visibleTeams: string } {
+  private clientRow(
+    clientId: string,
+    actor: Actor,
+    branchId = "main",
+  ): { lastMutationId: number; visibleTeams: string } {
     const r = this.opts.driver.all(
-      `SELECT last_mutation_id, user_id, visible_teams FROM sync_client WHERE client_id = ?`,
+      `SELECT last_mutation_id, user_id, visible_teams, branch_id FROM sync_client WHERE client_id = ?`,
       [clientId],
     )[0];
     if (!r) {
       this.opts.driver.run(
-        `INSERT INTO sync_client (client_id, user_id, last_mutation_id, last_seen_at, visible_teams) VALUES (?, ?, 0, ?, '')`,
-        [clientId, actor.id, this.now()],
+        `INSERT INTO sync_client (client_id, user_id, last_mutation_id, last_seen_at, visible_teams, branch_id) VALUES (?, ?, 0, ?, '', ?)`,
+        [clientId, actor.id, this.now(), branchId],
       );
       return { lastMutationId: 0, visibleTeams: "" };
     }
     if (r["user_id"] !== actor.id) throw new MutationError("client belongs to another actor", "forbidden");
+    if (r["branch_id"] !== branchId) throw new MutationError("client belongs to another workspace branch", "forbidden");
     return { lastMutationId: Number(r["last_mutation_id"]), visibleTeams: String(r["visible_teams"] ?? "") };
   }
 
@@ -180,16 +248,27 @@ export class SyncServer {
 
   // ---- bootstrap --------------------------------------------------------------
 
-  bootstrap(actor: Actor, clientId: string): BootstrapResponse {
+  bootstrap(actor: Actor, clientId: string, selectedBranch = "main"): BootstrapResponse {
     return this.opts.driver.transaction(() => {
+      const branchId = this.branchId(selectedBranch);
+      const view = this.view(actor, branchId);
       const teams = this.visibleTeamIds(actor);
       const userId = this.effectiveUserId(actor);
-      const client = this.clientRow(clientId, actor);
-      const seq = this.currentSeq();
+      const client = this.clientRow(clientId, actor, branchId);
+      const seq = this.currentSeq(branchId);
       const rows: BootstrapResponse["rows"] = {};
       for (const name of modelNames) {
         const def = models[name];
         if (def.policy.kind === "onDemand") continue;
+        if (view instanceof SqliteBranchStore) {
+          rows[name] = view.list(name).filter((row) => {
+            const record = row as Record<string, unknown>;
+            if (def.teamColumn && record[def.teamColumn] != null && !teams.includes(String(record[def.teamColumn])))
+              return false;
+            return def.policy.kind !== "perUser" || record[def.policy.userColumn] === userId;
+          }) as Record<string, unknown>[];
+          continue;
+        }
         const clauses: string[] = [];
         const params: SqlValue[] = [];
         if (def.teamColumn) {
@@ -206,19 +285,33 @@ export class SyncServer {
         rows[name] = this.store.rawList(name, clauses.join(" AND "), params) as Record<string, unknown>[];
       }
       this.touchClient(clientId, client.lastMutationId, teams.join(","));
-      return { seq, lastMutationId: client.lastMutationId, rows };
+      return { seq, lastMutationId: client.lastMutationId, rows, ...(branchId === "main" ? {} : { branchId }) };
     });
   }
 
   // ---- load (on-demand models) -----------------------------------------------
 
   load(actor: Actor, req: LoadRequest): LoadResponse {
+    const branchId = this.branchId(req.branchId);
+    const view = this.view(actor, branchId);
     const def = models[req.model];
     if (def.policy.kind !== "onDemand") throw new MutationError(`${req.model} is not on-demand`, "invalid");
     // Parent must be visible: on-demand models hang off issues, so check the issue's team.
-    const parent = this.store.get("issue", req.parentId);
+    const parent = view.get("issue", req.parentId);
     if (parent && !this.visibleTeamIds(actor).includes(parent.teamId))
       throw new MutationError("not visible", "forbidden");
+    if (view instanceof SqliteBranchStore) {
+      const rows = parent
+        ? view
+            .list(req.model)
+            .filter(
+              (row) =>
+                (row as Record<string, unknown>)[def.policy.kind === "onDemand" ? def.policy.parentColumn : ""] ===
+                req.parentId,
+            )
+        : [];
+      return { seq: this.currentSeq(branchId), rows: rows as Record<string, unknown>[], branchId };
+    }
     const rows = this.store.rawList(req.model, `${this.colName(req.model, def.policy.parentColumn)} = ?`, [
       req.parentId,
     ]);
@@ -232,11 +325,14 @@ export class SyncServer {
     let result: PushResponse;
     try {
       result = this.opts.driver.transaction(() => {
-        const client = this.clientRow(req.clientId, actor);
+        const branchId = this.branchId(req.branchId);
+        const view = this.view(actor, branchId);
+        const branch = branchId === "main" ? null : this.getBranch(actor, branchId);
+        const client = this.clientRow(req.clientId, actor, branchId);
         const sorted = [...req.mutations].sort((a, b) => a.id - b.id);
         // Retries of already-applied mutations are free; the budget counts new work only.
         const fresh = sorted.filter((m) => m.id > client.lastMutationId);
-        const agent = actor.type === "agent" ? this.agentGate(actor.id, fresh.length) : null;
+        const agent = actor.type === "agent" ? this.agentGate(actor.id, fresh.length, branchId) : null;
         let last = client.lastMutationId;
         const rejected: { id: number; error: string }[] = [];
         for (const m of fresh) {
@@ -253,7 +349,7 @@ export class SyncServer {
           }
           const txnId = this.newTxnId();
           const ctx: MutatorContext = {
-            store: this.store.withTag({
+            store: view.withTag({
               actorId: actor.id,
               actorType: actor.type,
               clientId: req.clientId,
@@ -261,11 +357,13 @@ export class SyncServer {
               txnId,
               causationSeq: m.causationSeq ?? null,
               reason: m.reason ?? null,
+              branchId,
             }),
             actor,
             actorId: actor.id,
             now: this.now(),
             server: true,
+            branchId,
             ...(m.reason !== undefined ? { reason: m.reason } : {}),
             ...(m.causationSeq !== undefined ? { causationSeq: m.causationSeq } : {}),
           };
@@ -280,13 +378,14 @@ export class SyncServer {
                   clientId: req.clientId,
                   mutationId: m.id,
                   ts: Date.parse(ctx.now),
-                  causationSeq: this.eventCause(actor, m.causationSeq),
+                  causationSeq: this.eventCause(actor, m.causationSeq, branchId),
                   reason: m.reason ?? null,
+                  branchId,
                 });
                 apply(
                   {
                     ...ctx,
-                    store: this.store.withTag({
+                    store: view.withTag({
                       actorId: actor.id,
                       actorType: actor.type,
                       clientId: req.clientId,
@@ -296,36 +395,43 @@ export class SyncServer {
                       ts: new Date(event.ts).toISOString(),
                       causationSeq: m.causationSeq ?? null,
                       reason: event.reason,
+                      branchId,
                     }),
                   },
                   event,
                 );
               });
-              if (agent) this.enforceAgentScopes(agent, txnId);
+              if (agent) this.enforceScopes(agent.scopes, txnId, view, "agent", branchId);
+              if (branch) this.enforceScopes(branch.scope, txnId, view, "branch", branchId);
             });
           } catch (e) {
             rejected.push({ id: m.id, error: e instanceof Error ? e.message : String(e) });
           }
         }
         this.touchClient(req.clientId, last);
-        if (actor.type === "agent")
+        if (actor.type === "agent" && branchId === "main")
           this.opts.driver.run(`UPDATE agent SET last_active_at = ? WHERE id = ?`, [this.now(), actor.id]);
-        return { ok: true as const, lastMutationId: last, seq: this.currentSeq(), rejected };
+        return {
+          ok: true as const,
+          lastMutationId: last,
+          seq: this.currentSeq(branchId),
+          rejected,
+          ...(branchId === "main" ? {} : { branchId }),
+        };
       });
     } catch (e) {
       if (e instanceof MutationError)
         return { ok: false, error: e.message, code: e.code === "forbidden" ? "unauthorized" : "gap" };
       return { ok: false, error: e instanceof Error ? e.message : String(e), code: "internal" };
     }
-    if (result.ok && result.seq > 0) for (const l of this.listeners) l(result.seq);
+    if (result.ok && result.seq > 0) this.emitCommit(result.seq, req.branchId ?? "main");
     return result;
   }
 
   /** Checks the agent is active and within its hourly budget for `count` new mutations; returns its row. */
-  private agentGate(agentId: string, count: number): ReturnType<SyncServer["agentRow"]> {
+  private agentGate(agentId: string, count: number, branchId = "main"): ReturnType<SyncServer["agentRow"]> {
     const a = this.agentRow(agentId);
-    if (a.mode === "propose") {
-      // Proposals (phase 2) will route these writes into a named overlay for human review.
+    if (a.mode === "propose" && branchId === "main") {
       throw new MutationError("agent is in propose mode; direct commits are not allowed", "forbidden");
     }
     if (count === 0) return a;
@@ -344,34 +450,36 @@ export class SyncServer {
    * and project scopes. Done on the log rather than per mutator so no mutator
    * can forget it; a violation throws, which rolls the mutation back.
    */
-  private enforceAgentScopes(agent: ReturnType<SyncServer["agentRow"]>, txnId: string): void {
-    const { teamIds, projectIds } = agent.scopes;
+  private enforceScopes(scope: BranchScope, txnId: string, view: Store, label: string, branchId: string): void {
+    const { teamIds, projectIds } = scope;
     if (teamIds.length) {
       const marks = teamIds.map(() => "?").join(", ");
       const outside = this.opts.driver.all(
-        `SELECT model, row_id FROM sync_log WHERE txn_id = ? AND ((team_id IS NOT NULL AND team_id NOT IN (${marks})) OR (prev_team_id IS NOT NULL AND prev_team_id NOT IN (${marks}))) LIMIT 1`,
-        [txnId, ...teamIds, ...teamIds],
+        `SELECT model, row_id FROM sync_log WHERE txn_id = ? AND branch_id = ? AND ((team_id IS NOT NULL AND team_id NOT IN (${marks})) OR (prev_team_id IS NOT NULL AND prev_team_id NOT IN (${marks}))) LIMIT 1`,
+        [txnId, branchId, ...teamIds, ...teamIds],
       )[0];
       if (outside)
         throw new MutationError(
-          `agent is not scoped to the team of ${outside["model"]} ${outside["row_id"]}`,
+          `${label} is not scoped to the team of ${outside["model"]} ${outside["row_id"]}`,
           "forbidden",
         );
     }
     if (projectIds.length) {
       const marks = projectIds.map(() => "?").join(", ");
-      const outside = this.opts.driver.all(
-        `SELECT i.id FROM issue i WHERE i.id IN (SELECT row_id FROM sync_log WHERE txn_id = ? AND model = 'issue')
-           AND (i.project_id IS NULL OR i.project_id NOT IN (${marks})) LIMIT 1`,
-        [txnId, ...projectIds],
-      )[0];
-      if (outside)
-        throw new MutationError(`agent is scoped to projects; issue ${outside["id"]} is outside them`, "forbidden");
+      const issues = this.opts.driver.all(
+        "SELECT DISTINCT row_id FROM sync_log WHERE txn_id = ? AND branch_id = ? AND model = 'issue'",
+        [txnId, branchId],
+      );
+      for (const row of issues) {
+        const issue = view.get("issue", String(row["row_id"]));
+        if (issue && (issue.projectId === null || !projectIds.includes(issue.projectId)))
+          throw new MutationError(`${label} is scoped to projects; issue ${issue.id} is outside them`, "forbidden");
+      }
       const project = this.opts.driver.all(
-        `SELECT row_id FROM sync_log WHERE txn_id = ? AND model IN ('project', 'projectMilestone', 'projectTeam') AND row_id NOT IN (${marks}) LIMIT 1`,
-        [txnId, ...projectIds],
+        `SELECT row_id FROM sync_log WHERE txn_id = ? AND branch_id = ? AND model IN ('project', 'projectMilestone', 'projectTeam') AND row_id NOT IN (${marks}) LIMIT 1`,
+        [txnId, branchId, ...projectIds],
       )[0];
-      if (project) throw new MutationError("agent is scoped to projects; cannot change other projects", "forbidden");
+      if (project) throw new MutationError(`${label} is scoped to projects; cannot change other projects`, "forbidden");
     }
   }
 
@@ -420,54 +528,82 @@ export class SyncServer {
       });
       return this.currentSeq();
     });
-    for (const l of this.listeners) l(seq);
+    this.emitCommit(seq, "main");
   }
 
   // ---- pull -------------------------------------------------------------------
 
   pull(actor: Actor, req: PullRequest): PullResponse {
     return this.opts.driver.transaction(() => {
+      const branchId = this.branchId(req.branchId);
+      const view = this.view(actor, branchId);
       const teams = this.visibleTeamIds(actor);
       const userId = this.effectiveUserId(actor);
-      const client = this.clientRow(req.clientId, actor);
-      const seq = this.currentSeq();
+      const client = this.clientRow(req.clientId, actor, branchId);
+      const seq = this.currentSeq(branchId);
       const teamsKey = teams.join(",");
       this.touchClient(req.clientId, client.lastMutationId);
       // A client that never bootstrapped, or whose team set changed since it did, must bootstrap (again).
       if (client.visibleTeams !== teamsKey)
-        return { seq, lastMutationId: client.lastMutationId, entries: [], reset: true };
+        return {
+          seq,
+          lastMutationId: client.lastMutationId,
+          entries: [],
+          reset: true,
+          ...(branchId === "main" ? {} : { branchId }),
+        };
       const scope = this.scopeSql(teams, userId, "team_id", "scope_user_id");
       // Rows that left the viewer's scope (prev_team_id visible, team_id not) come through as deletes.
       const marks = teams.map(() => "?").join(", ");
       const leftScope = teams.length ? `prev_team_id IN (${marks})` : "0";
       const rows = this.opts.driver.all(
-        `SELECT seq, model, row_id, op, patch, (${scope.sql}) AS visible FROM sync_log
-         WHERE seq > ? AND ((${scope.sql}) OR ${leftScope}) ORDER BY seq ASC`,
-        [...scope.params, req.since, ...scope.params, ...teams],
+        `SELECT seq, branch_id, model, row_id, op, patch, (${scope.sql}) AS visible FROM sync_log
+         WHERE seq > ? AND branch_id IN ('main', ?) AND ((${scope.sql}) OR ${leftScope}) ORDER BY seq ASC`,
+        [...scope.params, req.since, branchId, ...scope.params, ...teams],
       );
-      const entries: LogEntry[] = rows.map((r) => ({
-        seq: Number(r["seq"]),
-        model: r["model"] as ModelName,
-        id: r["row_id"] as string,
-        op: r["visible"] ? (r["op"] as "upsert" | "delete") : "delete",
-        patch: r["visible"] && r["patch"] ? (JSON.parse(r["patch"] as string) as Record<string, unknown>) : null,
-      }));
-      return { seq, lastMutationId: client.lastMutationId, entries: compact(entries), reset: false };
+      const entries: LogEntry[] = rows
+        .filter(
+          (r) =>
+            !(
+              view instanceof SqliteBranchStore &&
+              r["branch_id"] === "main" &&
+              view.hasOverlay(r["model"] as ModelName, String(r["row_id"]))
+            ),
+        )
+        .map((r) => ({
+          seq: Number(r["seq"]),
+          model: r["model"] as ModelName,
+          id: r["row_id"] as string,
+          op: r["visible"] ? (r["op"] as "upsert" | "delete") : "delete",
+          patch: r["visible"] && r["patch"] ? (JSON.parse(r["patch"] as string) as Record<string, unknown>) : null,
+        }));
+      return {
+        seq,
+        lastMutationId: client.lastMutationId,
+        entries: compact(entries),
+        reset: false,
+        ...(branchId === "main" ? {} : { branchId }),
+      };
     });
   }
 
   // ---- activity ------------------------------------------------------------------
 
   /** Committed semantic events visible to this actor, ordered for deterministic replay. */
-  events(actor: Actor, filter: { since?: number; entityId?: string; limit?: number } = {}): DomainEvent[] {
+  events(
+    actor: Actor,
+    filter: { since?: number; entityId?: string; limit?: number; branchId?: string } = {},
+  ): DomainEvent[] {
+    const branchId = this.branchId(filter.branchId);
+    this.view(actor, branchId);
     const since = filter.since ?? 0;
     const limit = filter.limit ?? 500;
     if (!Number.isSafeInteger(since) || since < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 5000)
       throw new MutationError("Invalid event cursor or limit");
     const teams = this.visibleTeamIds(actor);
     const scope = this.scopeSql(teams, this.effectiveUserId(actor), "team_id", "scope_user_id");
-    const clauses = ["branch_id = 'main'", "seq > ?", scope.sql];
-    const params: SqlValue[] = [since, ...scope.params];
+    const clauses = ["branch_id = ?", "seq > ?", scope.sql];
+    const params: SqlValue[] = [branchId, since, ...scope.params];
     if (filter.entityId !== undefined) {
       clauses.push("entity_id = ?");
       params.push(filter.entityId);
@@ -487,13 +623,16 @@ export class SyncServer {
       txnId?: string;
       before?: number;
       limit?: number;
+      branchId?: string;
     } = {},
   ): ActivityEntry[] {
+    const branchId = this.branchId(filter.branchId);
+    this.view(actor, branchId);
     const teams = this.visibleTeamIds(actor);
     const userId = this.effectiveUserId(actor);
     const scope = this.scopeSql(teams, userId, "team_id", "scope_user_id");
-    const clauses = [scope.sql];
-    const params: SqlValue[] = [...scope.params];
+    const clauses = ["branch_id = ?", scope.sql];
+    const params: SqlValue[] = [branchId, ...scope.params];
     if (filter.model) {
       clauses.push("model = ?");
       params.push(filter.model);

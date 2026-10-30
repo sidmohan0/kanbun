@@ -11,6 +11,7 @@ export type EventProvenance = {
   ts: number;
   causationSeq: number | null;
   reason: string | null;
+  branchId?: string;
 };
 
 /** Called inside the same savepoint as reducer application and change capture. */
@@ -19,12 +20,14 @@ export function appendEvent(driver: SqlDriver, pending: PendingEvent, provenance
     ...pending,
     ...provenance,
     seq: 0,
-    branchId: "main",
+    branchId: provenance.branchId ?? "main",
     sessionId: null,
     sourceRef: null,
   });
-  if (event.type === "IssueCreated" && event.payload.number === 0)
+  if (event.type === "IssueCreated" && event.branchId === "main" && event.payload.number === 0)
     throw new Error("Committed issue creation requires an authoritative issue number");
+  if (event.type === "IssueCreated" && event.branchId !== "main" && event.payload.number !== 0)
+    throw new Error("Branch issue creation cannot allocate an issue number");
   driver.run(
     `INSERT INTO event_log
       (branch_id, txn_id, event_index, type, entity_type, entity_id, team_id, scope_user_id,

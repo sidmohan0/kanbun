@@ -13,6 +13,7 @@ function snapshot(): RecoverySnapshot {
   if (!client) throw new Error("Start the browser integration harness first.");
   return {
     clientId: client.clientId,
+    branchId: client.branchId,
     status: client.getStatus(),
     seq: client.getSeq(),
     pending: client.pendingCount(),
@@ -24,7 +25,7 @@ function snapshot(): RecoverySnapshot {
 }
 
 const api: RecoveryApi = {
-  async start(actorName) {
+  async start(actorName, branchId = "main") {
     const response = await fetch("/fixture/session", {
       method: "POST",
       credentials: "include",
@@ -35,12 +36,13 @@ const api: RecoveryApi = {
     const actor = (await response.json()) as Actor;
     errors = [];
     startError = null;
-    persister = new IndexedDbPersister("kanbun-browser-recovery", `workspace:${actor.id}`);
+    persister = new IndexedDbPersister("kanbun-browser-recovery", `workspace:${actor.id}:branch:${branchId}`);
     client = new SyncClient({
       actor,
       mutators,
       transport: httpTransport(location.origin),
       persister,
+      branchId,
       onError(error) {
         errors.push(error instanceof Error ? error.message : String(error));
       },

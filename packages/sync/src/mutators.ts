@@ -25,6 +25,8 @@ export type MutatorContext = {
   now: string;
   /** True in the authoritative run. Gate server-only side effects (counters, notifications, jobs) on it. */
   server: boolean;
+  /** Workspace branch; omitted means main for existing callers. */
+  branchId?: string;
   /** Free-text reason supplied with the mutation (mainly agents). */
   reason?: string;
   /** Sync-log patch that caused this mutation, if any; resolved to an event by the authority. */
@@ -84,6 +86,7 @@ export function executeMutator<S extends z.ZodType>(
   commit?: (pending: PendingEvent, index: number, apply: (ctx: MutatorContext, event: DomainEvent) => void) => void,
 ): void {
   if (!("decide" in def)) {
+    if ((ctx.branchId ?? "main") !== "main") throw new MutationError("This command is not supported on branches");
     def.run(ctx, args);
     return;
   }
@@ -101,6 +104,7 @@ export function executeMutator<S extends z.ZodType>(
     args,
   );
   if (events === null) {
+    if ((ctx.branchId ?? "main") !== "main") throw new MutationError("This command is not supported on branches");
     if (!def.run) throw new MutationError("No legacy implementation for this command");
     def.run(ctx, args);
     return;
@@ -109,6 +113,8 @@ export function executeMutator<S extends z.ZodType>(
     if (ctx.causationSeq !== undefined && (!Number.isSafeInteger(ctx.causationSeq) || ctx.causationSeq <= 0))
       throw new MutationError("causationSeq must be a positive safe integer");
     const pending = pendingEventSchema.parse(raw);
+    if ((ctx.branchId ?? "main") !== "main" && pending.type !== "IssueCreated" && pending.type !== "IssueTitled")
+      throw new MutationError("This event is not supported on branches");
     if (commit) commit(pending, index, def.apply);
     else {
       if (ctx.server) throw new Error("Authoritative events require a durable commit");
@@ -117,7 +123,7 @@ export function executeMutator<S extends z.ZodType>(
         eventSchema.parse({
           ...pending,
           seq: 0,
-          branchId: "main",
+          branchId: ctx.branchId ?? "main",
           txnId: "optimistic",
           eventIndex: index,
           actor: ctx.actor,
