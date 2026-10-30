@@ -142,7 +142,7 @@ function plan(command, root, metadata, outputDirectory) {
       ["check-lint", ["lint"]],
       ["check-types", ["typecheck"]],
       ["check-tests", ["test"]],
-      ["check-changelog-tests", ["test:changelog"]],
+      ["check-script-tests", ["test:scripts"]],
       ["check-spec-lock", ["spec:check", "--initial"]],
     ]) {
       steps.push({ name, command: ["pnpm", "--reporter=append-only", ...args] });

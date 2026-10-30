@@ -15,3 +15,5 @@ artifacts/docs-drift/
 /brand/
 apps/web/public/
 apps/web/src/brand/*.svg
+
+artifacts/deployment/

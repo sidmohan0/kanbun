@@ -8,6 +8,7 @@ preparation moves them to a dated version heading.
 ### Added
 
 - Moved the protected application deployment hostname to kanbun.ai while retaining the existing workspace and account directory.
+- Added CI-gated preview deployments, live Access and version checks, retained release receipts, and guarded rollback to the previous Worker version.
 
 - Added a protected hosted preview with verified Cloudflare Access identity, a D1 account/workspace directory, isolated browser outboxes, same-origin assets and sync, and a deployment command tied to an exact verified commit.
 
