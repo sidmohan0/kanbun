@@ -6,6 +6,7 @@ import { Mark } from "./brand/Mark";
 import { workspace } from "./workspace";
 import { IssueDetail } from "./IssueDetail";
 import { Members } from "./Members";
+import { Inbox } from "./Inbox";
 import { IssueViewToolbar } from "./IssueViewToolbar";
 import { emptyIssueFilters, visibleIssues, type IssueFilters, type IssueView } from "./issueViews";
 import { refreshDescriptions } from "./description";
@@ -177,6 +178,7 @@ export function App() {
     all: emptyIssueFilters(),
     mine: emptyIssueFilters(),
   }));
+  const [inboxView, setInboxView] = useState(() => location.hash === "#inbox");
   const [membersView, setMembersView] = useState(() => location.hash === "#members");
   const [issueId, setIssueId] = useState(selectedIssueId);
   const [theme, setTheme] = useState<Theme>(initialTheme);
@@ -191,6 +193,7 @@ export function App() {
     const changeRoute = () => {
       setIssueId(selectedIssueId());
       setMembersView(location.hash === "#members");
+      setInboxView(location.hash === "#inbox");
       if (location.hash === "#my-issues") setView("mine");
       else if (location.hash === "#issues" || location.hash === "") setView("all");
     };
@@ -312,7 +315,7 @@ export function App() {
           <a
             className="navigation-item"
             href="#issues"
-            aria-current={!membersView && view === "all" ? "page" : undefined}
+            aria-current={!membersView && !inboxView && view === "all" ? "page" : undefined}
           >
             <span className="navigation-symbol" aria-hidden="true">
               ≡
@@ -322,12 +325,26 @@ export function App() {
           <a
             className="navigation-item my-issues-navigation"
             href="#my-issues"
-            aria-current={!membersView && view === "mine" ? "page" : undefined}
+            aria-current={!membersView && !inboxView && view === "mine" ? "page" : undefined}
           >
             <span className="navigation-symbol" aria-hidden="true">
               ◇
             </span>{" "}
             My Issues{ready && <span className="navigation-count">{myIssueCount}</span>}
+          </a>
+          <a className="navigation-item inbox-navigation" href="#inbox" aria-current={inboxView ? "page" : undefined}>
+            <span className="navigation-symbol" aria-hidden="true">
+              ◉
+            </span>{" "}
+            Inbox
+            {ready && snapshot.unreadNotificationCount > 0 && (
+              <span
+                className="navigation-count"
+                aria-label={`${snapshot.unreadNotificationCount} unread notifications`}
+              >
+                {snapshot.unreadNotificationCount}
+              </span>
+            )}
           </a>
           {context?.mode === "hosted" && context.role === "owner" && (
             <a
@@ -366,7 +383,13 @@ export function App() {
         <header className="workspace-topbar">
           <span className="workspace-breadcrumb">
             {workspaceName} <span aria-hidden="true">/</span>{" "}
-            {membersView ? "Members" : selectedIssue ? identifier(selectedIssue, snapshot.teams) : listName}
+            {inboxView
+              ? "Inbox"
+              : membersView
+                ? "Members"
+                : selectedIssue
+                  ? identifier(selectedIssue, snapshot.teams)
+                  : listName}
           </span>
           <div className="sync-actions">
             <span className="sync-indicator" data-state={snapshot.status} role="status" aria-live="polite">
@@ -387,13 +410,25 @@ export function App() {
           <div className="page-heading">
             <div>
               <p className="eyebrow">YOUR WORKSPACE</p>
-              <h1>{membersView ? "Members" : issueId ? "Issue" : view === "mine" ? "My Issues" : "Issues"}</h1>
+              <h1>
+                {inboxView
+                  ? "Inbox"
+                  : membersView
+                    ? "Members"
+                    : issueId
+                      ? "Issue"
+                      : view === "mine"
+                        ? "My Issues"
+                        : "Issues"}
+              </h1>
               <p className="page-description">
-                {membersView
-                  ? "Manage who can access this workspace."
-                  : selectedIssue
-                    ? identifier(selectedIssue, snapshot.teams)
-                    : "A place for the work ahead."}
+                {inboxView
+                  ? "Your personal workspace updates."
+                  : membersView
+                    ? "Manage who can access this workspace."
+                    : selectedIssue
+                      ? identifier(selectedIssue, snapshot.teams)
+                      : "A place for the work ahead."}
               </p>
             </div>
             {context && <span className="local-badge">{local ? "Local development" : "Private workspace"}</span>}
@@ -451,22 +486,33 @@ export function App() {
                   </div>
                 );
               })}
-              {!membersView && archivedIssue && !snapshot.issues.some((issue) => issue.id === archivedIssue.id) && (
-                <div className="notice archive-notice" role="status" aria-label="Archive status">
-                  <span>{identifier(archivedIssue, snapshot.teams)} archived.</span>
-                  <button className="button quiet compact" onClick={undoArchive}>
-                    Undo archive
-                  </button>
-                  <button
-                    className="notice-dismiss"
-                    aria-label="Dismiss archive notice"
-                    onClick={() => setArchivedIssue(null)}
-                  >
-                    ×
-                  </button>
-                </div>
-              )}
-              {membersView ? (
+              {!membersView &&
+                !inboxView &&
+                archivedIssue &&
+                !snapshot.issues.some((issue) => issue.id === archivedIssue.id) && (
+                  <div className="notice archive-notice" role="status" aria-label="Archive status">
+                    <span>{identifier(archivedIssue, snapshot.teams)} archived.</span>
+                    <button className="button quiet compact" onClick={undoArchive}>
+                      Undo archive
+                    </button>
+                    <button
+                      className="notice-dismiss"
+                      aria-label="Dismiss archive notice"
+                      onClick={() => setArchivedIssue(null)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+              {inboxView ? (
+                ready ? (
+                  <Inbox snapshot={snapshot} />
+                ) : (
+                  <section className="empty-state">
+                    <p>Opening your inbox…</p>
+                  </section>
+                )
+              ) : membersView ? (
                 ready && context?.mode === "hosted" && context.role === "owner" ? (
                   <Members />
                 ) : (

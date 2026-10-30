@@ -50,6 +50,13 @@
       "when": 1793390519851,
       "tag": "0006_yielding_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793393431576,
+      "tag": "0007_clammy_meltdown",
+      "breakpoints": true
     }
   ]
 }

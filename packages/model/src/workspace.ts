@@ -199,6 +199,12 @@ export const scheduledJob = sqliteTable(
   (t) => [index("scheduled_job_fire_at").on(t.fireAt), uniqueIndex("scheduled_job_dedup").on(t.dedupKey)],
 );
 
+/** Durable background projection checkpoint, restored with the workspace SQL engine. */
+export const notificationCursor = sqliteTable("notification_cursor", {
+  id: text("id").primaryKey(),
+  lastEventSeq: integer("last_event_seq").notNull(),
+});
+
 export const syncClient = sqliteTable("sync_client", {
   clientId: text("client_id").primaryKey(),
   userId: text("user_id").notNull(),
@@ -248,6 +254,8 @@ export const user = sqliteTable(
     active: bool("active").notNull().default(true),
     /** Directory admission version, not a credential; changes only after an explicit invitation. */
     directoryAdmissionId: text("directory_admission_id"),
+    /** Main-event floor for this admission; delayed fan-out cannot replay an earlier membership. */
+    notificationEventFloor: integer("notification_event_floor").notNull().default(0),
     role: text("role").$type<UserRole>().notNull().default("user"),
     guest: bool("guest").notNull().default(false),
     timezone: text("timezone"),
@@ -558,6 +566,10 @@ export const comment = sqliteTable(
     teamId: text("team_id"),
     /** Plain-text rendering, for search and previews. */
     body: text("body").notNull(),
+    mentionedUserIds: json<string[]>("mentioned_user_ids")
+      .notNull()
+      .default(sql`'[]'`)
+      .$default(() => []),
     /** ProseMirror document JSON. Comments are not co-edited live, so no Yjs. */
     bodyData: json<Record<string, unknown> | null>("body_data"),
     userId: text("user_id"),
@@ -755,6 +767,11 @@ export const notification = sqliteTable(
   {
     ...syncedColumns,
     userId: text("user_id").notNull(),
+    teamId: text("team_id"),
+    sourceEventSeq: integer("source_event_seq").notNull().default(0),
+    issueIncarnation: text("issue_incarnation"),
+    recipientAdmissionId: text("recipient_admission_id"),
+    deliveryKey: text("delivery_key"),
     actorId: text("actor_id"),
     type: text("type").notNull(),
     category: text("category").$type<NotificationCategory>().notNull(),
@@ -775,7 +792,11 @@ export const notification = sqliteTable(
     documentId: text("document_id"),
     customerNeedId: text("customer_need_id"),
   },
-  (t) => [index("notification_user").on(t.userId, t.readAt), index("notification_issue").on(t.issueId)],
+  (t) => [
+    index("notification_user").on(t.userId, t.readAt),
+    index("notification_issue").on(t.issueId),
+    uniqueIndex("notification_delivery_key").on(t.deliveryKey),
+  ],
 );
 
 export const notificationSubscription = sqliteTable(
@@ -784,6 +805,18 @@ export const notificationSubscription = sqliteTable(
     ...syncedColumns,
     subscriberId: text("subscriber_id").notNull(),
     active: bool("active").notNull().default(true),
+    scope: json<{ kind: "workspace" } | { kind: "team"; teamId: string } | { kind: "issue"; issueId: string }>("scope")
+      .notNull()
+      .default(sql`'{"kind":"workspace"}'`)
+      .$default(() => ({ kind: "workspace" as const })),
+    eventTypes: json<string[]>("event_types")
+      .notNull()
+      .default(sql`'[]'`)
+      .$default(() => []),
+    actors: json<string[]>("actors")
+      .notNull()
+      .default(sql`'[]'`)
+      .$default(() => []),
     contextViewType: text("context_view_type"),
     teamId: text("team_id"),
     projectId: text("project_id"),

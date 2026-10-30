@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireIssue } from "./issues";
 import { id, nullable, pmDoc } from "./schema";
 import { applyCommentEvent } from "./commentEvents";
+import { requireTeamAccess } from "./teams";
 
 /** The issue a comment belongs to, after checking the caller may see it. */
 function requireCommentIssue(ctx: DecideContext, c: Row<"comment">): Row<"issue"> {
@@ -28,6 +29,15 @@ function commentSubject(issue: Row<"issue">, commentId: string) {
   return { entityType: "comment" as const, entityId: commentId, teamId: issue.teamId, scopeUserId: null };
 }
 
+function mentionIds(ctx: DecideContext, teamId: string, ids: string[]): string[] {
+  return [...new Set(ids)].filter((userId) => {
+    const user = ctx.store.get("user", userId);
+    if (!user?.active || user.archivedAt) throw new MutationError("Mentioned member is unavailable", "invalid");
+    requireTeamAccess({ ...ctx, actor: { id: userId, type: "user" }, actorId: userId }, teamId);
+    return true;
+  });
+}
+
 export const mutators = {
   commentCreate: defineEventMutator({
     args: z.object({
@@ -37,6 +47,7 @@ export const mutators = {
       issueIncarnation: z.string().optional(),
       /** Plain-text rendering, for search and previews. */
       body: z.string().max(20_000),
+      mentionedUserIds: z.array(z.string().min(1)).optional(),
       /** ProseMirror document; optional for agents and API callers who send plain text. */
       bodyData: nullable(pmDoc).optional(),
       parentId: nullable(id).optional(),
@@ -52,12 +63,13 @@ export const mutators = {
         throw new MutationError("This issue was replaced; the comment was not posted", "conflict");
       if (!args.body.trim()) throw new MutationError("comment is empty", "invalid");
       if (ctx.store.get("comment", args.id)) throw new MutationError("comment already exists", "conflict");
+      const parent = args.parentId ? ctx.store.get("comment", args.parentId) : undefined;
       if (args.parentId) {
-        const parent = ctx.store.get("comment", args.parentId);
         if (!parent || parent.issueId !== args.issueId)
           throw new MutationError("parent comment not on this issue", "invalid");
         if (parent.parentId) throw new MutationError("replies cannot be nested", "invalid");
       }
+      const mentioned = mentionIds(ctx, issue.teamId, args.mentionedUserIds ?? []);
       const events: PendingEvent[] = [
         {
           ...commentSubject(issue, args.id),
@@ -65,8 +77,12 @@ export const mutators = {
           payload: {
             issueId: issue.id,
             body: args.body,
+            mentionedUserIds: mentioned,
+            addedMentionedUserIds: mentioned,
             bodyData: args.bodyData ?? null,
             parentId: args.parentId ?? null,
+            replyToUserId:
+              parent?.userId ?? (parent?.agentId ? (ctx.store.get("agent", parent.agentId)?.ownerId ?? null) : null),
             quotedText: args.quotedText ?? null,
             userId: ctx.actor.type === "user" ? ctx.actorId : null,
             agentId: ctx.actor.type === "agent" ? ctx.actorId : null,
@@ -92,7 +108,12 @@ export const mutators = {
   }),
 
   commentUpdate: defineEventMutator({
-    args: z.object({ id, body: z.string().min(1).max(20_000), bodyData: nullable(pmDoc).optional() }),
+    args: z.object({
+      id,
+      body: z.string().min(1).max(20_000),
+      bodyData: nullable(pmDoc).optional(),
+      mentionedUserIds: z.array(z.string().min(1)).optional(),
+    }),
     description: "Edit your own comment.",
     decide(ctx, args) {
       requireActiveAuthor(ctx);
@@ -102,11 +123,23 @@ export const mutators = {
       const mine = ctx.actor.type === "agent" ? c.agentId === ctx.actorId : c.userId === ctx.actorId;
       if (!mine) throw new MutationError("only the author can edit a comment", "forbidden");
       if (!args.body.trim()) throw new MutationError("comment is empty", "invalid");
+      const mentioned = args.mentionedUserIds === undefined ? c.mentionedUserIds : [...new Set(args.mentionedUserIds)];
+      mentionIds(
+        ctx,
+        issue.teamId,
+        mentioned.filter((userId) => !c.mentionedUserIds.includes(userId)),
+      );
       return [
         {
           ...commentSubject(issue, c.id),
           type: "CommentEdited",
-          payload: { issueId: issue.id, body: args.body, bodyData: args.bodyData ?? c.bodyData },
+          payload: {
+            issueId: issue.id,
+            body: args.body,
+            bodyData: args.bodyData ?? c.bodyData,
+            mentionedUserIds: mentioned,
+            addedMentionedUserIds: mentioned.filter((userId) => !c.mentionedUserIds.includes(userId)),
+          },
         },
       ];
     },

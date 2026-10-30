@@ -10,6 +10,7 @@ import * as issues from "./issues";
 import * as teams from "./teams";
 import * as views from "./views";
 import * as workspace from "./workspace";
+import * as notifications from "./notifications";
 
 export const mutators = defineMutators({
   ...workspace.mutators,
@@ -17,6 +18,7 @@ export const mutators = defineMutators({
   ...issues.mutators,
   ...comments.mutators,
   ...views.mutators,
+  ...notifications.mutators,
 });
 
 export type Mutators = typeof mutators;
