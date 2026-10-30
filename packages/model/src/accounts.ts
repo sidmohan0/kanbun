@@ -34,7 +34,7 @@ export const authIdentities = sqliteTable(
   {
     id: text("id").primaryKey(),
     accountId: text("account_id").notNull(),
-    provider: text("provider", { enum: ["email", "google", "github"] }).notNull(),
+    provider: text("provider", { enum: ["email", "google", "github", "cloudflare-access"] }).notNull(),
     providerUserId: text("provider_user_id").notNull(),
     createdAt: text("created_at").notNull(),
   },

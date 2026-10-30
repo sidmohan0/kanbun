@@ -1,0 +1,40 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kanbun-preview",
+  "account_id": "5af65814b462b37cf1e5bba7d499c3a5",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-29",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "kanbun.sid-mohan.com", "custom_domain": true }],
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "not_found_handling": "single-page-application"
+  },
+  "vars": {
+    "LOCAL_DEV": "false",
+    "AUTH_MODE": "preview",
+    "APP_ORIGIN": "https://kanbun.sid-mohan.com",
+    "ACCESS_ISSUER": "https://kanbun-sid.cloudflareaccess.com",
+    "ACCESS_AUDIENCE": "b286feff64cecd9481469601c7fca8c2f5b04e168cf632110a0bde16fd20001d",
+    "PREVIEW_OWNER_EMAIL": "sid@datafog.ai",
+    "PREVIEW_WORKSPACE_ID": "01a18d7f-80a7-7e86-bd3c-3f6780cab4bb",
+    "PREVIEW_WORKSPACE_NAME": "kanbun"
+  },
+  "d1_databases": [
+    {
+      "binding": "ACCOUNTS",
+      "database_name": "kanbun-preview-accounts",
+      "database_id": "08693f37-e1d1-4184-b315-babe37197e1f",
+      "migrations_dir": "../../packages/model/migrations/accounts"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "WORKSPACES", "class_name": "WorkspaceDO" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["WorkspaceDO"] }],
+  "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}

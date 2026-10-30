@@ -1,6 +1,6 @@
 import { uuidv7, type Row } from "@kanbun/model";
 import { mutators } from "@kanbun/mutators";
-import { isPoke, type Mutation, type Transport } from "@kanbun/sync";
+import { isPoke, type Mutation, type Transport, type WorkspaceContext } from "@kanbun/sync";
 import ReconnectingWebSocket from "partysocket/ws";
 import {
   IndexedDbPersister,
@@ -10,6 +10,7 @@ import {
   type Persister,
   type SyncStatus,
 } from "@kanbun/sync/client";
+import { resolveWorkspaceContext, workspacePersistenceKey, WorkspaceContextError } from "./context";
 
 export type WorkspaceRejection = { id: string; issueId: string | null; message: string };
 export type WorkspaceSnapshot = {
@@ -21,11 +22,12 @@ export type WorkspaceSnapshot = {
   teams: Row<"team">[];
   rejections: WorkspaceRejection[];
   error: string | null;
+  context: WorkspaceContext | null;
+  authenticationRequired: boolean;
 };
 
-const actor = { id: "user-alice", type: "user" } as const;
-const persistenceKey = "local:user-alice:main";
-const lockName = `kanbun:${persistenceKey}`;
+let context: WorkspaceContext | null = null;
+let authenticationRequired = false;
 const listeners = new Set<() => void>();
 const deferredRejections = new Map<number, WorkspaceRejection>();
 let client: SyncClient<typeof mutators> | null = null;
@@ -53,6 +55,8 @@ let snapshot: WorkspaceSnapshot = {
   teams: [],
   rejections,
   error,
+  context,
+  authenticationRequired,
 };
 
 const message = (value: unknown) => (value instanceof Error ? value.message : String(value));
@@ -73,29 +77,34 @@ function publish() {
     if (!rejections.some((existing) => existing.id === rejection.id)) rejections = [...rejections, rejection];
     deferredRejections.delete(id);
   }
-  const status = storageError
-    ? "error"
-    : !navigator.onLine
-      ? "offline"
-      : refreshTask || persistenceWrites > 0
-        ? "syncing"
-        : (client?.getStatus() ?? "idle");
+  const status =
+    authenticationRequired || storageError
+      ? "error"
+      : !navigator.onLine
+        ? "offline"
+        : refreshTask || persistenceWrites > 0
+          ? "syncing"
+          : (client?.getStatus() ?? "idle");
   snapshot = {
     phase,
     status,
-    pending: pending.length,
-    pendingIssueIds: [...new Set(pending.map(issueId).filter((id): id is string => id !== null))],
+    context: authenticationRequired ? null : context,
+    authenticationRequired,
+    pending: authenticationRequired ? 0 : pending.length,
+    pendingIssueIds: authenticationRequired
+      ? []
+      : [...new Set(pending.map(issueId).filter((id): id is string => id !== null))],
     issues:
-      client
+      (authenticationRequired ? undefined : client)
         ?.list("issue")
         .filter((issue) => !issue.trashed && !issue.archivedAt)
         .sort((a, b) => compare(a.sortOrder, b.sortOrder) || compare(a.id, b.id)) ?? [],
     teams:
-      client
+      (authenticationRequired ? undefined : client)
         ?.list("team")
         .filter((team) => !team.archivedAt && !team.retiredAt)
         .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) ?? [],
-    rejections,
+    rejections: authenticationRequired ? [] : rejections,
     error,
   };
   for (const listener of listeners) listener();
@@ -103,6 +112,7 @@ function publish() {
 
 function changed() {
   if (
+    !authenticationRequired &&
     client?.getStatus() === "idle" &&
     client.pendingCount() === 0 &&
     !storageError &&
@@ -113,16 +123,38 @@ function changed() {
   publish();
 }
 
-function localTransport(): Transport {
-  const transport = httpTransport(location.origin, (input, init) => {
-    const headers = new Headers(init?.headers);
-    headers.set("X-Kanbun-Local-Actor", "alice");
-    return fetch(input, { ...init, headers });
+function blockAuthentication(message = "Your session is no longer authorized. Sign in again and reload this page.") {
+  authenticationRequired = true;
+  phase = "failed";
+  error = message;
+  realtimeRequested = false;
+  socket?.close(1000, "Authentication required");
+  publish();
+}
+
+function workspaceTransport(): Transport {
+  const transport = httpTransport(location.origin, async (input, init) => {
+    if (authenticationRequired) throw new Error(error ?? "Authentication required");
+    const response = await fetch(input, { ...init, redirect: "manual" });
+    if (
+      context?.mode === "hosted" &&
+      (response.status === 401 ||
+        response.status === 403 ||
+        response.type === "opaqueredirect" ||
+        (response.status >= 300 && response.status < 400))
+    )
+      blockAuthentication();
+    if (authenticationRequired) throw new Error(error ?? "Authentication required");
+    return response;
   });
   return {
     ...transport,
     async push(request) {
       const result = await transport.push(request);
+      if (context?.mode === "hosted" && !result.ok && result.code === "unauthorized") {
+        blockAuthentication();
+        throw new Error(error!);
+      }
       if (result.ok) {
         for (const rejection of result.rejected) {
           const mutation = request.mutations.find((candidate) => candidate.id === rejection.id);
@@ -141,13 +173,14 @@ function localTransport(): Transport {
 }
 
 function persistentState(): Persister {
-  const persister = new IndexedDbPersister("kanbun", persistenceKey);
+  const selected = context!;
+  const persister = new IndexedDbPersister("kanbun", workspacePersistenceKey(selected));
   return {
     async load() {
       try {
         const saved = await persister.load();
         storageReadFailed = false;
-        cachedStateAvailable = saved?.userId === actor.id && (saved.branchId ?? "main") === "main";
+        cachedStateAvailable = saved?.userId === selected.actor.id && (saved.branchId ?? "main") === "main";
         return saved;
       } catch (failure) {
         storageReadFailed = true;
@@ -175,10 +208,10 @@ function persistentState(): Persister {
 
 async function initialize() {
   client = new SyncClient({
-    actor,
+    actor: context!.actor,
     mutators,
     branchId: "main",
-    transport: localTransport(),
+    transport: workspaceTransport(),
     persister: persistentState(),
     onError(failure) {
       error = message(failure);
@@ -191,10 +224,10 @@ async function initialize() {
   try {
     await client.start();
     initialized = true;
-    phase = "ready";
+    phase = authenticationRequired ? "failed" : "ready";
   } catch (failure) {
     error = message(failure);
-    initialized = cachedStateAvailable;
+    initialized = !authenticationRequired && cachedStateAvailable;
     phase = initialized ? "ready" : "failed";
   }
   connectRealtime();
@@ -202,13 +235,14 @@ async function initialize() {
 }
 
 function requestRealtimeRefresh() {
+  if (authenticationRequired) return;
   realtimeRequested = true;
   if (realtimeTask) return;
   const run = async () => {
     // An already-running pull may have read before this hint or socket open.
     // Queue a fresh pass after it, and retain hints received during that pass.
     if (refreshTask) await refreshTask;
-    while (realtimeRequested) {
+    while (realtimeRequested && !authenticationRequired) {
       realtimeRequested = false;
       await refresh();
     }
@@ -220,7 +254,7 @@ function requestRealtimeRefresh() {
 }
 
 function connectRealtime() {
-  if (socket || !leaseHeld || !initialized || !client || storageReadFailed) return;
+  if (authenticationRequired || socket || !leaseHeld || !initialized || !client || storageReadFailed) return;
   const url = new URL("/sync/connect", location.origin);
   url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
   url.searchParams.set("clientId", client.clientId);
@@ -250,41 +284,47 @@ function start(): Promise<void> {
   startTask = new Promise<void>((resolve) => {
     started = resolve;
   });
-  if (!navigator.locks) {
-    phase = "failed";
-    error = "This browser cannot safely open the local workspace because Web Locks are unavailable.";
-    publish();
-    started();
-    return startTask;
-  }
-  window.addEventListener("focus", () => void refresh());
-  window.addEventListener("online", () => void refresh());
-  window.addEventListener("offline", publish);
-
-  const ownLease = async () => {
-    leaseHeld = true;
-    phase = "starting";
-    publish();
-    await initialize();
-    started();
-    // Releasing on a component cleanup would leave the old client's timers active.
-    // The browser releases this exclusive lease when the owning page closes.
-    await new Promise<void>(() => {});
-  };
-  void navigator.locks
-    .request(lockName, { mode: "exclusive", ifAvailable: true }, async (lock) => {
-      if (lock) return ownLease();
-      phase = "waiting";
-      publish();
-      started();
-      return navigator.locks.request(lockName, { mode: "exclusive" }, ownLease);
-    })
-    .catch((failure: unknown) => {
+  void (async () => {
+    try {
+      context = await resolveWorkspaceContext();
+      if (!navigator.locks)
+        throw new Error("This browser cannot safely open the workspace because Web Locks are unavailable.");
+      window.addEventListener("focus", () => void refresh());
+      window.addEventListener("online", () => void refresh());
+      window.addEventListener("offline", publish);
+      const ownLease = async () => {
+        leaseHeld = true;
+        phase = "starting";
+        publish();
+        await initialize();
+        started();
+        // Only a page close releases this identity's lease and its active client.
+        await new Promise<void>(() => {});
+      };
+      const lockName = `kanbun:${workspacePersistenceKey(context)}`;
+      void navigator.locks
+        .request(lockName, { mode: "exclusive", ifAvailable: true }, async (lock) => {
+          if (lock) return ownLease();
+          phase = "waiting";
+          publish();
+          started();
+          return navigator.locks.request(lockName, { mode: "exclusive" }, ownLease);
+        })
+        .catch((failure: unknown) => {
+          phase = "failed";
+          error = message(failure);
+          publish();
+          started();
+        });
+    } catch (failure) {
+      if (failure instanceof WorkspaceContextError && failure.authenticationRequired)
+        blockAuthentication(message(failure));
       phase = "failed";
       error = message(failure);
       publish();
       started();
-    });
+    }
+  })();
   return startTask;
 }
 
@@ -292,7 +332,7 @@ function refresh(): Promise<void> {
   if (refreshTask) return refreshTask;
   const run = async () => {
     await start();
-    if (!leaseHeld || !client) return;
+    if (authenticationRequired || !leaseHeld || !client) return;
     try {
       if (!initialized) {
         phase = "starting";
@@ -306,11 +346,11 @@ function refresh(): Promise<void> {
         await client.push();
         await client.pull();
       }
-      phase = "ready";
+      phase = authenticationRequired ? "failed" : "ready";
     } catch (failure) {
       error = message(failure);
-      initialized ||= cachedStateAvailable;
-      phase = initialized ? "ready" : "failed";
+      if (!authenticationRequired) initialized ||= cachedStateAvailable;
+      phase = !authenticationRequired && initialized ? "ready" : "failed";
     } finally {
       connectRealtime();
       publish();
@@ -326,7 +366,7 @@ function refresh(): Promise<void> {
 }
 
 function editableClient() {
-  if (!leaseHeld || !initialized || phase !== "ready" || !client)
+  if (authenticationRequired || !leaseHeld || !initialized || phase !== "ready" || !client)
     throw new Error("Wait for the local workspace to finish opening before editing.");
   return client;
 }

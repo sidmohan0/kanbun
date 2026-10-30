@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added a protected hosted preview with verified Cloudflare Access identity, a D1 account/workspace directory, isolated browser outboxes, same-origin assets and sync, and a deployment command tied to an exact verified commit.
+
 - Added local main-workspace WebSocket notifications, automatic cross-browser convergence, and reconnect catch-up, with cursor-only hints, hibernation-safe connections, and real-runtime browser recovery checks.
 
 - Added the local issue list, creation form, inline title editing, and visible sync states, with durable browser recovery and actual-app end-to-end checks.

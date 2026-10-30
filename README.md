@@ -17,7 +17,7 @@ Contributions must not include third-party assets (icon sets, illustrations, CSS
 ```
 apps/
   web/        React issue list, creation, and title editing over the local sync client
-  worker/     Local HTTP sync, WebSocket notifications, and branch APIs over a SQLite WorkspaceDO
+  worker/     HTTP sync, WebSocket notifications, and protected preview over a SQLite WorkspaceDO
 packages/
   events/     Typed semantic issue events and their validated envelopes
   model/      Drizzle schema: one definition of every entity, for D1 and for DO SQLite
@@ -46,8 +46,9 @@ The local Worker runs the existing engine in a SQLite-backed `WorkspaceDO`, with
 branch APIs. Runtime tests and browser recovery checks use actual `workerd`; fast engine tests and
 the seed still use `node:sqlite`. The web app lists, creates, and renames issues with IndexedDB-backed
 offline recovery, automatic cross-browser updates, and visible sync/rejection state. See the
-[local issue flow](docs/ux/issues.md). Production authentication, deployment, and DocumentDO/Yjs
-remain planned. See [local Worker development](docs/local-worker.md).
+[local issue flow](docs/ux/issues.md). A [protected hosted preview](docs/hosted-preview.md) uses
+Cloudflare Access, actual user/workspace context, and a D1 directory. Native sign-in, public
+onboarding, and DocumentDO/Yjs remain planned. See [local Worker development](docs/local-worker.md).
 
 Issue creation and title-only updates now record `IssueCreated` and `IssueTitled` events and apply
 shared reducers. Their recorded history can reproduce the same projections in memory and SQLite.
@@ -57,7 +58,7 @@ Other mutations still use the original patch-based path during the incremental m
 The same create/rename flow also supports [durable workspace branches](docs/workspace-branches.md).
 Branch rows survive restarts without changing main, while untouched reads follow live main.
 Human owners can preview and merge the supported changes with explicit conflict choices and durable
-retry receipts. The branch review UI and Cloudflare deployment remain planned.
+retry receipts. The branch review UI remains planned.
 
 ## How a write flows
 
@@ -97,7 +98,8 @@ shell, and `stop` to stop this checkout's containers while preserving data. Afte
 or browser dependency, use `rebuild`. After changing branches or the lockfile, run a frozen install
 inside the container. Container and native dependencies must use separate checkouts; a native
 checkout is an optional troubleshooting environment, rather than CI proof. The devcontainer is a
-development environment; Cloudflare deployment is still planned.
+development environment; the separate [preview profile](docs/hosted-preview.md) builds and deploys
+the app to Cloudflare with authenticated workspace routing.
 
 pnpm remains the package manager for both environments: use one root lockfile and declare internal
 dependencies with `workspace:*`. Run installs from the repository root, use

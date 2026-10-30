@@ -30,9 +30,12 @@ another tab waits with a clear explanation and automatically continues after the
 This preserves the queue across reloads and future tab openings without letting two clients
 overwrite one persisted outbox. Independent browser contexts can sync concurrently.
 
-The local identity is explicitly Alice. Initializing the local workspace is a separate action when
-the Worker has no fixture members. Production sign-in, workspace switching, branch review, issue
-details, filtering, and rich text remain later flows.
+In local development the identity is explicitly Alice. Initializing the local workspace is a
+separate action when the Worker has no fixture members. The hosted preview instead displays the
+verified user and workspace, hides local initialization, and opens an empty starter team after
+authorized setup. Authentication failures require signing in and reloading before cached work is
+opened again. Native sign-in, workspace switching, branch review, issue details, filtering, and
+rich text remain later flows.
 
 ## Proof
 
