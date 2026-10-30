@@ -12,4 +12,5 @@ preparation moves them to a dated version heading.
 - Added reproducible Node/pnpm setup, linting, formatting, and CI checks for tests, builds, the seed, spec locking, and changelog policy.
 - Licensed the project under Apache-2.0.
 - Added a deterministic verifier package, retained execution reports, and daily non-gating mechanical documentation reports.
+- Added a pinned Linux devcontainer with automatic pnpm and Chromium setup, local command helpers, package-management guidance, and container execution for every repository-owned CI check.
 - Added Chromium integration tests for offline IndexedDB recovery and durable mutation retries over HTTP and file-backed SQLite.
