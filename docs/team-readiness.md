@@ -56,6 +56,10 @@ target. Fixture seeding and cold module compilation are excluded. These local ob
 retained acceptance evidence rather than a hosted latency guarantee; CI retains fresh receipts and
 browser reports for each candidate.
 
+An instrumented Actions observation rendered the same working-set size in 2,614 ms and missed the
+target. [The measurement record](ux/issue-views.md#measured-rendering-evidence) retains that result
+alongside the local observations and explains the separate bulk-fixture setup allowance.
+
 Implementation proceeds in focused PRs. Frontend, backend, and behavioral tests can run in parallel
 within a slice once their interfaces agree. Access administration precedes hosted multi-user proof;
 semantic issue controls precede activity and notification consumers. Backups and monitoring can
