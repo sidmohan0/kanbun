@@ -170,3 +170,9 @@ storage rollout; its active version now has the same storage contract as the can
 Do not roll code back across this binding migration using the ordinary code-only rollback path.
 Keep the new class and binding in a corrective release. Reverting code does not restore document
 or workspace data; data recovery is a separate operation.
+
+## Operational monitoring
+
+The daily/manual [preview health report and recovery runbook](operations.md) cover Access protection,
+deployed source and release state, and read-only accounts connectivity. They retain bounded evidence
+without authenticating as a teammate or claiming to prove application or Durable Object health.
