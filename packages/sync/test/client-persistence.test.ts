@@ -51,6 +51,40 @@ it("persists the drained outbox when a rejected batch does not advance the sync 
   expect(await persister.load()).toMatchObject({ lastMutationId: 1, pending: [] });
 });
 
+it("persists freshly loaded on-demand rows without requiring another pull or mutation", async () => {
+  const persister = new MemoryPersister();
+  const comment = {
+    id: "comment",
+    issueId: "issue",
+    teamId: "team",
+    body: "Earlier context",
+    userId: actor.id,
+    createdAt: "2026-10-30T00:00:00.000Z",
+    updatedAt: "2026-10-30T00:00:00.000Z",
+  };
+  const client = new SyncClient({
+    actor,
+    mutators,
+    persister,
+    transport: transport({ load: async () => ({ seq: 1, rows: [comment] }) }),
+  });
+  await client.start();
+  await client.load("comment", "issue");
+  expect((await persister.load())?.rows.comment).toMatchObject([comment]);
+  const restored = new SyncClient({
+    actor,
+    mutators,
+    persister,
+    transport: transport({
+      pull: async () => {
+        throw new Error("offline");
+      },
+    }),
+  });
+  await expect(restored.start()).rejects.toThrow("offline");
+  expect(restored.get("comment", "comment")).toMatchObject(comment);
+});
+
 it("reports a storage load failure before attempting a fresh bootstrap", async () => {
   const failure = new Error("IndexedDB cannot be opened");
   const errors: unknown[] = [];

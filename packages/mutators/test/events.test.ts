@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { DomainEvent } from "@kanbun/events";
 import { modelNames } from "@kanbun/model";
-import { MemoryStore, type MutatorContext, type Store } from "@kanbun/sync";
+import { MemoryStore, issueIncarnation, type MutatorContext, type Store } from "@kanbun/sync";
 import { SyncServer, SYSTEM_ACTOR } from "@kanbun/sync/server";
 import { MemoryPersister, SyncClient } from "@kanbun/sync/client";
 import { openWorkspaceDb } from "@kanbun/sync/server/node";
-import { applyIssueEvent, mutators } from "../src";
+import { applyCommentEvent, applyIssueEvent, mutators } from "../src";
 
 const id = (n: number) => `019a0000-0000-7000-8000-${n.toString(16).padStart(12, "0")}`;
 const ALICE = { id: "alice", type: "user" } as const;
@@ -153,6 +153,251 @@ function push(server: SyncServer, mutationId: number, name: string, args: unknow
 }
 
 describe("semantic issue events", () => {
+  it("does not deliver an old queued private comment into a recreated public issue", () => {
+    const { db, server } = fixture();
+    try {
+      push(server, 1, "teamUpdate", { id: TEAM, patch: { visibility: "private" } });
+      push(server, 2, "issueCreate", create(ISSUE, id(12)));
+      const previous = issueIncarnation(server.store.get("issue", ISSUE)!);
+      const queued = {
+        id: id(850),
+        issueId: ISSUE,
+        issueIncarnation: previous,
+        body: "Private draft must stay private",
+      };
+      expect(
+        server.push(ALICE, {
+          clientId: "old-private-comment",
+          mutations: [
+            {
+              id: 1,
+              name: "commentCreate",
+              ts: CREATED,
+              args: { id: id(851), issueId: ISSUE, body: "Deleted private history" },
+            },
+          ],
+        }),
+      ).toMatchObject({ ok: true, rejected: [] });
+      push(server, 3, "issueTrash", { id: ISSUE, trashed: true });
+      push(server, 4, "issueDelete", { id: ISSUE });
+      push(server, 5, "teamUpdate", { id: TEAM, patch: { visibility: "public" } });
+      expect(push(server, 6, "issueCreate", create(ISSUE, id(13)))).toMatchObject({ ok: true, rejected: [] });
+      expect(issueIncarnation(server.store.get("issue", ISSUE)!)).not.toBe(previous);
+      expect(push(server, 7, "commentCreate", queued)).toMatchObject({ ok: true, rejected: [{ id: 7 }] });
+      expect(server.store.list("comment", { issueId: ISSUE })).toEqual([]);
+      expect(server.events(BOB, { issueId: ISSUE }).some((event) => event.type === "CommentPosted")).toBe(false);
+      expect(server.events(ALICE, { issueId: ISSUE }).map((event) => event.type)).toEqual(["IssueCreated"]);
+    } finally {
+      db.close();
+    }
+  });
+  it("rolls back a comment and its fact after a late subscription failure and refuses comment branches", () => {
+    const { db, server } = fixture();
+    try {
+      push(server, 1, "issueCreate", create(ISSUE, id(12)));
+      const before = projection(server.store);
+      const facts = server.events(ALICE);
+      // Alice already owns this identifier; Bob's finalized subscriber write fails after CommentPosted.
+      expect(
+        server.push(BOB, {
+          clientId: "late-comment",
+          mutations: [
+            {
+              id: 1,
+              name: "commentCreate",
+              ts: CREATED,
+              args: { id: id(800), issueId: ISSUE, body: "Must roll back", subscriptionId: id(12) },
+            },
+          ],
+        }),
+      ).toMatchObject({ ok: true, rejected: [{ id: 1 }] });
+      expect(projection(server.store)).toEqual(before);
+      expect(server.events(ALICE)).toEqual(facts);
+      const branchId = id(801);
+      server.createBranch(ALICE, { id: branchId, name: "Discussion is main only" });
+      expect(
+        server.push(ALICE, {
+          branchId,
+          clientId: "branch-comment",
+          mutations: [
+            { id: 1, name: "commentCreate", ts: CREATED, args: { id: id(802), issueId: ISSUE, body: "Not supported" } },
+          ],
+        }),
+      ).toMatchObject({ ok: true, rejected: [{ id: 1 }] });
+      expect(server.store.get("comment", id(802))).toBeUndefined();
+      expect(server.events(ALICE, { branchId }).map((event) => event.type)).toEqual(["BranchCreated"]);
+    } finally {
+      db.close();
+    }
+  });
+  it("replays independent discussion facts and their finalized subscription in memory and SQLite", () => {
+    const { db, server } = fixture();
+    try {
+      server.system("memberSync", { id: "reader", name: "Reader", email: "reader@example.com" });
+      const memory = new MemoryStore();
+      copyProjection(server.store, memory);
+      const base = GOLDEN[1]!;
+      if (base.type !== "IssueTitled") throw new Error("Golden title missing");
+      const root = id(500),
+        reply = id(501);
+      const posted: Extract<DomainEvent, { type: "CommentPosted" }> = {
+        ...base,
+        type: "CommentPosted" as const,
+        entityType: "comment" as const,
+        entityId: root,
+        seq: 43,
+        actor: BOB,
+        scopeUserId: null,
+        payload: {
+          issueId: ISSUE,
+          body: "A recorded decision",
+          bodyData: null,
+          parentId: null,
+          quotedText: "launch",
+          userId: BOB.id,
+          agentId: null,
+        },
+      };
+      const facts: DomainEvent[] = [
+        GOLDEN[0]!,
+        posted,
+        {
+          ...posted,
+          entityId: reply,
+          seq: 44,
+          actor: ALICE,
+          payload: { ...posted.payload, body: "Agreed", parentId: root, userId: ALICE.id, quotedText: null },
+        },
+        {
+          ...posted,
+          type: "CommentEdited",
+          seq: 45,
+          payload: { issueId: ISSUE, body: "A corrected decision", bodyData: null },
+        },
+        {
+          ...posted,
+          type: "CommentResolved",
+          seq: 46,
+          actor: ALICE,
+          payload: { issueId: ISSUE, resolved: true, resolvingUserId: ALICE.id, resolvingCommentId: reply },
+        },
+        { ...base, type: "SubscriberAdded", seq: 47, payload: { id: id(502), userId: "reader" } },
+      ];
+      for (const event of facts)
+        for (const store of [memory, server.store]) {
+          if (event.entityType === "comment") applyCommentEvent(context(store), event);
+          else applyIssueEvent(context(store), event);
+        }
+      expect(projection(memory)).toEqual(projection(server.store));
+      expect(memory.get("comment", root)).toMatchObject({
+        body: "A corrected decision",
+        bodyData: null,
+        userId: BOB.id,
+        agentId: null,
+        issueId: ISSUE,
+        teamId: TEAM,
+        quotedText: "launch",
+        parentId: null,
+        createdAt: TITLED,
+        editedAt: TITLED,
+        resolvedAt: TITLED,
+        resolvingUserId: ALICE.id,
+        resolvingCommentId: reply,
+      });
+      expect(memory.get("comment", reply)).toMatchObject({ body: "Agreed", parentId: root, userId: ALICE.id });
+      expect(memory.get("issueSubscription", id(502))).toMatchObject({
+        issueId: ISSUE,
+        userId: "reader",
+        teamId: TEAM,
+      });
+      const reopen: DomainEvent = {
+        ...posted,
+        type: "CommentResolved",
+        seq: 48,
+        payload: { issueId: ISSUE, resolved: false, resolvingUserId: null, resolvingCommentId: null },
+      };
+      for (const store of [memory, server.store]) applyCommentEvent(context(store), reopen);
+      expect(projection(memory)).toEqual(projection(server.store));
+      expect(memory.get("comment", root)).toMatchObject({
+        resolvedAt: null,
+        resolvingUserId: null,
+        resolvingCommentId: null,
+      });
+      expect(memory.get("issue", ISSUE)).toMatchObject({ updatedSeq: 48, updatedAt: TITLED });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("attributes discussion facts, scopes and pages issue history, and rejects invalid edits atomically", () => {
+    const { db, server } = fixture();
+    try {
+      push(server, 1, "issueCreate", create(ISSUE, id(12)));
+      push(server, 2, "issueCreate", create(id(600), id(601)));
+      const request = {
+        clientId: "bob-comments",
+        mutations: [
+          {
+            id: 1,
+            name: "commentCreate",
+            ts: CREATED,
+            args: { id: id(602), issueId: ISSUE, body: "Bob's context", subscriptionId: id(603) },
+          },
+        ],
+      };
+      expect(server.push(BOB, request)).toMatchObject({ ok: true, rejected: [] });
+      expect(server.push(BOB, request)).toMatchObject({ ok: true, rejected: [] });
+      const facts = server.events(ALICE, { issueId: ISSUE });
+      expect(facts.map((event) => event.type)).toEqual(["IssueCreated", "CommentPosted", "SubscriberAdded"]);
+      expect(facts[1]).toMatchObject({ actor: BOB, entityId: id(602), payload: { userId: BOB.id, issueId: ISSUE } });
+      const latest = server.events(ALICE, { issueId: ISSUE, order: "desc", limit: 2 });
+      expect(latest.map((event) => event.type)).toEqual(["SubscriberAdded", "CommentPosted"]);
+      expect(
+        server.events(ALICE, { issueId: ISSUE, order: "desc", before: latest[1]!.seq, limit: 2 }).map((e) => e.type),
+      ).toEqual(["IssueCreated"]);
+      const before = projection(server.store);
+      expect(push(server, 3, "commentUpdate", { id: id(602), body: "Stolen" })).toMatchObject({
+        ok: true,
+        rejected: [{ id: 3 }],
+      });
+      expect(
+        server.push(BOB, {
+          clientId: request.clientId,
+          mutations: [{ id: 2, name: "commentUpdate", ts: CREATED, args: { id: id(602), body: "   " } }],
+        }),
+      ).toMatchObject({ ok: true, rejected: [{ id: 2 }] });
+      expect(projection(server.store)).toEqual(before);
+      expect(server.events(ALICE, { issueId: ISSUE })).toEqual(facts);
+      expect(
+        push(server, 4, "commentCreate", { id: id(604), issueId: ISSUE, parentId: id(602), body: "Reply" }),
+      ).toMatchObject({ ok: true, rejected: [] });
+      expect(
+        push(server, 5, "commentCreate", { id: id(605), issueId: ISSUE, parentId: id(604), body: "Too deep" }),
+      ).toMatchObject({ ok: true, rejected: [{ id: 5 }] });
+      expect(push(server, 6, "commentResolve", { id: id(604), resolved: true })).toMatchObject({
+        ok: true,
+        rejected: [{ id: 6 }],
+      });
+      expect(push(server, 7, "commentCreate", { id: id(606), issueId: id(600), body: "Other issue" })).toMatchObject({
+        ok: true,
+        rejected: [],
+      });
+      expect(
+        push(server, 8, "commentResolve", { id: id(602), resolved: true, resolvingCommentId: id(606) }),
+      ).toMatchObject({ ok: true, rejected: [{ id: 8 }] });
+      server.system("memberSync", { id: BOB.id, name: "Bob", email: "bob@example.com", active: false });
+      expect(
+        server.push(BOB, {
+          clientId: request.clientId,
+          mutations: [
+            { id: 3, name: "commentCreate", ts: CREATED, args: { id: id(607), issueId: ISSUE, body: "Inactive" } },
+          ],
+        }),
+      ).toMatchObject({ ok: true, rejected: [{ id: 3 }] });
+    } finally {
+      db.close();
+    }
+  });
   it("remaps deleted workflow baseline and assertion references without changing an unrelated effective status", () => {
     const { db, server } = fixture();
     try {

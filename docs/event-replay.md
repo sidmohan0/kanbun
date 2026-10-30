@@ -105,5 +105,32 @@ repair a missing workspace event without duplicating an acknowledged state; the 
 identity remains the event actor. Binary Yjs state stays in DocumentDO storage. Description changes
 are initially main-only; the existing create/rename branch merge contract stays unchanged.
 
+## Discussion
+
+`commentCreate`, `commentUpdate`, and `commentResolve` emit `CommentPosted`, `CommentEdited`,
+and `CommentResolved`. Payloads finalize the author, body, parent, resolution references, and any
+author-subscription identifier. Shared reducers project the comment and advance the owning issue's
+activity sequence. These commands are main-only; comment deletion and reactions retain their
+legacy implementations. This is plain-text discussion, with existing optional structured body data,
+and does not create a collaborative document per comment.
+
+The issue detail loads comments through the existing on-demand sync endpoint. Loaded canonical
+rows and submitted mutations persist in the ordinary browser workspace store; pending comments
+and edits can survive reload and publish after reconnect. Unsubmitted composer text is not saved.
+Browser submissions carry the expected issue incarnation, so a queued private draft cannot post to
+a different issue recreated with the same UUID. Newly created issues must receive their authoritative
+number before accepting a comment; existing confirmed issues support offline comments.
+`/sync/events?issueId=…&order=desc` returns only currently authorized issue and child-comment facts;
+`before` pages older facts without downloading the entire workspace's history. Existing event
+pagination defaults and limits remain unchanged. Human-readable activity resolves authors from
+the workspace's existing user and agent rows, including known inactive authors.
+Issue-scoped history starts at the current issue's creation boundary. Incremental activity refreshes
+fill intervening pages when more than one page of new facts arrived while the browser was away.
+
+Independent golden facts prove memory/SQLite replay of posting, replies, editing, resolution,
+reopening, and finalized subscriptions. Other checks cover author-only edits, malformed thread
+references, atomic rollback, private-team history access, durable retry, two-browser convergence,
+offline reload, and real issue-history pagination.
+
 The remaining vocabulary, complete workspace replay, and branch review UI remain later steps.
 The [hosted preview](hosted-preview.md) provides deployment and owner authentication.

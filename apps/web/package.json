@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@kanbun/events": "workspace:*",
     "@kanbun/model": "workspace:*",
     "@kanbun/mutators": "workspace:*",
     "@kanbun/sync": "workspace:*",

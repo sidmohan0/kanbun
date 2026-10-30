@@ -491,8 +491,15 @@ export class WorkspaceDO extends DurableObject<Env> {
         case "/sync/branch/preview":
           return json(server.previewBranch(actor, query(branchQuery, url).branchId));
         case "/sync/events": {
-          const { entityId, ...input } = query(eventsQuery, url);
-          return json(server.events(actor, { ...input, ...(entityId === undefined ? {} : { entityId }) }));
+          const { entityId, issueId, before, ...input } = query(eventsQuery, url);
+          return json(
+            server.events(actor, {
+              ...input,
+              ...(entityId === undefined ? {} : { entityId }),
+              ...(issueId === undefined ? {} : { issueId }),
+              ...(before === undefined ? {} : { before }),
+            }),
+          );
         }
         case "/sync/activity": {
           const { model, rowId, actorType, txnId, before, ...input } = query(activityQuery, url);

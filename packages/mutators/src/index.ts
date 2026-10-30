@@ -34,3 +34,4 @@ export { DEFAULT_STATES } from "./teams";
 export * from "./ordering";
 
 export { applyIssueEvent } from "./issueEvents";
+export { applyCommentEvent } from "./commentEvents";

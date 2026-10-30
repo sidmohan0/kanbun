@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added issue discussion with attributed comments, one-level replies, thread resolution and reopening, durable offline submission, and paginated issue activity backed by replayable semantic facts.
+
 - Added owner-managed targeted invitations, member removal and explicit re-invitation, with individual identities, admission-scoped browser storage, and HTTP/document/WebSocket authorization checks.
 
 - Added issue status, priority, assignee, labels, and reversible archive controls, with semantic history for human status assertions and supported property changes.

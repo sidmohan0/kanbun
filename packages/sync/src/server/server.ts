@@ -31,6 +31,7 @@ import type {
   PushRequest,
   PushResponse,
 } from "../protocol";
+import { DEFAULT_EVENT_PAGE_SIZE } from "../protocol";
 import { tableMeta } from "../rows";
 import { applyMigrations, type SqlDriver, type SqlValue } from "./driver";
 import { SqliteStore, SYSTEM_TAG } from "./sqliteStore";
@@ -665,24 +666,65 @@ export class SyncServer {
   /** Committed semantic events visible to this actor, ordered for deterministic replay. */
   events(
     actor: Actor,
-    filter: { since?: number; entityId?: string; limit?: number; branchId?: string } = {},
+    filter: {
+      since?: number;
+      entityId?: string;
+      issueId?: string;
+      before?: number;
+      order?: "asc" | "desc";
+      limit?: number;
+      branchId?: string;
+    } = {},
   ): DomainEvent[] {
     const branchId = this.branchId(filter.branchId);
-    this.view(actor, branchId);
+    const view = this.view(actor, branchId);
     const since = filter.since ?? 0;
-    const limit = filter.limit ?? 500;
+    const limit = filter.limit ?? DEFAULT_EVENT_PAGE_SIZE;
     if (!Number.isSafeInteger(since) || since < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 5000)
       throw new MutationError("Invalid event cursor or limit");
     const teams = this.visibleTeamIds(actor);
+    let issueStart: { column: "seq" | "ts"; value: number } | null = null;
+    if (filter.issueId !== undefined) {
+      const issue = view.get("issue", filter.issueId);
+      if (!issue) throw new MutationError("issue not found", "not_found");
+      if (!teams.includes(issue.teamId)) throw new MutationError("not visible", "forbidden");
+      issueStart =
+        issue.createdSeq > 0
+          ? { column: "seq", value: issue.createdSeq }
+          : { column: "ts", value: Date.parse(issue.createdAt) };
+      if (!Number.isSafeInteger(issueStart.value)) throw new MutationError("Invalid issue creation boundary");
+    }
+    if (
+      (filter.before !== undefined && (!Number.isSafeInteger(filter.before) || filter.before <= 0)) ||
+      (filter.order !== undefined && filter.order !== "asc" && filter.order !== "desc")
+    )
+      throw new MutationError("Invalid event pagination");
     const scope = this.scopeSql(teams, this.effectiveUserId(actor), "team_id", "scope_user_id");
     const clauses = ["branch_id = ?", "seq > ?", scope.sql];
     const params: SqlValue[] = [branchId, since, ...scope.params];
+    if (issueStart) {
+      clauses.push(`${issueStart.column} >= ?`);
+      params.push(issueStart.value);
+    }
     if (filter.entityId !== undefined) {
       clauses.push("entity_id = ?");
       params.push(filter.entityId);
     }
+    if (filter.issueId !== undefined) {
+      clauses.push(
+        "((entity_type = 'issue' AND entity_id = ?) OR (entity_type = 'comment' AND json_extract(payload, '$.issueId') = ?))",
+      );
+      params.push(filter.issueId, filter.issueId);
+    }
+    if (filter.before !== undefined) {
+      clauses.push("seq < ?");
+      params.push(filter.before);
+    }
     return this.opts.driver
-      .all(`SELECT * FROM event_log WHERE ${clauses.join(" AND ")} ORDER BY seq ASC LIMIT ?`, [...params, limit])
+      .all(
+        `SELECT * FROM event_log WHERE ${clauses.join(" AND ")} ORDER BY seq ${filter.order === "desc" ? "DESC" : "ASC"} LIMIT ?`,
+        [...params, limit],
+      )
       .map(decodeEvent);
   }
 
