@@ -13,12 +13,13 @@ const expectedCalls = [
   ["format:check"],
   ["lint"],
   ["typecheck"],
-  ["test"],
   ["test:scripts"],
   ["spec:check", "--initial"],
+  ["test:recovery", "--preflight"],
+  ["test"],
   ["build"],
   ["seed"],
-  ["test:recovery"],
+  ["test:recovery", "--remaining"],
 ].map((args) => (args[0] === "--version" ? args : ["--reporter=append-only", ...args]));
 
 function fixture(t) {
@@ -99,7 +100,13 @@ else {
       encoding: "utf8",
       env: { ...process.env, PATH: bin, ...env },
     });
-    assert.equal(result.stderr, "", result.stderr);
+    assert.ok(
+      result.stderr
+        .split("\n")
+        .filter(Boolean)
+        .every((line) => line.startsWith("[verify] ")),
+      result.stderr,
+    );
     return { ...result, report: JSON.parse(result.stdout) };
   };
   const calls = () => readFileSync(path.join(root, ".pnpm-calls"), "utf8").trim().split("\n").map(JSON.parse);
@@ -108,7 +115,9 @@ else {
 
 test("all executes the required gates and emits one JSON receipt with retained logs", (t) => {
   const f = fixture(t);
-  const { status, report } = f.run();
+  const { status, report, stderr } = f.run();
+  assert.match(stderr, /\[verify\] START preflight/);
+  assert.match(stderr, /\[verify\] PASS recovery \(\d+\.\d+s\)/);
   assert.equal(status, 0);
   assert.equal(report.pass, true);
   assert.equal(report.reportWritten, true);
@@ -179,7 +188,7 @@ process.exitCode=spawnSync(${JSON.stringify(pnpm)},process.argv.slice(2),{stdio:
     env: { ...process.env, PATH: `${f.bin}${path.delimiter}${process.env.PATH}` },
   });
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.equal(result.stderr, "");
+  assert.match(result.stderr, /\[verify\] PASS build/);
   const report = JSON.parse(result.stdout);
   assert.equal(report.pass, true);
   const build = report.steps.find((step) => step.name === "build");
@@ -313,4 +322,32 @@ test("empty documentation results and unknown profiles cannot pass", (t) => {
   const unknown = f.run(["unknown"]);
   assert.equal(unknown.status, 1);
   assert.equal(unknown.report.pass, false);
+});
+
+test("preflight is independently runnable and missing dependencies do not block Node-only documentation", (t) => {
+  const f = fixture(t);
+  const preflight = f.run(["preflight"]);
+  assert.equal(preflight.status, 0);
+  assert.deepEqual(f.calls(), [["--version"], ["--reporter=append-only", "test:recovery", "--preflight"]]);
+  rmSync(path.join(f.root, "node_modules"), { recursive: true });
+  const docs = f.run(["docs"]);
+  assert.equal(docs.status, 0);
+  assert.equal(
+    docs.report.steps.some((step) => step.name === "doctor-dependencies"),
+    false,
+  );
+});
+
+test("a failed browser preflight stops before bulk package tests, build and remaining recovery", (t) => {
+  const f = fixture(t);
+  const { status, report, stderr } = f.run(["all"], { FIXTURE_FAIL: "test:recovery" });
+  assert.equal(status, 1);
+  assert.match(stderr, /\[verify\] FAIL preflight/);
+  assert.equal(report.steps.find((step) => step.name === "preflight").exitCode, 7);
+  assert.ok(
+    report.steps
+      .filter((step) => ["check-tests", "build", "smoke", "recovery"].includes(step.name))
+      .every((step) => !step.executed && !step.pass),
+  );
+  assert.deepEqual(f.calls(), expectedCalls.slice(0, 7));
 });

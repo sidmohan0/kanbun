@@ -31,85 +31,88 @@ async function expectStoredTitle(page: Page, title: string) {
     .toBe(true);
 }
 
-test("the issue UI creates and renames an issue, then a separate browser session converges without refresh or focus", async ({
-  browser,
-  app,
-}, testInfo) => {
-  const firstContext = await browser.newContext();
-  const secondContext = await browser.newContext();
-  const errors: string[] = [];
-  try {
-    const first = await firstContext.newPage();
-    const second = await secondContext.newPage();
-    first.on("pageerror", (error) => errors.push(error.message));
-    second.on("pageerror", (error) => errors.push(error.message));
-    await Promise.all([openApp(first, app.origin), openApp(second, app.origin)]);
+test(
+  "the issue UI creates and renames an issue, then a separate browser session converges without refresh or focus",
+  { tag: "@preflight" },
+  async ({ browser, app }, testInfo) => {
+    const firstContext = await browser.newContext();
+    const secondContext = await browser.newContext();
+    const errors: string[] = [];
+    try {
+      const first = await firstContext.newPage();
+      const second = await secondContext.newPage();
+      first.on("pageerror", (error) => errors.push(error.message));
+      second.on("pageerror", (error) => errors.push(error.message));
+      await Promise.all([openApp(first, app.origin), openApp(second, app.origin)]);
 
-    await first.getByRole("textbox", { name: "Issue title", exact: true }).fill("Created through the issue form");
-    await first.getByRole("button", { name: "Create issue", exact: true }).click();
-    await expect(first.getByRole("row", { name: "REC-2", exact: true })).toContainText(
-      "Created through the issue form",
-    );
-    await expect(first.getByRole("status")).toContainText("Saved");
-    await rename(first, "REC-2", "Renamed through the issue row");
-    await expect(first.getByRole("row", { name: "REC-2", exact: true })).toContainText("Renamed through the issue row");
-    await expect(first.getByRole("status")).toContainText("Saved");
+      await first.getByRole("textbox", { name: "Issue title", exact: true }).fill("Created through the issue form");
+      await first.getByRole("button", { name: "Create issue", exact: true }).click();
+      await expect(first.getByRole("row", { name: "REC-2", exact: true })).toContainText(
+        "Created through the issue form",
+      );
+      await expect(first.getByRole("status")).toContainText("Saved");
+      await rename(first, "REC-2", "Renamed through the issue row");
+      await expect(first.getByRole("row", { name: "REC-2", exact: true })).toContainText(
+        "Renamed through the issue row",
+      );
+      await expect(first.getByRole("status")).toContainText("Saved");
 
-    await expect(second.getByRole("row", { name: "REC-2", exact: true })).toContainText(
-      "Renamed through the issue row",
-    );
-    await expect(second.getByRole("status")).toContainText("Saved");
-    const prioritized = await app.runtime.fetch("/sync/push", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        clientId: "product-ui-top-insertion",
-        mutations: [
-          {
-            id: 1,
-            name: "issueCreate",
-            args: {
-              id: uuidv7(),
-              teamId: app.teamId,
-              title: "Prioritized above the existing work",
-              subscriptionId: uuidv7(),
-              position: "top",
+      await expect(second.getByRole("row", { name: "REC-2", exact: true })).toContainText(
+        "Renamed through the issue row",
+      );
+      await expect(second.getByRole("status")).toContainText("Saved");
+      const prioritized = await app.runtime.fetch("/sync/push", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clientId: "product-ui-top-insertion",
+          mutations: [
+            {
+              id: 1,
+              name: "issueCreate",
+              args: {
+                id: uuidv7(),
+                teamId: app.teamId,
+                title: "Prioritized above the existing work",
+                subscriptionId: uuidv7(),
+                position: "top",
+              },
+              ts: new Date().toISOString(),
             },
-            ts: new Date().toISOString(),
-          },
-        ],
-      }),
-    });
-    expect(prioritized.status).toBe(200);
-    expect((await prioritized.json()) as PushResponse).toMatchObject({ ok: true, rejected: [] });
-    await expect(first.locator("tbody tr").first()).toHaveAccessibleName("REC-3");
-    await expect(first.locator("tbody tr").first()).toContainText("Prioritized above the existing work");
-    const authority = await app.runtime.inspect();
-    const created = authority.issues.find((issue) => issue.title === "Renamed through the issue row");
-    expect(created).toMatchObject({ teamId: app.teamId, number: 2 });
-    expect(
-      authority.events.filter((event) => event.type === "IssueCreated" && event.entity_id === created?.id),
-    ).toHaveLength(1);
-    expect(
-      authority.events.filter((event) => event.type === "IssueTitled" && event.entity_id === created?.id),
-    ).toHaveLength(1);
-    expect(errors).toEqual([]);
+          ],
+        }),
+      });
+      expect(prioritized.status).toBe(200);
+      expect((await prioritized.json()) as PushResponse).toMatchObject({ ok: true, rejected: [] });
+      await expect(first.locator("tbody tr").first()).toHaveAccessibleName("REC-3");
+      await expect(first.locator("tbody tr").first()).toContainText("Prioritized above the existing work");
+      const authority = await app.runtime.inspect();
+      const created = authority.issues.find((issue) => issue.title === "Renamed through the issue row");
+      expect(created).toMatchObject({ teamId: app.teamId, number: 2 });
+      expect(
+        authority.events.filter((event) => event.type === "IssueCreated" && event.entity_id === created?.id),
+      ).toHaveLength(1);
+      expect(
+        authority.events.filter((event) => event.type === "IssueTitled" && event.entity_id === created?.id),
+      ).toHaveLength(1);
+      expect(errors).toEqual([]);
 
-    for (const [name, colorScheme, width, height] of [
-      ["light", "light", 1440, 1000],
-      ["dark", "dark", 1440, 1000],
-      ["mobile", "light", 390, 844],
-    ] as const) {
-      await first.emulateMedia({ colorScheme });
-      await first.setViewportSize({ width, height });
-      const screenshot = `/tmp/kanbun-app-${name}.png`;
-      await first.screenshot({ path: screenshot, fullPage: true });
-      await testInfo.attach(`product-ui-${name}`, { path: screenshot, contentType: "image/png" });
+      for (const [name, colorScheme, width, height] of [
+        ["light", "light", 1440, 1000],
+        ["dark", "dark", 1440, 1000],
+        ["mobile", "light", 390, 844],
+      ] as const) {
+        await first.emulateMedia({ colorScheme });
+        await first.setViewportSize({ width, height });
+        const screenshot = `/tmp/kanbun-app-${name}.png`;
+        await first.screenshot({ path: screenshot, fullPage: true });
+        await testInfo.attach(`product-ui-${name}`, { path: screenshot, contentType: "image/png" });
+      }
+    } finally {
+      await Promise.allSettled([firstContext.close(), secondContext.close()]);
     }
-  } finally {
-    await Promise.allSettled([firstContext.close(), secondContext.close()]);
-  }
-});
+  },
+);
 
 test("live updates retain hints during a pull, recover after reconnecting, and survive Durable Object hibernation", async ({
   browser,
@@ -230,49 +233,52 @@ test("live updates retain hints during a pull, recover after reconnecting, and s
   }
 });
 
-test("an offline title entered in the issue UI survives reload and is committed once after reconnecting", async ({
-  browser,
-  app,
-}) => {
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  const errors: string[] = [];
-  page.on("pageerror", (error) => errors.push(error.message));
-  try {
-    await openApp(page, app.origin);
-    await context.route(syncApi, (route) => route.abort("internetdisconnected"));
-    await rename(page, "REC-1", "A title saved while offline");
-    await expect(page.getByRole("status")).toContainText("Offline");
-    await expect(page.getByRole("row", { name: "REC-1", exact: true })).toContainText("A title saved while offline");
-    expect((await app.runtime.inspect()).issues.find((issue) => issue.id === app.issueId)?.title).toBe("Shared issue");
-    await expectStoredTitle(page, "A title saved while offline");
+test(
+  "an offline title entered in the issue UI survives reload and is committed once after reconnecting",
+  { tag: "@preflight" },
+  async ({ browser, app }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    try {
+      await openApp(page, app.origin);
+      await context.route(syncApi, (route) => route.abort("internetdisconnected"));
+      await rename(page, "REC-1", "A title saved while offline");
+      await expect(page.getByRole("status")).toContainText("Offline");
+      await expect(page.getByRole("row", { name: "REC-1", exact: true })).toContainText("A title saved while offline");
+      expect((await app.runtime.inspect()).issues.find((issue) => issue.id === app.issueId)?.title).toBe(
+        "Shared issue",
+      );
+      await expectStoredTitle(page, "A title saved while offline");
 
-    await context.route("**/api/context", (route) => route.abort("internetdisconnected"));
-    await page.reload();
-    await expect(page.getByRole("row", { name: "REC-1", exact: true })).toContainText("A title saved while offline");
-    await expect(page.getByRole("status")).toContainText("Offline");
-    await context.unroute(syncApi);
-    await context.unroute("**/api/context");
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
-    await expect(page.getByRole("status")).toContainText("Saved");
-    const committed = await app.runtime.inspect();
-    expect(committed.issues.find((issue) => issue.id === app.issueId)?.title).toBe("A title saved while offline");
-    expect(
-      committed.events.filter((event) => event.type === "IssueTitled" && event.entity_id === app.issueId),
-    ).toHaveLength(1);
+      await context.route("**/api/context", (route) => route.abort("internetdisconnected"));
+      await page.reload();
+      await expect(page.getByRole("row", { name: "REC-1", exact: true })).toContainText("A title saved while offline");
+      await expect(page.getByRole("status")).toContainText("Offline");
+      await context.unroute(syncApi);
+      await context.unroute("**/api/context");
+      await page.getByRole("button", { name: "Refresh", exact: true }).click();
+      await expect(page.getByRole("status")).toContainText("Saved");
+      const committed = await app.runtime.inspect();
+      expect(committed.issues.find((issue) => issue.id === app.issueId)?.title).toBe("A title saved while offline");
+      expect(
+        committed.events.filter((event) => event.type === "IssueTitled" && event.entity_id === app.issueId),
+      ).toHaveLength(1);
 
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
-    await page.reload();
-    await expect(page.getByRole("row", { name: "REC-1", exact: true })).toContainText("A title saved while offline");
-    await expect(page.getByRole("status")).toContainText("Saved");
-    const recovered = await app.runtime.inspect();
-    expect(recovered.events).toEqual(committed.events);
-    expect(recovered.log).toEqual(committed.log);
-    expect(errors).toEqual([]);
-  } finally {
-    await context.close();
-  }
-});
+      await page.getByRole("button", { name: "Refresh", exact: true }).click();
+      await page.reload();
+      await expect(page.getByRole("row", { name: "REC-1", exact: true })).toContainText("A title saved while offline");
+      await expect(page.getByRole("status")).toContainText("Saved");
+      const recovered = await app.runtime.inspect();
+      expect(recovered.events).toEqual(committed.events);
+      expect(recovered.log).toEqual(committed.log);
+      expect(errors).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  },
+);
 
 test("the issue UI displays an actual authority rejection and replaces the optimistic creation with the canonical issue", async ({
   browser,

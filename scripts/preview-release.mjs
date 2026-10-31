@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { release, assertCompatibleSchema } from "./preview-release-control.mjs";
+import { release, assertCompatibleSchema, SupersededRelease } from "./preview-release-control.mjs";
 import { cloudflareToken } from "./preview-credentials.mjs";
 import { createPreviewChecks } from "./preview-checks.mjs";
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -55,7 +55,7 @@ async function deploy(expectedPrevious) {
   });
   if (!head.ok) throw new Error("Cannot verify current main before publishing");
   const current = (await head.json()).object?.sha;
-  if (current !== sha) throw new Error("Superseded by newer main; no deployment performed");
+  if (current !== sha) throw new SupersededRelease();
   if ((await version()) !== previous)
     throw new Error("Active version changed during preflight; no deployment performed");
   const output = execFileSync(

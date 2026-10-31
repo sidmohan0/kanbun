@@ -64,10 +64,22 @@ export async function runWithRecoveryEvidence({ command, args, cwd, destination 
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
   const directory = fileURLToPath(new URL("..", import.meta.url));
+  const args = process.argv.slice(2);
+  const preflight = args.includes("--preflight");
+  const remaining = args.includes("--remaining");
+  if (preflight && remaining) throw new Error("Choose preflight or remaining recovery tests, not both.");
   process.exitCode = await runWithRecoveryEvidence({
     command: "pnpm",
-    args: ["exec", "playwright", "test", "--config", "test/recovery/playwright.config.ts", ...process.argv.slice(2)],
+    args: [
+      "exec",
+      "playwright",
+      "test",
+      "--config",
+      "test/recovery/playwright.config.ts",
+      ...args.filter((arg) => !["--preflight", "--remaining"].includes(arg)),
+      ...(preflight ? ["--grep", "@preflight"] : remaining ? ["--grep-invert", "@preflight"] : []),
+    ],
     cwd: directory,
-    destination: path.resolve(directory, "../../artifacts/recovery"),
+    destination: path.resolve(directory, preflight ? "../../artifacts/recovery-preflight" : "../../artifacts/recovery"),
   });
 }

@@ -15,9 +15,10 @@ Keep native troubleshooting in a separate checkout so Linux and host dependencie
 Keep package dependencies in their owning workspace manifest and update the root
 `pnpm-lock.yaml`; do not add package-specific lockfiles or use a second package manager.
 
-The shared devcontainer setup runs in full CI, changelog policy, spec lock, and daily/manual
-documentation reporting. Every run builds or starts the image, executes actual workspace setup,
-and runs its checks inside the container. Checkout, CLI bootstrapping, metadata copying, summary
+Every repository-owned workflow runs its checks inside the same devcontainer image. Full CI and
+deployment install the frozen workspace dependencies and Chromium, reusing cached downloads in CI.
+Node-only changelog, spec-lock, health, and documentation jobs use the `policy` setup profile, which
+skips dependency and browser installation. Checkout, CLI bootstrapping, metadata copying, summary
 publishing, and artifact upload are host runner plumbing.
 
 ## Changelog policy

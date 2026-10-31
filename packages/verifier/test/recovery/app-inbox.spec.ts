@@ -210,91 +210,92 @@ test("mention recipients on an offline comment edit survive reload, deliver once
   }
 });
 
-test("private-team access removal hides cached inbox updates and removes that person from explicit mention choices", async ({
-  browser,
-  membership,
-}) => {
-  const { member } = await admitted(membership);
-  const teamId = uuidv7(),
-    issueId = uuidv7();
-  await push(membership, [
-    {
-      name: "teamCreate",
-      args: {
-        id: teamId,
-        name: "Private inbox team",
-        key: "PIV",
-        visibility: "private",
-        membershipId: uuidv7(),
-        stateIds: { backlog: uuidv7(), todo: uuidv7(), inProgress: uuidv7(), done: uuidv7(), canceled: uuidv7() },
+test(
+  "private-team access removal hides cached inbox updates and removes that person from explicit mention choices",
+  { tag: "@preflight" },
+  async ({ browser, membership }) => {
+    const { member } = await admitted(membership);
+    const teamId = uuidv7(),
+      issueId = uuidv7();
+    await push(membership, [
+      {
+        name: "teamCreate",
+        args: {
+          id: teamId,
+          name: "Private inbox team",
+          key: "PIV",
+          visibility: "private",
+          membershipId: uuidv7(),
+          stateIds: { backlog: uuidv7(), todo: uuidv7(), inProgress: uuidv7(), done: uuidv7(), canceled: uuidv7() },
+        },
       },
-    },
-    { name: "teamMembershipCreate", args: { id: uuidv7(), teamId, userId: member.actor.id } },
-    {
-      name: "issueCreate",
-      args: {
-        id: issueId,
-        teamId,
-        title: "Private inbox material",
-        assigneeId: member.actor.id,
-        subscriptionId: uuidv7(),
+      { name: "teamMembershipCreate", args: { id: uuidv7(), teamId, userId: member.actor.id } },
+      {
+        name: "issueCreate",
+        args: {
+          id: issueId,
+          teamId,
+          title: "Private inbox material",
+          assigneeId: member.actor.id,
+          subscriptionId: uuidv7(),
+        },
       },
-    },
-  ]);
-  const ownerContext = await browser.newContext(),
-    memberContext = await browser.newContext();
-  await selectPrincipal(ownerContext, membership.origin, "owner");
-  await selectPrincipal(memberContext, membership.origin, "member");
-  const owner = await ownerContext.newPage(),
-    recipient = await memberContext.newPage();
-  let releaseOwnerPull = () => {};
-  try {
-    await Promise.all([open(owner, membership, `#issues/${issueId}`), open(recipient, membership, "#inbox")]);
-    await expect(inbox(recipient)).toContainText("Private inbox material");
-    await mention(owner.locator(".comment-compose"), member.actor.id);
-    const selectedMentions = owner
-      .locator(".comment-compose")
-      .getByRole("list", { name: "Mention recipients", exact: true });
-    await expect(selectedMentions).toContainText("Preview member");
-    // Hold the owner's next pull before revocation. The recipient can process removal
-    // while the owner still has the old membership snapshot, matching the CI failure.
-    let ownerPullStarted = false;
-    const ownerPull = new Promise<void>((resolve) => {
-      releaseOwnerPull = resolve;
-    });
-    await owner.route("**/sync/pull?**", async (route) => {
-      ownerPullStarted = true;
-      await ownerPull;
-      await route.continue();
-    });
-    await owner.evaluate(() => window.dispatchEvent(new Event("online")));
-    await expect.poll(() => ownerPullStarted).toBe(true);
-    await push(membership, [{ name: "teamMembershipDelete", args: { teamId, userId: member.actor.id } }]);
-    await expect(inbox(recipient).getByText("Private inbox material", { exact: true })).toHaveCount(0);
-    await expect(inbox(recipient).getByRole("heading", { name: "You’re caught up.", exact: true })).toBeVisible();
-    await expect(
-      owner
+    ]);
+    const ownerContext = await browser.newContext(),
+      memberContext = await browser.newContext();
+    await selectPrincipal(ownerContext, membership.origin, "owner");
+    await selectPrincipal(memberContext, membership.origin, "member");
+    const owner = await ownerContext.newPage(),
+      recipient = await memberContext.newPage();
+    let releaseOwnerPull = () => {};
+    try {
+      await Promise.all([open(owner, membership, `#issues/${issueId}`), open(recipient, membership, "#inbox")]);
+      await expect(inbox(recipient)).toContainText("Private inbox material");
+      await mention(owner.locator(".comment-compose"), member.actor.id);
+      const selectedMentions = owner
         .locator(".comment-compose")
-        .getByRole("combobox", { name: "Mention teammate", exact: true })
-        .locator(`option[value="${member.actor.id}"]`),
-    ).toHaveCount(0);
-    // Selected people are already absent from the available-options list, so that
-    // old assertion cannot prove the owner's membership projection is up to date.
-    await expect(selectedMentions).not.toContainText("(unavailable)");
-    releaseOwnerPull();
-    await expect(selectedMentions).toContainText("Preview member (unavailable)");
-    await owner
-      .getByRole("textbox", { name: "Add a comment", exact: true })
-      .fill("This recipient no longer has access.");
-    await owner.getByRole("button", { name: "Post comment", exact: true }).click();
-    await expect(commentRegion(owner).getByRole("alert")).toContainText("Remove unavailable mentions");
-    await owner.getByRole("button", { name: "Remove mention of Preview member", exact: true }).click();
-    await owner.getByRole("button", { name: "Post comment", exact: true }).click();
-    await expect(owner.locator(".sync-indicator")).toContainText("Saved");
-    await recipient.reload();
-    await expect(inbox(recipient).getByRole("heading", { name: "You’re caught up.", exact: true })).toBeVisible();
-  } finally {
-    releaseOwnerPull();
-    await Promise.allSettled([ownerContext.close(), memberContext.close()]);
-  }
-});
+        .getByRole("list", { name: "Mention recipients", exact: true });
+      await expect(selectedMentions).toContainText("Preview member");
+      // Hold the owner's next pull before revocation. The recipient can process removal
+      // while the owner still has the old membership snapshot, matching the CI failure.
+      let ownerPullStarted = false;
+      const ownerPull = new Promise<void>((resolve) => {
+        releaseOwnerPull = resolve;
+      });
+      await owner.route("**/sync/pull?**", async (route) => {
+        ownerPullStarted = true;
+        await ownerPull;
+        await route.continue();
+      });
+      await owner.evaluate(() => window.dispatchEvent(new Event("online")));
+      await expect.poll(() => ownerPullStarted).toBe(true);
+      await push(membership, [{ name: "teamMembershipDelete", args: { teamId, userId: member.actor.id } }]);
+      await expect(inbox(recipient).getByText("Private inbox material", { exact: true })).toHaveCount(0);
+      await expect(inbox(recipient).getByRole("heading", { name: "You’re caught up.", exact: true })).toBeVisible();
+      await expect(
+        owner
+          .locator(".comment-compose")
+          .getByRole("combobox", { name: "Mention teammate", exact: true })
+          .locator(`option[value="${member.actor.id}"]`),
+      ).toHaveCount(0);
+      // Selected people are already absent from the available-options list, so that
+      // old assertion cannot prove the owner's membership projection is up to date.
+      await expect(selectedMentions).not.toContainText("(unavailable)");
+      releaseOwnerPull();
+      await expect(selectedMentions).toContainText("Preview member (unavailable)");
+      await owner
+        .getByRole("textbox", { name: "Add a comment", exact: true })
+        .fill("This recipient no longer has access.");
+      await owner.getByRole("button", { name: "Post comment", exact: true }).click();
+      await expect(commentRegion(owner).getByRole("alert")).toContainText("Remove unavailable mentions");
+      await owner.getByRole("button", { name: "Remove mention of Preview member", exact: true }).click();
+      await owner.getByRole("button", { name: "Post comment", exact: true }).click();
+      await expect(owner.locator(".sync-indicator")).toContainText("Saved");
+      await recipient.reload();
+      await expect(inbox(recipient).getByRole("heading", { name: "You’re caught up.", exact: true })).toBeVisible();
+    } finally {
+      releaseOwnerPull();
+      await Promise.allSettled([ownerContext.close(), memberContext.close()]);
+    }
+  },
+);

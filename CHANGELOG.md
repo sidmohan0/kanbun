@@ -58,6 +58,9 @@ preparation moves them to a dated version heading.
 
 ### Changed
 
+- CI now reports phase timings, checks core browser recovery flows earlier, cancels superseded verification, and speeds up setup while retaining the full test suite.
+- Main can reuse matching successful PR qualification after verifying source and runtime provenance; builds and deployment checks remain fresh, with full verification whenever evidence does not match.
+
 - Removed secondary explanatory copy from empty views and lists while retaining headings, actions and access/error guidance.
 
 ### Fixed

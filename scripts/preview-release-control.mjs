@@ -1,3 +1,10 @@
+/** Supersession is a deliberate no-op, never a successful deployment. */
+export class SupersededRelease extends Error {
+  constructor() {
+    super("Superseded by newer main; no deployment performed");
+  }
+}
+
 /** Code rollback must not cross a schema or storage-binding rollout. */
 export function assertCompatibleSchema(changedMigrations, previous, next) {
   if (
@@ -21,6 +28,10 @@ export async function release({ deploy, version, smoke, rollback }, receipt) {
     receipt.checks = await smoke(receipt.candidate);
     receipt.pass = true;
   } catch (error) {
+    if (error instanceof SupersededRelease && !receipt.candidate) {
+      receipt.skipped = "superseded";
+      return;
+    }
     receipt.error = error.message;
     try {
       const active = await version();

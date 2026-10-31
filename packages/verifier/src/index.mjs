@@ -8,9 +8,27 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { checkDocumentation } from "./docs.mjs";
 
-const profiles = new Set(["all", "doctor", "check", "build", "smoke", "recovery", "docs"]);
+const profiles = new Set(["all", "doctor", "check", "build", "smoke", "preflight", "recovery", "docs"]);
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const jsonFile = (file) => JSON.parse(readFileSync(file, "utf8"));
+
+function runtimeMetadata() {
+  try {
+    readFileSync("/.dockerenv");
+    return {
+      platform: process.platform,
+      architecture: process.arch,
+      ci: process.env.CI === "true",
+      osSha256: hash(readFileSync("/etc/os-release")),
+      packagesSha256: hash(
+        execFileSync("dpkg-query", ["-W", "-f=${binary:Package}=${Version}\\n"], { encoding: "utf8" }),
+      ),
+    };
+  } catch {
+    // Unsupported environments can verify normally, but cannot reuse qualification.
+    return null;
+  }
+}
 
 function workspaceManifests(root) {
   const manifests = [path.join(root, "package.json")];
@@ -86,6 +104,7 @@ function sourceMetadata(root, outputDirectory) {
   if (!Object.keys(files).length) throw new Error("No source files were available to fingerprint.");
   return {
     head,
+    tree: head ? git("rev-parse", "HEAD^{tree}").trim() : null,
     branch,
     dirty,
     lockfileSha256: hash(readFileSync(path.join(root, "pnpm-lock.yaml"))),
@@ -128,33 +147,41 @@ function plan(command, root, metadata, outputDirectory) {
         return { pass: true, details: stdout.trim() };
       },
     },
-    { name: "doctor-dependencies", check: () => checkDependencies(root) },
+    ...(command === "docs" ? [] : [{ name: "doctor-dependencies", check: () => checkDependencies(root) }]),
     {
       name: "source-metadata",
       check() {
         metadata.source = sourceMetadata(root, outputDirectory);
+        metadata.runtime = runtimeMetadata();
         return { pass: true, details: `Fingerprinted ${Object.keys(metadata.source.files).length} source files.` };
       },
     },
   ];
+  if (command === "preflight")
+    steps.push({ name: "preflight", command: ["pnpm", "--reporter=append-only", "test:recovery", "--preflight"] });
   if (command === "all" || command === "check") {
     for (const [name, args] of [
       ["check-format", ["format:check"]],
       ["check-lint", ["lint"]],
       ["check-types", ["typecheck"]],
-      ["check-tests", ["test"]],
       ["check-script-tests", ["test:scripts"]],
       ["check-spec-lock", ["spec:check", "--initial"]],
     ]) {
       steps.push({ name, command: ["pnpm", "--reporter=append-only", ...args] });
     }
+    if (command === "all")
+      steps.push({ name: "preflight", command: ["pnpm", "--reporter=append-only", "test:recovery", "--preflight"] });
+    steps.push({ name: "check-tests", command: ["pnpm", "--reporter=append-only", "test"] });
   }
   if (command === "all" || command === "build")
     steps.push({ name: "build", command: ["pnpm", "--reporter=append-only", "build"] });
   if (command === "all" || command === "smoke")
     steps.push({ name: "smoke", command: ["pnpm", "--reporter=append-only", "seed"] });
   if (command === "all" || command === "recovery")
-    steps.push({ name: "recovery", command: ["pnpm", "--reporter=append-only", "test:recovery"] });
+    steps.push({
+      name: "recovery",
+      command: ["pnpm", "--reporter=append-only", "test:recovery", ...(command === "all" ? ["--remaining"] : [])],
+    });
   if (command === "all" || command === "docs") {
     steps.push({
       name: "docs",
@@ -251,7 +278,7 @@ async function execute(step, root, runDirectory, index) {
   return result;
 }
 
-export async function runVerification({ root, command = "all", outputDirectory } = {}) {
+export async function runVerification({ root, command = "all", outputDirectory, onProgress = () => {} } = {}) {
   const started = performance.now();
   let localDirectory;
   const report = {
@@ -286,7 +313,10 @@ export async function runVerification({ root, command = "all", outputDirectory }
           reason: "A prerequisite or earlier step failed.",
         });
       } else {
-        report.steps.push(await execute(step, root, localDirectory, index));
+        onProgress({ name: step.name, state: "start" });
+        const result = await execute(step, root, localDirectory, index);
+        report.steps.push(result);
+        onProgress({ name: step.name, state: result.pass ? "pass" : "fail", durationMs: result.durationMs });
       }
     }
     report.executed = report.steps.some((step) => step.executed);

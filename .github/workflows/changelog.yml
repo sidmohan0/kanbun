@@ -22,6 +22,8 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - uses: ./.github/actions/devcontainer
+        with:
+          profile: policy
       - name: Test changelog policy
         run: ./scripts/devcontainer.sh exec env CI=true node --test scripts/check-changelog.test.mjs
       - name: Check PR entry or explicit exemption

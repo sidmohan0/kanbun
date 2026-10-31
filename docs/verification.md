@@ -18,6 +18,7 @@ pnpm verify doctor
 pnpm verify check
 pnpm verify build
 pnpm verify smoke
+pnpm verify preflight
 pnpm verify recovery
 pnpm verify docs
 pnpm test:verifier
@@ -27,8 +28,11 @@ With no subcommand, `pnpm verify` runs all checks. `doctor` checks the required 
 dependencies; `check` runs formatting, lint, typechecking, tests, changelog-checker tests,
 and current spec/archive validation. `build` runs the production build, `smoke` runs the seeded workspace fixture,
 `recovery` runs the Chromium recovery integration tests, and `docs` validates the supported mechanical
-documentation contracts. The complete run includes browser recovery; `check` retains the faster
-non-browser checks.
+documentation contracts. The complete run runs formatting, lint, types, and script/spec checks first, then four early browser
+preflight cases before package tests, builds, seed checks, and the remaining browser cases. Preflight
+covers startup and two-browser convergence, durable offline edits and comments, and revoked-access
+mention validation. Each browser case executes once; `recovery` alone still runs the entire browser
+suite. `check` retains the non-browser checks.
 
 For machine-readable stdout, suppress pnpm's lifecycle banner:
 
@@ -37,7 +41,8 @@ pnpm --silent verify --json
 pnpm --silent verify docs --json --output artifacts/verification
 ```
 
-Each run creates a unique directory under `artifacts/verification/`, or the directory supplied with
+Phase starts, results, and elapsed seconds are printed to stderr while stdout remains a single JSON
+receipt with `--json`. Each run creates a unique directory under `artifacts/verification/`, or the directory supplied with
 `--output`. Commands write and validate their live logs and receipt in a container-local temporary
 directory; completed evidence is then exported to that run directory. Receipt paths address the
 exported logs. An export failure fails verification and preserves a failure receipt and logs in the
@@ -49,12 +54,25 @@ Skipped or unexecuted checks do not count as successful verification.
 
 ## PR and main checks
 
-The complete verifier runs on every PR and push to `main`, including documentation-only changes.
+The complete verifier runs on every PR, including documentation-only changes. On pushes to `main`,
+CI first runs fresh environment diagnosis. It may reuse a successful same-repository PR's full test
+qualification only when the clean Git tree, all source fingerprints, lockfile, tool versions, Linux
+architecture, OS identity, installed system-package inventory, and complete required suite match.
+The lookup validates the Actions workflow/run/attempt and the tested commit against GitHub, retains
+its original evidence archive and an explicit reuse receipt, and always builds fresh artifacts.
+Missing, expired, inaccessible, unsupported, or mismatched evidence falls back to the complete
+verifier. Local verification always runs fresh. Release builds, live smoke tests, migration guards,
+and rollback checks remain fresh and separate.
 Its workspace tests include [semantic issue replay and migration checks](event-replay.md).
 All repository-owned workflows initialize the same devcontainer used locally and execute their
 checks inside it. Run `./scripts/devcontainer.sh verify` from a host terminal or `pnpm verify` in
 the container shell. Changelog and spec-lock commands receive GitHub metadata explicitly; the
-scheduled documentation report runs in the same image and remains non-gating.
+scheduled documentation report runs in the same image and remains non-gating. Node-only policy,
+health, and documentation jobs skip workspace/browser installation. Full jobs cache only package
+and browser downloads, still performing frozen installation and environment diagnosis every time.
+Superseded PR and main verification runs are canceled; deployments retain their separate serialized,
+non-canceling lock. The spec-lock summary flags schema/configuration rollout needs without secrets;
+the trusted release continues checking the actual deployed version and migration state.
 GitHub Actions uploads its reports and logs after both successful and failed runs. The separate
 spec-lock workflow compares changes against their base; the separate changelog workflow checks the
 full committed PR and its exemption metadata. A current-tree verifier receipt does not replace those
@@ -94,7 +112,7 @@ available; offline app-asset loading requires a separate product capability and 
 
 Run `pnpm test:recovery` directly or use `pnpm verify recovery` for a verification receipt. Playwright
 JSON and HTML reports, failure traces, and failed-test server state are retained under
-`artifacts/recovery/`. The recovery runner keeps live browser artifacts in a unique container-local
+`artifacts/recovery/`, with early cases retained separately under `artifacts/recovery-preflight/`. The recovery runner keeps live browser artifacts in a unique container-local
 temporary directory, then exports the completed reports and attachments after Playwright exits.
 This avoids transient trace writes on shared host mounts. Test failures still export their evidence;
 missing reports or failed exports fail the command. If export fails, the runner prints the retained

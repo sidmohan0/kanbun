@@ -1,8 +1,12 @@
 name: spec-lock
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   push:
     branches: [main]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -14,6 +18,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/devcontainer
+        with:
+          profile: policy
       - name: Check the spec lock
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -23,3 +29,8 @@ jobs:
           else
             ./scripts/devcontainer.sh exec env CI=true node scripts/check-spec-lock.mjs "$BASE"
           fi
+      - name: Summarize deployment compatibility
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: ./scripts/devcontainer.sh exec node scripts/preview-plan.mjs "$BASE" >> "$GITHUB_STEP_SUMMARY"

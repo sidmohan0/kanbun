@@ -95,34 +95,38 @@ test("discussion edits, replies, resolve and reopen converge automatically and s
   }
 });
 
-test("a submitted offline comment survives reload, then publishes once after reconnect", async ({ page, app }) => {
-  await open(page, app);
-  // Keep the product assets available so the real persisted outbox can rehydrate while sync is offline.
-  await page.route(syncApi, (route) => route.abort("internetdisconnected"));
-  await page.getByRole("textbox", { name: "Add a comment", exact: true }).fill("Durable offline discussion");
-  await page.getByRole("button", { name: "Post comment", exact: true }).click();
-  await expect(comments(page)).toContainText("Durable offline discussion");
-  const key = "local:user-alice:main";
-  await expect
-    .poll(async () => (await readWorkspaceState(page, key))?.pending.filter((m) => m.name === "commentCreate").length)
-    .toBe(1);
-  expect((await readWorkspaceState(page, key))?.pending[0]?.args).toMatchObject({
-    issueId: app.issueId,
-    issueIncarnation: expect.stringMatching(/^seq:\d+$/),
-  });
-  await page.reload();
-  await expect(comments(page)).toContainText("Durable offline discussion");
-  await expect(comments(page)).toContainText("Pending");
-  await page.unroute(syncApi);
-  await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  await expect
-    .poll(async () => (await app.runtime.inspect()).events.filter((event) => event.type === "CommentPosted").length)
-    .toBe(1);
-  await expect(comments(page).getByText("Pending", { exact: true })).toHaveCount(0);
-  await page.reload();
-  await expect(comments(page)).toContainText("Durable offline discussion");
-  expect((await app.runtime.inspect()).events.filter((event) => event.type === "CommentPosted")).toHaveLength(1);
-});
+test(
+  "a submitted offline comment survives reload, then publishes once after reconnect",
+  { tag: "@preflight" },
+  async ({ page, app }) => {
+    await open(page, app);
+    // Keep the product assets available so the real persisted outbox can rehydrate while sync is offline.
+    await page.route(syncApi, (route) => route.abort("internetdisconnected"));
+    await page.getByRole("textbox", { name: "Add a comment", exact: true }).fill("Durable offline discussion");
+    await page.getByRole("button", { name: "Post comment", exact: true }).click();
+    await expect(comments(page)).toContainText("Durable offline discussion");
+    const key = "local:user-alice:main";
+    await expect
+      .poll(async () => (await readWorkspaceState(page, key))?.pending.filter((m) => m.name === "commentCreate").length)
+      .toBe(1);
+    expect((await readWorkspaceState(page, key))?.pending[0]?.args).toMatchObject({
+      issueId: app.issueId,
+      issueIncarnation: expect.stringMatching(/^seq:\d+$/),
+    });
+    await page.reload();
+    await expect(comments(page)).toContainText("Durable offline discussion");
+    await expect(comments(page)).toContainText("Pending");
+    await page.unroute(syncApi);
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect
+      .poll(async () => (await app.runtime.inspect()).events.filter((event) => event.type === "CommentPosted").length)
+      .toBe(1);
+    await expect(comments(page).getByText("Pending", { exact: true })).toHaveCount(0);
+    await page.reload();
+    await expect(comments(page)).toContainText("Durable offline discussion");
+    expect((await app.runtime.inspect()).events.filter((event) => event.type === "CommentPosted")).toHaveLength(1);
+  },
+);
 
 test("a reconnect during a failed in-flight refresh queues another attempt for the restored comment", async ({
   page,
