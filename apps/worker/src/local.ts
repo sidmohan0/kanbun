@@ -28,7 +28,14 @@ export function seedWorkspace(server: SyncServer, driver: SqlDriver, seedIssue: 
 
     const alice = server.store.get("user", localActors.alice.id);
     if (!alice?.active || alice.archivedAt) throw new MutationError("Local member is not active", "forbidden");
-    const existingTeam = server.store.list("team", { key: "REC" })[0];
+    // Team keys are editable. The legacy teamCreate seed records its stable ID in the sync log.
+    const recordedTeamId = driver.all(
+      "SELECT row_id FROM sync_log WHERE branch_id = 'main' AND client_id = ? AND model = 'team' AND op = 'upsert' ORDER BY seq LIMIT 1",
+      [seedClient],
+    )[0]?.["row_id"];
+    const existingTeam =
+      (typeof recordedTeamId === "string" ? server.store.get("team", recordedTeamId) : undefined) ??
+      server.store.list("team", { key: "REC" })[0];
     const teamId = existingTeam?.id ?? uuidv7();
     // The semantic seed fact retains the shared issue ID even after its title changes.
     const existingIssue = driver.all(

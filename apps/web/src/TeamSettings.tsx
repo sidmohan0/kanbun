@@ -84,6 +84,7 @@ function TeamEditor({
   failed(failure: unknown): void;
 }) {
   const [name, setName] = useState(team.name);
+  const [key, setKey] = useState(team.key);
   const [description, setDescription] = useState(team.description ?? "");
   const [stateName, setStateName] = useState("");
   const [stateType, setStateType] = useState<WorkflowStateType>("started");
@@ -93,6 +94,7 @@ function TeamEditor({
     try {
       workspace.updateTeam(team.id, {
         name: name.trim(),
+        key: key.trim(),
         displayName: name.trim(),
         description: description.trim() || null,
         ...(defaultState ? { defaultIssueStateId: defaultState } : {}),
@@ -136,6 +138,19 @@ function TeamEditor({
       <form className="team-form" onSubmit={save}>
         <label htmlFor="team-name">Team name</label>
         <input id="team-name" value={name} required maxLength={80} onChange={(event) => setName(event.target.value)} />
+        <label htmlFor="team-key">Team key</label>
+        <input
+          id="team-key"
+          value={key}
+          required
+          maxLength={7}
+          pattern="[A-Za-z][A-Za-z0-9]{0,6}"
+          aria-describedby="team-key-help"
+          onChange={(event) => setKey(event.target.value.toUpperCase())}
+        />
+        <p id="team-key-help">
+          Changing the key updates existing issue identifiers. Issue links and numbers stay the same.
+        </p>
         <label htmlFor="team-description">Team description</label>
         <textarea id="team-description" value={description} onChange={(event) => setDescription(event.target.value)} />
         <label htmlFor="default-status">Default status for new issues</label>
@@ -146,7 +161,7 @@ function TeamEditor({
             </option>
           ))}
         </select>
-        <button className="button primary" disabled={!name.trim()}>
+        <button className="button primary" disabled={!name.trim() || !key.trim()}>
           Save team settings
         </button>
       </form>
@@ -297,10 +312,7 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
       {team && <TeamEditor key={team.id} team={team} states={states} failed={failed} />}
       <form className="team-form team-create" onSubmit={create}>
         <h2>Create a team</h2>
-        <p>
-          New teams are available to everyone in this workspace. Their key becomes the prefix of issue identifiers and
-          cannot be changed here.
-        </p>
+        <p>New teams are available to everyone in this workspace. Their key becomes the prefix of issue identifiers.</p>
         <label htmlFor="new-team-name">New team name</label>
         <input
           id="new-team-name"

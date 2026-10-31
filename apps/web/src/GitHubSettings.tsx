@@ -89,10 +89,12 @@ function OwnerGitHubSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
           Refresh repositories
         </button>
       </header>
-      <p>
-        Bring pull requests, branches, reviews and checks into the issues they belong to. Connecting GitHub does not
-        sign anyone in to Kanbun.
-      </p>
+      {connection && (connection.catalog.length > 0 || connection.repositories.length > 0) && (
+        <p>
+          Bring pull requests, branches, reviews and checks into the issues they belong to. Connecting GitHub does not
+          sign anyone in to Kanbun.
+        </p>
+      )}
       {error && (
         <p className="notice" role="alert">
           {error}
@@ -104,16 +106,10 @@ function OwnerGitHubSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
         </p>
       )}
       {!connection && !error && <p role="status">Loading GitHub connection…</p>}
-      {connection && !connection.configured && (
-        <p>A workspace operator must configure the GitHub App before repositories can be connected.</p>
-      )}
+      {connection && !connection.configured && <h3>GitHub not configured</h3>}
       {connection?.configured && (
         <>
-          <p>
-            {connection.authorizationRequired
-              ? "Authorize the GitHub repositories this workspace may use."
-              : `Connected to ${connection.appName ?? "the GitHub App"}.`}
-          </p>
+          {!connection.authorizationRequired && <p>Connected to {connection.appName ?? "the GitHub App"}.</p>}
           <div className="github-connection-actions">
             {installUrl && (
               <a className="button" href={installUrl} target="_blank" rel="noreferrer">
@@ -163,22 +159,17 @@ function OwnerGitHubSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
                 </option>
               ))}
             </select>
-            <p>
-              Linked pull-request metadata will be visible to people who can access issues in this team. This does not
-              grant access to GitHub source code.
-            </p>
+            {connection.catalog.length > 0 && (
+              <p>
+                Linked pull-request metadata will be visible to people who can access issues in this team. This does not
+                grant access to GitHub source code.
+              </p>
+            )}
             <button className="button primary" disabled={busy || !repository || !selectedTeam}>
               Connect repository to team
             </button>
           </form>
-          {!connection.catalog.length && (
-            <p>
-              No authorized repositories are available. Install the App for selected repositories, then update GitHub
-              authorization.
-            </p>
-          )}
           <h3>Connected repositories</h3>
-          {!connection.repositories.length && <p>No repositories are connected to a Kanbun team yet.</p>}
           <ul className="github-binding-list">
             {connection.repositories.map((binding) => (
               <li key={binding.id}>

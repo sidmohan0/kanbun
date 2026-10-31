@@ -36,12 +36,12 @@ test("sub-issues and inverse dependencies converge in another browser and reject
     await region(first)
       .getByRole("button", { name: /^Remove blocked by/ })
       .click();
-    await expect(region(second)).toContainText("No linked issues yet.");
+    await expect(region(second).getByRole("button", { name: /^Remove / })).toHaveCount(0);
     await region(first).getByRole("combobox", { name: "Parent issue", exact: true }).selectOption("");
-    await expect(region(second)).toContainText("No sub-issues yet.");
+    await expect(region(second).getByRole("button", { name: /^Detach sub-issue / })).toHaveCount(0);
     await first.reload();
     await expect(region(first).getByRole("combobox", { name: "Parent issue", exact: true })).toHaveValue("");
-    await expect(region(first)).toContainText("No linked issues yet.");
+    await expect(region(first).getByRole("button", { name: /^Remove / })).toHaveCount(0);
     // Fractional keys are case-sensitive: aZ precedes aa even when locale sorting disagrees.
     const upperSibling = uuidv7(),
       lowerSibling = uuidv7();

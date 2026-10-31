@@ -243,6 +243,25 @@ export function App() {
     view,
     filters,
   });
+  const pageDescription = !ready
+    ? null
+    : teamsView
+      ? canManageTeams
+        ? "Manage your workspace, teams and workflow statuses."
+        : null
+      : inboxView
+        ? snapshot.notifications.length
+          ? "Your personal workspace updates."
+          : null
+        : membersView
+          ? context?.mode === "hosted" && context.role === "owner"
+            ? "Manage who can access this workspace."
+            : null
+          : selectedIssue
+            ? identifier(selectedIssue, snapshot.teams)
+            : !issueId && issues.length
+              ? "A place for the work ahead."
+              : null;
   const stateNames = new Map(snapshot.workflowStates.map((state) => [state.id, state.name]));
   const memberNames = new Map(snapshot.members.map((member) => [member.id, member.displayName || member.name]));
   const myIssueCount = snapshot.issues.filter((issue) => issue.assigneeId === context?.actor.id).length;
@@ -456,24 +475,13 @@ export function App() {
                           ? "My Issues"
                           : "Issues"}
               </h1>
-              <p className="page-description">
-                {teamsView
-                  ? "Manage your workspace, teams and workflow statuses."
-                  : inboxView
-                    ? "Your personal workspace updates."
-                    : membersView
-                      ? "Manage who can access this workspace."
-                      : selectedIssue
-                        ? identifier(selectedIssue, snapshot.teams)
-                        : "A place for the work ahead."}
-              </p>
+              {pageDescription && <p className="page-description">{pageDescription}</p>}
             </div>
             {context && <span className="local-badge">{local ? "Local development" : "Private workspace"}</span>}
           </div>
           {snapshot.phase === "waiting" ? (
             <section className="empty-state" aria-labelledby="waiting-title">
-              <h2 id="waiting-title">Workspace open in another tab</h2>
-              <p>Close the other kanbun tab to continue here. Your saved changes will be restored.</p>
+              <h2 id="waiting-title">Close the other kanbun tab to continue</h2>
             </section>
           ) : snapshot.phase === "failed" ? (
             <section className="connection-panel">
@@ -567,7 +575,6 @@ export function App() {
                 ) : (
                   <section className="empty-state">
                     <h2>{ready ? "Workspace owner access required" : "Opening team settings…"}</h2>
-                    {ready && <p>Only workspace owners can manage teams in this interface.</p>}
                     <a href="#issues">Return to all issues</a>
                   </section>
                 )
@@ -585,7 +592,6 @@ export function App() {
                 ) : (
                   <section className="empty-state">
                     <h2>{ready ? "Workspace owner access required" : "Opening members…"}</h2>
-                    {ready && <p>Only workspace owners can manage members and invitations.</p>}
                     <a className="back-to-issues" href="#issues">
                       Return to all issues
                     </a>
@@ -605,7 +611,6 @@ export function App() {
                 ) : (
                   <section className="empty-state">
                     <h2>{ready ? "Issue unavailable" : "Opening issue…"}</h2>
-                    {ready && <p>This issue was archived, removed, or is not visible in this workspace.</p>}
                     <a className="back-to-issues" href="#issues">
                       Return to all issues
                     </a>
@@ -700,13 +705,6 @@ export function App() {
                               ? "No issues assigned to you yet"
                               : "A little room to begin."}
                         </h3>
-                        <p>
-                          {filtersActive
-                            ? "Change or clear the filters above to see more work."
-                            : view === "mine"
-                              ? "Create an issue above to assign it to yourself, or take ownership of existing work."
-                              : "Create your first issue above."}
-                        </p>
                       </div>
                     ) : viewLayouts[view] === "board" ? (
                       <IssueBoard issues={issues} snapshot={snapshot} />
@@ -747,7 +745,7 @@ export function App() {
                     )}
                     <div className="list-footer">
                       {issues.length} of {snapshot.issues.length} {snapshot.issues.length === 1 ? "issue" : "issues"}
-                      <span>Changes sync when connected.</span>
+                      {issues.length > 0 && <span>Changes sync when connected.</span>}
                     </div>
                   </section>
                 </>

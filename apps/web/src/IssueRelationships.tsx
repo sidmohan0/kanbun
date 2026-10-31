@@ -104,7 +104,7 @@ export function IssueRelationships({ issue, snapshot }: { issue: Row<"issue">; s
       </select>
       {parent && <a href={`#issues/${parent.id}`}>Open parent: {label(parent)}</a>}
       <h4>Sub-issues</h4>
-      {children.length ? (
+      {children.length > 0 && (
         <ul>
           {children.map((child) => (
             <li key={child.id}>
@@ -119,8 +119,6 @@ export function IssueRelationships({ issue, snapshot }: { issue: Row<"issue">; s
             </li>
           ))}
         </ul>
-      ) : (
-        <p className="members-description">No sub-issues yet.</p>
       )}
       <form className="relationship-create" onSubmit={createChild}>
         <label htmlFor="sub-issue-title">New sub-issue title</label>
@@ -135,7 +133,7 @@ export function IssueRelationships({ issue, snapshot }: { issue: Row<"issue">; s
         </button>
       </form>
       <h4>Dependencies and related work</h4>
-      {relations.length ? (
+      {relations.length > 0 && (
         <ul>
           {relations.map(({ link, target, text }) => (
             <li key={link.id}>
@@ -151,8 +149,6 @@ export function IssueRelationships({ issue, snapshot }: { issue: Row<"issue">; s
             </li>
           ))}
         </ul>
-      ) : (
-        <p className="members-description">No linked issues yet.</p>
       )}
       <form className="relationship-create" onSubmit={addRelation}>
         <label htmlFor="relationship-kind">Relationship</label>
