@@ -469,8 +469,14 @@ export class WorkspaceDO extends DurableObject<Env> {
       const identity = socketIdentity.parse(socket.deserializeAttachment());
       await this.authorizeSocket(server, identity);
       return identity;
-    } catch {
-      this.closeSocket(socket, 1008, "Workspace access is no longer available");
+    } catch (error) {
+      this.closeSocket(
+        socket,
+        1008,
+        error instanceof RequestError && error.status === 401
+          ? "Workspace identity has expired"
+          : "Workspace access is no longer available",
+      );
       return null;
     }
   }
