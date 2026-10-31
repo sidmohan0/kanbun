@@ -689,6 +689,65 @@ export class SyncServer {
     this.emitCommit(seq, "main");
   }
 
+  /** Private GitHub App boundary; callers authenticate people or provider delivery before entry. */
+  github(name: string, args: unknown, actor: Actor, sourceRef?: string): void {
+    if (
+      ![
+        "githubRepositoryConfigure",
+        "githubRepositoryDisconnect",
+        "githubPullRequestLink",
+        "githubPullRequestObserve",
+      ].includes(name)
+    )
+      throw new MutationError("Not a GitHub integration command", "forbidden");
+    const def = this.opts.mutators[name];
+    if (!def) throw new MutationError("GitHub integration command is unavailable");
+    const seq = this.opts.driver.transaction(() => {
+      const txnId = this.newTxnId();
+      const tag = { ...SYSTEM_TAG(txnId), actorId: actor.id, actorType: actor.type };
+      const ctx: MutatorContext = {
+        store: this.store.withTag(tag),
+        actor,
+        actorId: actor.id,
+        now: this.now(),
+        server: true,
+        githubAuthority: true,
+      };
+      executeMutator(def, ctx, parseArgs(name, def, args), (pending, eventIndex, apply) => {
+        const eventActor: Actor =
+          pending.type === "ObservedGitHubPullRequest"
+            ? { id: `github:${pending.payload.repositoryBindingId}`, type: "integration" }
+            : actor;
+        const event = appendEvent(this.opts.driver, pending, {
+          actor: eventActor,
+          txnId,
+          eventIndex,
+          clientId: null,
+          mutationId: null,
+          ts: Date.parse(ctx.now),
+          causationSeq: null,
+          reason: null,
+          ...(sourceRef ? { sourceRef } : {}),
+        });
+        apply(
+          {
+            ...ctx,
+            store: this.store.withTag({
+              ...tag,
+              actorId: eventActor.id,
+              actorType: eventActor.type,
+              eventSeq: event.seq,
+              ts: new Date(event.ts).toISOString(),
+            }),
+          },
+          event,
+        );
+      });
+      return this.currentSeq();
+    });
+    this.emitCommit(seq, "main");
+  }
+
   // ---- pull -------------------------------------------------------------------
 
   pull(actor: Actor, req: PullRequest): PullResponse {

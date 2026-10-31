@@ -5,6 +5,7 @@
  * catalogue via `tools()`.
  */
 import { defineMutators, toolDefinitions } from "@kanbun/sync";
+import * as github from "./github";
 import * as comments from "./comments";
 import * as issues from "./issues";
 import * as teams from "./teams";
@@ -13,6 +14,7 @@ import * as workspace from "./workspace";
 import * as notifications from "./notifications";
 
 export const mutators = defineMutators({
+  ...github.mutators,
   ...workspace.mutators,
   ...teams.mutators,
   ...issues.mutators,
@@ -24,7 +26,16 @@ export const mutators = defineMutators({
 export type Mutators = typeof mutators;
 
 /** Mutators that only the system actor may call; never exposed as agent tools. */
-export const SYSTEM_ONLY = ["workspaceInit", "memberSync", "issueDescribe", "workspaceNameSync"] as const;
+export const SYSTEM_ONLY = [
+  "workspaceInit",
+  "memberSync",
+  "issueDescribe",
+  "workspaceNameSync",
+  "githubRepositoryConfigure",
+  "githubRepositoryDisconnect",
+  "githubPullRequestLink",
+  "githubPullRequestObserve",
+] as const;
 
 /** Agent tool definitions (JSON schema), optionally restricted to an allow-list. */
 export function tools(only?: string[]) {
@@ -37,3 +48,5 @@ export * from "./ordering";
 
 export { applyIssueEvent } from "./issueEvents";
 export { applyCommentEvent } from "./commentEvents";
+
+export { applyGitHubEvent, canonicalGitHubSnapshot } from "./github";

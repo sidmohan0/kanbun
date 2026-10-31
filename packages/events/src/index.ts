@@ -1,5 +1,7 @@
 import { ACTOR_TYPES } from "@kanbun/model";
 import { z } from "zod";
+export * from "./github";
+import { githubRepositorySourceSchema, githubPullRequestSnapshotSchema } from "./github";
 
 const id = z.string().min(1);
 const nullableId = id.nullable();
@@ -158,6 +160,49 @@ const issueRelationRemovedIntent = z.strictObject({
   type: z.literal("IssueRelationRemoved"),
   payload: z.strictObject({ linkId: id, relatedIssueId: id }),
 });
+const githubRepositoryConfiguredIntent = z.strictObject({
+  entityType: z.literal("githubRepository"),
+  entityId: id,
+  teamId: id,
+  scopeUserId: z.null(),
+  type: z.literal("GitHubRepositoryConfigured"),
+  payload: githubRepositorySourceSchema,
+});
+const githubRepositoryDisconnectedIntent = z.strictObject({
+  entityType: z.literal("githubRepository"),
+  entityId: id,
+  teamId: id,
+  scopeUserId: z.null(),
+  type: z.literal("GitHubRepositoryDisconnected"),
+  payload: z.strictObject({}),
+});
+const githubPullRequestLinkedIntent = z.strictObject({
+  ...subject,
+  type: z.literal("GitHubPullRequestLinked"),
+  payload: z.strictObject({
+    id,
+    repositoryBindingId: id,
+    issueIncarnation: id,
+    revision: z.number().int().positive().safe(),
+    snapshot: githubPullRequestSnapshotSchema,
+  }),
+});
+const githubPullRequestUnlinkedIntent = z.strictObject({
+  ...subject,
+  type: z.literal("GitHubPullRequestUnlinked"),
+  payload: z.strictObject({ id, repositoryBindingId: id, issueIncarnation: id }),
+});
+const observedGithubPullRequestIntent = z.strictObject({
+  ...subject,
+  type: z.literal("ObservedGitHubPullRequest"),
+  payload: z.strictObject({
+    id,
+    repositoryBindingId: id,
+    issueIncarnation: id,
+    revision: z.number().int().positive().safe(),
+    snapshot: githubPullRequestSnapshotSchema,
+  }),
+});
 const snapshotTakenIntent = z.strictObject({
   entityType: z.literal("organization"),
   entityId: id,
@@ -282,6 +327,11 @@ export const pendingEventSchema = z.discriminatedUnion("type", [
   issueParentChangedIntent,
   issueRelationAddedIntent,
   issueRelationRemovedIntent,
+  githubRepositoryConfiguredIntent,
+  githubRepositoryDisconnectedIntent,
+  githubPullRequestLinkedIntent,
+  githubPullRequestUnlinkedIntent,
+  observedGithubPullRequestIntent,
   snapshotTakenIntent,
   issuePrioritizedIntent,
   humanAssertedStatusIntent,
@@ -327,6 +377,11 @@ export const eventSchema = z.discriminatedUnion("type", [
   issueParentChangedIntent.extend(envelope),
   issueRelationAddedIntent.extend(envelope),
   issueRelationRemovedIntent.extend(envelope),
+  githubRepositoryConfiguredIntent.extend(envelope),
+  githubRepositoryDisconnectedIntent.extend(envelope),
+  githubPullRequestLinkedIntent.extend(envelope),
+  githubPullRequestUnlinkedIntent.extend(envelope),
+  observedGithubPullRequestIntent.extend(envelope),
   snapshotTakenIntent.extend(envelope),
   issuePrioritizedIntent.extend(envelope),
   humanAssertedStatusIntent.extend(envelope),

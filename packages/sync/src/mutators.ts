@@ -27,6 +27,8 @@ export type MutatorContext = {
   server: boolean;
   /** Private DocumentDO publication boundary; never accepted from sync request arguments. */
   documentAuthority?: true;
+  /** Private GitHub App boundary; never accepted from sync request arguments. */
+  githubAuthority?: true;
   /** Workspace branch; omitted means main for existing callers. */
   branchId?: string;
   /** Free-text reason supplied with the mutation (mainly agents). */
