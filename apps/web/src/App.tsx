@@ -10,12 +10,15 @@ import { TeamSettings } from "./TeamSettings";
 import { Inbox } from "./Inbox";
 import { IssueViewToolbar } from "./IssueViewToolbar";
 import { IssueBoard } from "./IssueBoard";
+import { GitHubPullRequestChips } from "./GitHubContext";
+import { groupPullRequests } from "./github";
 import { EmailSignOut } from "./EmailSignIn";
 import { emptyIssueFilters, visibleIssues, type IssueFilters, type IssueView } from "./issueViews";
 import { refreshDescriptions } from "./description";
 import "./styles/issues.css";
 
 type Theme = "light" | "dark" | "system";
+const noPullRequests: Row<"issuePullRequest">[] = [];
 function initialTheme(): Theme {
   try {
     const theme = localStorage.getItem("kanbun:theme");
@@ -52,6 +55,8 @@ function IssueRow({
   status,
   stateName,
   assigneeName,
+  pullRequests,
+  githubRepositories,
 }: {
   issue: Row<"issue">;
   teams: Row<"team">[];
@@ -59,6 +64,8 @@ function IssueRow({
   status: SyncStatus;
   stateName: string;
   assigneeName: string;
+  pullRequests: Row<"issuePullRequest">[];
+  githubRepositories: Row<"githubRepository">[];
 }) {
   const name = identifier(issue, teams);
   const [editing, setEditing] = useState(false);
@@ -145,6 +152,9 @@ function IssueRow({
               Edit
             </span>
           </button>
+        )}
+        {pullRequests.length > 0 && (
+          <GitHubPullRequestChips pullRequests={pullRequests} repositories={githubRepositories} />
         )}
       </td>
       <td className="issue-save-state">
@@ -239,6 +249,7 @@ export function App() {
   const filtersActive = filters.search || filters.stateId || filters.assigneeId || filters.priority || filters.labelId;
   const listName = view === "mine" ? "My Issues" : "All issues";
   const pendingIds = new Set(snapshot.pendingIssueIds);
+  const pullRequestsByIssue = groupPullRequests(snapshot.issuePullRequests);
   const status =
     snapshot.status === "offline"
       ? "Offline"
@@ -727,6 +738,8 @@ export function App() {
                                   ? (memberNames.get(issue.assigneeId) ?? "Unavailable member")
                                   : "Unassigned"
                               }
+                              pullRequests={pullRequestsByIssue.get(issue.id) ?? noPullRequests}
+                              githubRepositories={snapshot.githubRepositories}
                             />
                           ))}
                         </tbody>

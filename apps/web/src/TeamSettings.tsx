@@ -3,6 +3,7 @@ import { WORKFLOW_STATE_TYPES, type Row, type WorkflowStateType } from "@kanbun/
 import { DEFAULT_STATES } from "@kanbun/mutators";
 import { workspace, type WorkspaceSnapshot } from "./workspace";
 import "./styles/teams.css";
+import { GitHubSettings } from "./GitHubSettings";
 
 const categoryName: Record<WorkflowStateType, string> = {
   triage: "Triage",
@@ -276,6 +277,7 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
         </p>
       )}
       {snapshot.context?.mode === "hosted" && <WorkspaceName name={snapshot.context.workspaceName} />}
+      <GitHubSettings snapshot={snapshot} />
       <h2>Teams</h2>
       <label htmlFor="settings-team">Choose a team</label>
       <select
