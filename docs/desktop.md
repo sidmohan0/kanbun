@@ -29,9 +29,45 @@ building. `KANBUN_DESKTOP_URL` overrides the application URL for development or 
 HTTPS is required except for loopback HTTP. The regular `pnpm dev` command continues to start only
 the web and Worker development servers: the desktop workspace intentionally has no `dev` script.
 
-The current devcontainer policy does not provide a native macOS launch/build workflow. Native Mac
-validation, packaged installers, signing, notarization and automatic updates are follow-up work.
-This milestone supplies a source-level shell, not a distributable application.
+## Distribution targets
+
+`electron-builder.json` defines the following targets. Architecture-specific filenames prevent
+uploads from overwriting each other.
+
+| Platform policy                         | Architectures                      | Downloads                   |
+| --------------------------------------- | ---------------------------------- | --------------------------- |
+| macOS 15 and newer                      | Apple Silicon (arm64), Intel (x64) | DMG and ZIP                 |
+| Windows 11                              | x64, ARM64                         | NSIS installer              |
+| Linux, initially Ubuntu 24.04 and newer | x64, ARM64                         | AppImage and Debian package |
+
+The Mac bundle declares `LSMinimumSystemVersion=15.0.0`, excluding macOS 14 and earlier. This is a
+Kanbun product policy, separate from Electron's broader runtime compatibility. Windows 11 and
+Ubuntu 24.04 are support targets, not installer-enforced minimums; other systems may run the app
+but are not yet validated. No 32-bit builds are produced.
+
+Linux packages can be built in the shared devcontainer:
+
+```sh
+./scripts/devcontainer.sh exec pnpm --filter @kanbun/desktop dist:linux
+```
+
+Artifacts are written to the ignored `apps/desktop/release/` directory. Packaging includes only
+compiled desktop JavaScript and application metadata, alongside the Electron runtime; the UI
+continues to load from the hosted app. `dist:mac` and `dist:windows` select the other packaging
+targets. Publishing is disabled in the build configuration and commands.
+
+CI first runs the full devcontainer verifier and uploads its compiled desktop JavaScript. Linux
+packaging runs in the same devcontainer; native Mac and Windows jobs download that verified output,
+install frozen dependencies without lifecycle scripts, and package without recompiling repository
+source. This narrow exception is recorded in `AGENTS.md`. Mac jobs use macOS 15; Windows jobs use
+Windows Server 2025. CI uploads the packages as workflow artifacts, with no release publication.
+
+Native jobs disable automatic signing-identity discovery. Unsigned artifacts are development
+builds, not public releases: Mac users will encounter Gatekeeper restrictions and Windows users
+may encounter publisher/reputation warnings. Public Mac distribution needs a Developer ID
+certificate and Apple notarization credentials; public Windows distribution needs a signing
+identity. No signing credentials are stored in the repository. Automatic updates, public download
+hosting and store distribution remain separate work.
 
 ## Sessions and navigation
 

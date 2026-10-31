@@ -10,6 +10,7 @@ export default defineConfig([
     "**/node_modules/",
     "**/.pnpm-store/",
     "**/dist/",
+    "apps/desktop/release/",
     "**/coverage/",
     "**/.wrangler/",
     "artifacts/recovery/",

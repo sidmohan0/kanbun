@@ -65,3 +65,76 @@ jobs:
             artifacts/recovery/
             artifacts/recovery-preflight/
           if-no-files-found: warn
+      - name: Upload verified desktop JavaScript
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-compiled-${{ github.sha }}
+          path: apps/desktop/dist/*.js
+          if-no-files-found: error
+  desktop-linux:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/devcontainer
+      - name: Download verified desktop JavaScript
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: desktop-compiled-${{ github.sha }}
+          path: apps/desktop/dist
+      - name: Build Linux desktop packages
+        run: ./scripts/devcontainer.sh exec pnpm --filter @kanbun/desktop exec electron-builder --config electron-builder.json --linux --publish never
+      - name: Smoke test packaged Linux application
+        run: ./scripts/devcontainer.sh exec env KANBUN_DESKTOP_EXECUTABLE=/workspaces/kanbun/apps/desktop/release/linux-unpacked/kanbun xvfb-run -a node --test apps/desktop/test/shell.test.mjs
+      - name: Upload development packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-linux-${{ github.sha }}
+          path: |
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+          if-no-files-found: error
+  desktop-native:
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            platform: mac
+            artifacts: |
+              apps/desktop/release/*.dmg
+              apps/desktop/release/*.zip
+          - os: windows-2025
+            platform: win
+            artifacts: apps/desktop/release/*-setup.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Bootstrap pinned package manager
+        shell: bash
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+      - name: Install frozen packaging dependencies
+        shell: bash
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Download verified desktop JavaScript
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: desktop-compiled-${{ github.sha }}
+          path: apps/desktop/dist
+      - name: Package desktop application
+        shell: bash
+        run: pnpm --filter @kanbun/desktop exec electron-builder --config electron-builder.json --${{ matrix.platform }} --publish never
+      - name: Upload unsigned development packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-${{ matrix.platform }}-${{ github.sha }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
