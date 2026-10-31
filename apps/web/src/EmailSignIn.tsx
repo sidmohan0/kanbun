@@ -2,7 +2,13 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Mark } from "./brand/Mark";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
-import { AuthenticationError, authenticationRequest, returnDestination, type SignInRoute } from "./authentication";
+import {
+  AuthenticationError,
+  authenticationRequest,
+  desktopSignInLink,
+  returnDestination,
+  type SignInRoute,
+} from "./authentication";
 import { Turnstile } from "./Turnstile";
 import { workspace } from "./workspace";
 import "./styles/auth.css";
@@ -49,6 +55,7 @@ export function EmailSignOut({ returnTo = "#issues", label = "Sign out" }: { ret
   );
 }
 export function EmailSignIn({ siteKey, returnTo }: { siteKey: string; returnTo: string }) {
+  const desktop = navigator.userAgent.includes("KanbunDesktop/");
   const [email, setEmail] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
   const [verification, setVerification] = useState(0);
@@ -77,7 +84,7 @@ export function EmailSignIn({ siteKey, returnTo }: { siteKey: string; returnTo: 
       <h1>{sent ? "Check your email" : "Sign in to kanbun"}</h1>
       {sent ? (
         <>
-          <p>If eligible, you’ll receive a sign-in link. Open it in this browser.</p>
+          <p>{desktop ? "Open your email link in Kanbun, or copy it and use File → Open sign-in link from clipboard." : "If eligible, you’ll receive a sign-in link. Open it in this browser."}</p>
           {returnTo.startsWith("#invite/") && <p>Use your invitation link to join after signing in.</p>}
           <Button
             variant="outline"
@@ -133,6 +140,7 @@ export function EmailSignInCallback({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryable, setRetryable] = useState(false);
+  const [wrongSession, setWrongSession] = useState(false);
   const invalid = "invalid" in route;
   const token = invalid ? null : route.token;
   const returnTo = invalid ? "#issues" : route.returnTo;
@@ -156,10 +164,11 @@ export function EmailSignInCallback({
       .catch((failure: unknown) => {
         if (!active) return;
         const unavailable = failure instanceof AuthenticationError && failure.status === 401;
+        setWrongSession(unavailable);
         setRetryable(!unavailable);
         setError(
           unavailable
-            ? "This link is unavailable. It may have expired, been used, or opened in a different browser. Request a new link here."
+            ? "This link is unavailable. It may have expired, been used, or opened in a different browser. If you requested it in Kanbun, open it there."
             : failure instanceof Error
               ? failure.message
               : "The sign-in link could not be checked. Please try again.",
@@ -219,6 +228,13 @@ export function EmailSignInCallback({
             {busy ? "Signing in…" : `Sign in as ${details.email}`}
           </Button>
         </>
+      )}
+      {wrongSession && token && !navigator.userAgent.includes("KanbunDesktop/") && (
+        <p>
+          <a className="button primary" href={desktopSignInLink(location.hash)!}>
+            Open in Kanbun
+          </a>
+        </p>
       )}
       {retryable && (
         <Button variant="outline" onClick={() => location.reload()}>

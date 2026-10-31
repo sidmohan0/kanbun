@@ -1,10 +1,31 @@
-import { app, BrowserWindow, dialog, Menu, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, Menu, shell } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
-import { appUrl, linkAction } from "./policy.js";
+import { appUrl, linkAction, signInDestination } from "./policy.js";
 
 const application = appUrl(process.env.KANBUN_DESKTOP_URL);
 app.setName("kanbun");
 let window: BrowserWindow | null = null;
+let pendingSignIn = process.argv.map((value) => signInDestination(value, application)).find(Boolean) ?? null;
+
+function receiveSignIn(value: string): boolean {
+  const destination = signInDestination(value, application);
+  if (!destination) return false;
+  if (!app.isReady()) pendingSignIn = destination;
+  else if (!window) createWindow(destination);
+  else {
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+    void window.loadURL(destination).catch(() => {});
+  }
+  return true;
+}
+
+// macOS can deliver the launch URL before ready or before the first window exists.
+app.on("open-url", (event, value) => {
+  event.preventDefault();
+  receiveSignIn(value);
+});
 
 async function openExternal(url: string) {
   try {
@@ -14,7 +35,17 @@ async function openExternal(url: string) {
   }
 }
 
-function createWindow() {
+async function openClipboardSignIn() {
+  try {
+    if (receiveSignIn(await clipboard.readText())) return;
+  } catch {
+    // Clipboard failures and invalid links share a response that never echoes their contents.
+  }
+  dialog.showErrorBox("Invalid sign-in link", "Copy the complete sign-in link from your Kanbun email, then try again.");
+}
+
+function createWindow(destination = pendingSignIn ?? application.href) {
+  pendingSignIn = null;
   const current = new BrowserWindow({
     title: "kanbun",
     width: 1280,
@@ -31,6 +62,7 @@ function createWindow() {
     },
   });
   window = current;
+  current.webContents.setUserAgent(`${current.webContents.getUserAgent()} KanbunDesktop/1.0`);
   current.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   current.webContents.session.setPermissionCheckHandler(() => false);
   current.webContents.on("will-attach-webview", (event) => event.preventDefault());
@@ -64,13 +96,14 @@ function createWindow() {
   current.on("closed", () => {
     window = null;
   });
-  void current.loadURL(application.href).catch(() => {});
+  void current.loadURL(destination).catch(() => {});
 }
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
+  app.on("second-instance", (_event, commandLine) => {
+    for (const value of commandLine) if (receiveSignIn(value)) return;
     if (window?.isMinimized()) window.restore();
     window?.show();
     window?.focus();
@@ -79,9 +112,22 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform !== "darwin") app.quit();
   });
   void app.whenReady().then(() => {
+    if (app.isPackaged) app.setAsDefaultProtocolClient("kanbun");
     const menu: MenuItemConstructorOptions[] = [
       ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
-      { role: "fileMenu" },
+      {
+        label: "File",
+        submenu: [
+          {
+            id: "open-signin-link",
+            label: "Open sign-in link from clipboard",
+            accelerator: "CmdOrCtrl+Shift+O",
+            click: () => void openClipboardSignIn(),
+          },
+          { type: "separator" },
+          { role: process.platform === "darwin" ? "close" : "quit" },
+        ],
+      },
       { role: "editMenu" },
       {
         label: "View",

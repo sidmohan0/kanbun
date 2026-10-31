@@ -17,3 +17,31 @@ export function linkAction(value: string, application: URL): "internal" | "exter
     return "deny";
   }
 }
+
+/** Callback URLs only select a route; the server still checks the requesting session's cookie. */
+export function signInDestination(value: string, application: URL): string | null {
+  try {
+    const url = new URL(value.trim());
+    if (url.username || url.password || url.search) return null;
+    let hash: string;
+    if (url.protocol === "kanbun:") {
+      if (url.hostname !== "signin" || url.port || url.hash) return null;
+      hash = `#signin${url.pathname}`;
+    } else {
+      if (url.origin !== application.origin || url.pathname !== "/") return null;
+      hash = url.hash;
+    }
+    const match = /^#signin\/([A-Za-z0-9_-]{43})\/([^/]+)$/u.exec(hash);
+    if (!match) return null;
+    const returnTo = decodeURIComponent(match[2]!);
+    if (
+      !["#issues", "#my-issues", "#inbox", "#settings", "#members"].includes(returnTo) &&
+      !/^#issues\/[A-Za-z0-9_-]+$/u.test(returnTo) &&
+      !/^#invite\/[A-Za-z0-9_-]{43}$/u.test(returnTo)
+    )
+      return null;
+    return `${application.origin}/#signin/${match[1]}/${encodeURIComponent(returnTo)}`;
+  } catch {
+    return null;
+  }
+}
