@@ -100,5 +100,5 @@ export function Entry() {
     );
   if (config?.method === "email" && (!config.authenticated || needsSignIn))
     return <EmailSignIn siteKey={config.siteKey!} returnTo={returnDestination(hash)} />;
-  return token === null ? <App /> : <Invitation key={token} token={token} />;
+  return token === null ? <App /> : <Invitation key={token} token={token} nativeEmail={config?.method === "email"} />;
 }

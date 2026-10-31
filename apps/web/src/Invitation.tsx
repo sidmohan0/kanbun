@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { workspaceContextSchema } from "@kanbun/sync";
 import { Mark } from "./brand/Mark";
 import { MembershipError, membershipRequest } from "./membership";
+import { EmailSignOut } from "./EmailSignIn";
 
 type InvitationDetails = { email: string; workspaceName: string; expiresAt: string | null; accepted: boolean };
 function enterWorkspace() {
@@ -9,12 +10,13 @@ function enterWorkspace() {
   history.replaceState(null, "", "#issues");
   location.reload();
 }
-export function Invitation({ token }: { token: string }) {
+export function Invitation({ token, nativeEmail = false }: { token: string; nativeEmail?: boolean }) {
   const [details, setDetails] = useState<InvitationDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signInRequired, setSignInRequired] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let active = true;
@@ -39,6 +41,7 @@ export function Invitation({ token }: { token: string }) {
       .catch((failure: unknown) => {
         if (active) {
           setSignInRequired(failure instanceof MembershipError && failure.status === 401);
+          setAccessDenied(failure instanceof MembershipError && failure.status === 403);
           setError(failure instanceof Error ? failure.message : "This invitation could not be opened.");
         }
       })
@@ -58,6 +61,7 @@ export function Invitation({ token }: { token: string }) {
       enterWorkspace();
     } catch (failure) {
       setSignInRequired(failure instanceof MembershipError && failure.status === 401);
+      setAccessDenied(failure instanceof MembershipError && failure.status === 403);
       setError(failure instanceof Error ? failure.message : "This invitation could not be accepted.");
       setAccepting(false);
     }
@@ -83,6 +87,14 @@ export function Invitation({ token }: { token: string }) {
             {error}
           </div>
         )}
+        {error && accessDenied && nativeEmail && (
+          <>
+            <p className="members-description">
+              Signed in with a different email? Sign out here and use the invited email. This invitation will stay open.
+            </p>
+            <EmailSignOut label="Use another email" returnTo={`#invite/${token}`} />
+          </>
+        )}
         {error && (
           <button
             className="button"
@@ -94,6 +106,7 @@ export function Invitation({ token }: { token: string }) {
                 setDetails(null);
                 setError(null);
                 setSignInRequired(false);
+                setAccessDenied(false);
                 setAttempt((value) => value + 1);
               }
             }}
@@ -132,8 +145,9 @@ export function Invitation({ token }: { token: string }) {
           </p>
         )}
         <p className="members-description">
-          No separate Kanbun registration is needed. Use the email your workspace owner invited. To use a different
-          account, open this complete invitation link in a private browser window and sign in there.
+          No separate Kanbun registration is needed. Use the email your workspace owner invited.
+          {!nativeEmail &&
+            " To use a different account, open this complete invitation link in a private browser window and sign in there."}
         </p>
       </div>
     </main>

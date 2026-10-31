@@ -30,7 +30,9 @@ need the complete link and the invited email, rather than a separate Kanbun regi
 inspection can be retried after selecting the correct account. An expired native session during
 inspection or acceptance returns to the email form with the same invitation destination; the
 invitation token is removed only after successful acceptance. The emailed sign-in link must open in
-the browser that requested it. To select another account without changing an existing session,
+the browser that requested it. A native session rejected at the invitation offers **Use another
+email**: it revokes the current session, preserves the complete invitation and reloads the email
+form. Existing private queues are not opened or deleted. To select another account without changing an existing session,
 open the invitation in a private window, request the email link there, and confirm it in that same
 private window. Merely opening the email link in another profile cannot complete the sign-in.
 

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Mark } from "./brand/Mark";
-import { AuthenticationError, authenticationRequest, type SignInRoute } from "./authentication";
+import { AuthenticationError, authenticationRequest, returnDestination, type SignInRoute } from "./authentication";
 import { Turnstile } from "./Turnstile";
 import { workspace } from "./workspace";
 import "./styles/auth.css";
@@ -18,7 +18,7 @@ export function AuthenticationCard({ children }: { children: ReactNode }) {
     </main>
   );
 }
-export function EmailSignOut() {
+export function EmailSignOut({ returnTo = "#issues", label = "Sign out" }: { returnTo?: string; label?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function signOut() {
@@ -30,7 +30,7 @@ export function EmailSignOut() {
       if (result === null || typeof result !== "object" || !("ok" in result) || result.ok !== true)
         throw new Error("Sign-out could not be confirmed. Please try again.");
       workspace.requireAuthentication("You are signed out.");
-      history.replaceState(null, "", "#issues");
+      history.replaceState(null, "", returnDestination(returnTo));
       location.reload();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Sign-out could not be completed.");
@@ -40,7 +40,7 @@ export function EmailSignOut() {
   return (
     <div className="auth-sign-out">
       <button className="button quiet compact" disabled={busy} onClick={() => void signOut()}>
-        {busy ? "Signing out…" : "Sign out"}
+        {busy ? "Signing out…" : label}
       </button>
       {error && <p role="alert">{error}</p>}
     </div>

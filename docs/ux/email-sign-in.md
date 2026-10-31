@@ -21,6 +21,11 @@ grant workspace access.
    preserved destination. If that destination was an invitation, choose **Accept invitation** to
    join. Sign-in and invitation acceptance are separate steps.
 
+If an invitation is opened while signed in with another email, **Use another email** signs out that
+session and returns to the email form with the complete invitation preserved. Confirm a fresh link
+as the targeted person, then explicitly accept the invitation. This does not clear another person's
+private browser queue or create a workspace membership automatically.
+
 The owner still creates and shares invitation links manually. Creating an invitation does not send
 email; requesting a sign-in link does. Email links arrive through Resend from the configured verified
 sender. The normal flow never asks the person to register with the infrastructure provider.
