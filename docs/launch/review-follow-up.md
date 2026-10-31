@@ -10,8 +10,12 @@ the owner's rights to publish organizational material or create provider account
 | Decision                       | Criteria             | Exact input needed                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------------ | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Publication rights and privacy | PUB-01.02            | Confirm the repository's code and original assets can be released under its Apache-2.0 license; approve public Git author metadata, installer/maintainer identifiers, and DataFog-specific roadmap material in the specification, archived specifications and build-order figure. Identify any employer, client or third-party restrictions. The retained publication review lists the inspected locations. |
-| Service offer                  | BIZ-01.01            | Confirm the contact address `sid@datafog.ai` is the intended route and that the setup, authentication, optional GitHub integration, backup verification and handover described in SUPPORT.md are services the maintainer intends to offer. No price, response-time or ongoing-support commitment is implied.                                                                                                |
 | Publication and release        | REL-01.02, RUN-02.01 | Approve the intended public source repository and qualified release identity after the privacy decision. The current draft PR, a passing build and an unpublished tag proposal do not establish a published release.                                                                                                                                                                                        |
+
+The maintainer's stated intention to receive paid setup inquiries supplies the service-offer
+authorization. The reviewed offer agrees deliverables, feasibility, pricing, access and availability
+per engagement and scopes maintenance separately. It promises no price, response time or guaranteed
+acceptance, so no further standing-capacity attestation is required for BIZ-01.01.
 
 ## Account prerequisites for the live exercises
 
@@ -34,7 +38,7 @@ billing acceptance and new sensitive access grants require the account owner's p
 
 ## Controlled completion order
 
-1. Resolve the publication/privacy and service decisions. Review and merge the qualified PR when
+1. Resolve the publication/privacy decision. Review and merge the qualified PR when
    its required checks pass; keep the repository private until publication is authorized.
 2. Make the approved candidate source available at the chosen public URL. Cloudflare's
    [official button requires a public repository](https://developers.cloudflare.com/workers/platform/deploy-buttons/).
