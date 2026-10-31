@@ -31,6 +31,7 @@ Current workspace packages:
 
 <!-- workspace-inventory:start -->
 
+- `apps/desktop`
 - `apps/web`
 - `apps/worker`
 - `packages/events`
@@ -41,6 +42,9 @@ Current workspace packages:
 - `packages/verifier`
 
 <!-- workspace-inventory:end -->
+
+The [Electron desktop shell](docs/desktop.md) loads the hosted web app with its own persistent session,
+native menus and restricted navigation. Local agent tools and packaged desktop releases are follow-up work.
 
 The local Worker runs the existing engine in a SQLite-backed `WorkspaceDO`, with HTTP sync and
 branch APIs. Runtime tests and browser recovery checks use actual `workerd`; fast engine tests and

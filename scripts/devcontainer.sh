@@ -63,12 +63,19 @@ esac
 
 command -v npx >/dev/null || { printf 'Install Node.js to bootstrap the devcontainer CLI.\n' >&2; exit 1; }
 container_cli=(npx --yes @devcontainers/cli@0.90.0)
+container_up_args=(--workspace-folder "$repo_root")
+# Linked worktrees contain an absolute .git pointer outside the workspace bind mount.
+# Preserve that path so container verification can inspect the actual checkout and refs.
+if [ -f "$repo_root/.git" ]; then
+  common_git_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)"
+  container_up_args+=(--mount "type=bind,source=$common_git_dir,target=$common_git_dir")
+fi
 case "$command_name" in
   up)
-    exec "${container_cli[@]}" up --workspace-folder "$repo_root" "$@"
+    exec "${container_cli[@]}" up "${container_up_args[@]}" "$@"
     ;;
   rebuild)
-    exec "${container_cli[@]}" up --workspace-folder "$repo_root" --remove-existing-container "$@"
+    exec "${container_cli[@]}" up "${container_up_args[@]}" --remove-existing-container "$@"
     ;;
   exec)
     [ "$#" -gt 0 ] || { printf 'Supply a command to execute.\n' >&2; exit 2; }
