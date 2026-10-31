@@ -184,6 +184,12 @@ avoid concurrent manual deployments. Rollback never reverses database changes or
 
 ## Operational monitoring
 
+GitHub context uses a separate owner-authorized GitHub App; it does not replace native email login.
+See [GitHub integration setup](github-integration.md) for the public App identifiers, private Worker
+secrets, callback/webhook destinations, selected read permissions, repository-to-team mappings and
+the first migration rollout. Anonymous health checks do not prove that integration's authenticated
+provider flow.
+
 The daily/manual [health report and recovery runbook](operations.md) cover the configured public
 shell and authentication boundary, deployed source/release state, and read-only accounts
 connectivity. They do not prove email delivery, an authenticated application flow or durable storage

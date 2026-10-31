@@ -63,6 +63,10 @@ in a separate SQLite DocumentDO, with Yjs merging and durable browser recovery. 
 [Daily views](docs/ux/issue-views.md) add My Issues, search, combined filters, and sorting.
 [Issue boards](docs/ux/issue-board.md) group the same filtered work by team and status, with drag
 and keyboard status changes.
+[GitHub context](docs/ux/github-context.md) puts linked PRs, branches, current-commit reviews and CI
+signals in issue rows, boards, details and activity. Owners explicitly connect selected repositories
+to teams; [App setup and recovery](docs/github-integration.md) keep provider authority separate from
+native email sign-in. This read-only integration does not automatically change human issue status.
 [Discussion](docs/ux/issue-discussion.md) adds attributed comments, replies, thread resolution,
 and activity grouped by intent. The personal [Inbox](docs/ux/workspace-inbox.md) shows assignments,
 explicit mentions, replies, and followed-issue comments, with durable read state. Private
