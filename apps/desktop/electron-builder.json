@@ -8,6 +8,7 @@
   "asar": true,
   "artifactName": "Kanbun-${version}-${os}-${arch}.${ext}",
   "publish": null,
+  "protocols": [{ "name": "Kanbun sign-in", "schemes": ["kanbun"] }],
   "mac": {
     "minimumSystemVersion": "15.0.0",
     "category": "public.app-category.productivity",

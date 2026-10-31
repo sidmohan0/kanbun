@@ -73,9 +73,20 @@ hosting and store distribution remain separate work.
 
 The `persist:kanbun` Electron partition retains the desktop client's cookies and browser storage
 across restarts, independently of Chrome and the web client's session. Users sign in inside the
-desktop window. Native email-link sign-in must be confirmed in the requesting desktop session;
-links opened from an email client currently open in the system browser. App-protocol/deep-link
-handoff and third-party authentication flows that redirect across origins are not implemented.
+desktop window. Email links remain HTTPS links and may open in the default browser. When a valid
+callback cannot be inspected in that browser's session, **Open in Kanbun** sends it through the
+registered `kanbun://signin/...` protocol to the requesting desktop app. The app handles both cold
+launches and callbacks delivered to an existing instance, then shows the usual explicit email
+confirmation. The original HttpOnly request cookie must still match; browser sessions and cookies
+are never imported into the desktop app.
+
+The browser button requires deployment of the updated web UI and installation of a desktop build
+with protocol support. The desktop **File → Open sign-in link from clipboard** command also accepts
+the complete original HTTPS email link, so it works before the browser UI deploys. Clipboard access
+occurs only when that command is invoked; invalid contents are never echoed. Custom protocol and
+clipboard callbacks accept only valid sign-in tokens and known issue/invitation return hashes, and
+always navigate to the configured app origin. Expired, used or mismatched links remain unavailable.
+General third-party OAuth redirect handoff remains separate work.
 
 Same-origin navigation remains inside the window. User-triggered HTTP, HTTPS and mail links to
 other origins open in the system browser. Other schemes are denied, and cross-origin redirects are
@@ -92,7 +103,8 @@ process-execution, browser-control or computer-use tools to web content. Those r
 agent process and narrow, authorized operations in a later milestone. Never disable the renderer
 sandbox to add local tools.
 
-The desktop smoke test verifies renderer isolation, blocked unsafe navigation/popups, and session
+The desktop smoke test verifies renderer isolation, blocked unsafe navigation/popups, callback
+delivery through macOS/second-instance events and launch arguments, clipboard handoff, and session
 storage/cookie persistence after a real Electron restart against a local HTTP fixture. The full web
 verifier covers the existing application. Hosted account login, external OAuth and native macOS UI
 behavior need separate validation before distribution.

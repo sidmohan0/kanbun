@@ -66,6 +66,8 @@ preparation moves them to a dated version heading.
 
 ### Fixed
 
+- Desktop email sign-in can return from the default browser through a validated app link, with a clipboard-link command for existing emails and unchanged request-cookie confirmation.
+
 - GitHub authorization now accepts the provider's issuer parameter, rejects foreign issuers before consuming authorization state, and remains compatible with callbacks that omit the issuer.
 
 - Workspace entry now distinguishes missing access from expired sign-in, explains invitation sharing, and lets invitees retry with the correct account without losing their invitation link.

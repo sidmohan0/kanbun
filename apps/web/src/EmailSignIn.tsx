@@ -1,6 +1,12 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Mark } from "./brand/Mark";
-import { AuthenticationError, authenticationRequest, returnDestination, type SignInRoute } from "./authentication";
+import {
+  AuthenticationError,
+  authenticationRequest,
+  desktopSignInLink,
+  returnDestination,
+  type SignInRoute,
+} from "./authentication";
 import { Turnstile } from "./Turnstile";
 import { workspace } from "./workspace";
 import "./styles/auth.css";
@@ -47,6 +53,7 @@ export function EmailSignOut({ returnTo = "#issues", label = "Sign out" }: { ret
   );
 }
 export function EmailSignIn({ siteKey, returnTo }: { siteKey: string; returnTo: string }) {
+  const desktop = navigator.userAgent.includes("KanbunDesktop/");
   const [email, setEmail] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
   const [verification, setVerification] = useState(0);
@@ -79,8 +86,9 @@ export function EmailSignIn({ siteKey, returnTo }: { siteKey: string; returnTo: 
             If this email is eligible to access Kanbun, a sign-in link is on its way. Check your inbox and spam folder.
           </p>
           <p>
-            Open the link in this same browser, then confirm your email to finish signing in. You can close this page
-            while you check your email.
+            {desktop
+              ? "Open your email link. If it opens in a browser, choose Open in Kanbun. You can also copy the link and use File → Open sign-in link from clipboard here."
+              : "Open the link in this same browser, then confirm your email to finish signing in. You can close this page while you check your email."}
           </p>
           <p>
             A sign-in link does not replace a workspace invitation. If you have not joined yet, use the invitation your
@@ -144,6 +152,7 @@ export function EmailSignInCallback({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryable, setRetryable] = useState(false);
+  const [wrongSession, setWrongSession] = useState(false);
   const invalid = "invalid" in route;
   const token = invalid ? null : route.token;
   const returnTo = invalid ? "#issues" : route.returnTo;
@@ -167,10 +176,11 @@ export function EmailSignInCallback({
       .catch((failure: unknown) => {
         if (!active) return;
         const unavailable = failure instanceof AuthenticationError && failure.status === 401;
+        setWrongSession(unavailable);
         setRetryable(!unavailable);
         setError(
           unavailable
-            ? "This sign-in link is unavailable. It may have expired, already been used, or been opened in a different browser. Request a new link in this browser."
+            ? "This sign-in link is unavailable. It may have expired, already been used, or been opened in a different browser or the desktop app. If you requested it in Kanbun, open it there. Otherwise request a new link in this browser."
             : failure instanceof Error
               ? failure.message
               : "The sign-in link could not be checked. Please try again.",
@@ -230,6 +240,13 @@ export function EmailSignInCallback({
             {busy ? "Signing in…" : `Sign in as ${details.email}`}
           </button>
         </>
+      )}
+      {wrongSession && token && !navigator.userAgent.includes("KanbunDesktop/") && (
+        <p>
+          <a className="button primary" href={desktopSignInLink(location.hash)!}>
+            Open in Kanbun
+          </a>
+        </p>
       )}
       {retryable && (
         <button className="button" onClick={() => location.reload()}>

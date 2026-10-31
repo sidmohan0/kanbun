@@ -28,11 +28,18 @@ test("native sign-in needs the requesting browser and explicit confirmation, and
     const link = await requestEmail(owner, emailApp, emailApp.runtime.ownerEmail);
     await other.goto(`${emailApp.origin}/${link.hash}`);
     await expect(other.getByRole("alert")).toContainText("different browser");
+    const handoff = other.getByRole("link", { name: "Open in Kanbun", exact: true });
+    await expect(handoff).toBeVisible();
+    const desktopUrl = new URL((await handoff.getAttribute("href"))!);
+    expect(desktopUrl.protocol).toBe("kanbun:");
+    expect(desktopUrl.hostname).toBe("signin");
+    expect(`#signin${desktopUrl.pathname}`).toBe(link.hash);
     await expect(
       other.getByRole("button", { name: `Sign in as ${emailApp.runtime.ownerEmail}`, exact: true }),
     ).toHaveCount(0);
     expect(await otherContext.cookies()).not.toContainEqual(expect.objectContaining({ name: SESSION_COOKIE }));
-    await owner.goto(`${emailApp.origin}/${link.hash}`);
+    // Route the browser's handoff back into the requesting context, retaining its HttpOnly nonce.
+    await owner.goto(`${emailApp.origin}/#signin${desktopUrl.pathname}`);
     await expect(
       owner.getByRole("button", { name: `Sign in as ${emailApp.runtime.ownerEmail}`, exact: true }),
     ).toBeVisible();
