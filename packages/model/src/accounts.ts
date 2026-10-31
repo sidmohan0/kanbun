@@ -51,9 +51,11 @@ export const magicLinks = sqliteTable(
     email: text("email").notNull(),
     expiresAt: text("expires_at").notNull(),
     consumedAt: text("consumed_at"),
+    nonceHash: text("nonce_hash"),
+    claimHash: text("claim_hash"),
     createdAt: text("created_at").notNull(),
   },
-  (t) => [index("magic_links_email").on(t.email)],
+  (t) => [index("magic_links_email").on(t.email), uniqueIndex("magic_links_claim").on(t.claimHash)],
 );
 
 export const sessions = sqliteTable(

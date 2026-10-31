@@ -29,6 +29,7 @@ import {
   renameWorkspace,
   type DirectoryEnvironment,
 } from "./directory";
+import { authenticationRoute, verifyEmailSession } from "./email-auth";
 import { localActors, seedWorkspace } from "./local";
 import { preparePreview, projectMembershipRemoval } from "./preview";
 import { DocumentDO, documentName } from "./document";
@@ -162,8 +163,15 @@ function validateUpgrade(request: Request, env: Env) {
   if (origin !== null && origin !== expected.origin) throw new RequestError("WebSocket origin is not allowed", 403);
 }
 
-function failure(error: unknown): Response {
-  if (error instanceof RequestError) return json({ error: error.message }, error.status);
+function failure(error: unknown, env?: AuthEnvironment): Response {
+  if (error instanceof RequestError)
+    return json(
+      {
+        error: error.message,
+        ...(env?.AUTH_MODE === "email" && error.status === 401 ? { authentication: "email" } : {}),
+      },
+      error.status,
+    );
   if (error instanceof z.ZodError) return json({ error: "Invalid request", issues: error.issues }, 400);
   if (error instanceof MutationError) {
     const status =
@@ -764,7 +772,7 @@ export class WorkspaceDO extends DurableObject<Env> {
           return json({ error: "Not found" }, 404);
       }
     } catch (error) {
-      return failure(error);
+      return failure(error, this.env);
     }
   }
 }
@@ -775,6 +783,14 @@ export default {
       const runtimeMode = mode(env);
       const url = new URL(request.url);
       if (runtimeMode === "disabled") return disabled();
+      // An isolated recovery target must stay untouched by public sign-in as well as workspace admission.
+      if (env.AUTH_MODE === "email" && env.BACKUP_RESTORE_ISOLATED === "true") {
+        const workspaceId = configuration(env).workspaceId;
+        if (!(await env.WORKSPACES.getByName(workspaceId).restoreComplete(workspaceId)))
+          return json({ error: "Isolated restore is not complete" }, 503);
+      }
+      const authentication = await authenticationRoute(request, env);
+      if (authentication) return authentication;
       if (runtimeMode === "local") {
         if (
           env.BACKUP_RESTORE_ISOLATED === "true" &&
@@ -790,7 +806,10 @@ export default {
         return env.WORKSPACES.getByName("local").fetch(request);
       }
       if (localRoute(url.pathname)) return json({ error: "Not found" }, 404);
-      const identity = await verifyAccess(request, env);
+      if (env.AUTH_MODE === "email" && !(url.pathname.startsWith("/api/") || syncRoute(url.pathname)))
+        return env.ASSETS ? env.ASSETS.fetch(request) : json({ error: "Not found" }, 404);
+      const identity =
+        env.AUTH_MODE === "email" ? await verifyEmailSession(request, env) : await verifyAccess(request, env);
       if (env.BACKUP_RESTORE_ISOLATED === "true") {
         const workspaceId = configuration(env).workspaceId;
         if (!(await env.WORKSPACES.getByName(workspaceId).restoreComplete(workspaceId)))
@@ -817,7 +836,7 @@ export default {
       }
       return env.ASSETS ? env.ASSETS.fetch(request) : json({ error: "Not found" }, 404);
     } catch (error) {
-      return failure(error);
+      return failure(error, env);
     }
   },
 } satisfies ExportedHandler<Env>;
