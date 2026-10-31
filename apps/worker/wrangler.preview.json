@@ -20,10 +20,11 @@
   },
   "vars": {
     "LOCAL_DEV": "false",
-    "AUTH_MODE": "preview",
+    "AUTH_MODE": "email",
     "APP_ORIGIN": "https://kanbun.ai",
-    "ACCESS_ISSUER": "https://kanbun-sid.cloudflareaccess.com",
-    "ACCESS_AUDIENCE": "b286feff64cecd9481469601c7fca8c2f5b04e168cf632110a0bde16fd20001d",
+    "AUTH_EMAIL_DOMAIN": "datafog.ai",
+    "AUTH_FROM_EMAIL": "Kanbun <signin@auth.kanbun.ai>",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFtZ_SkJCIGpthkt",
     "PREVIEW_OWNER_EMAIL": "sid@datafog.ai",
     "PREVIEW_WORKSPACE_ID": "01a18d7f-80a7-7e86-bd3c-3f6780cab4bb",
     "PREVIEW_WORKSPACE_NAME": "kanbun"

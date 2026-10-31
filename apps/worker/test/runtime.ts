@@ -3,6 +3,15 @@ import { issueIncarnation, type BootstrapResponse } from "@kanbun/sync";
 import { createRuntimeHarness, localWorkerConfig } from "./harness";
 
 export { startPreviewRuntime } from "./preview-runtime";
+export {
+  startEmailRuntime,
+  emailLink,
+  linkToken,
+  nativeAgent,
+  LOGIN_COOKIE,
+  SESSION_COOKIE,
+  HUMAN_TOKEN,
+} from "./email-runtime";
 
 export type RuntimeSnapshot = {
   seq: number;

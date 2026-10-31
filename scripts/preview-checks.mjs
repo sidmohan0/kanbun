@@ -17,7 +17,7 @@ export function accessRedirect(status, location, issuer) {
   }
 }
 
-function websocketGate(origin, issuer) {
+function websocketGate(origin, issuer, method = "preview") {
   return new Promise((resolve, reject) => {
     const failure = () => reject(new PreviewCheckError("access-websocket", "Anonymous WebSocket gate failed"));
     const socket = httpsRequest(
@@ -33,7 +33,12 @@ function websocketGate(origin, issuer) {
       },
       (response) => {
         response.resume();
-        if (accessRedirect(response.statusCode, response.headers.location, issuer)) resolve();
+        if (
+          method === "email"
+            ? response.statusCode === 401
+            : accessRedirect(response.statusCode, response.headers.location, issuer)
+        )
+          resolve();
         else failure();
       },
     );
@@ -91,7 +96,19 @@ export function createPreviewChecks(config, token, { fetchImpl = fetch, checkWeb
     if (domains?.enabled !== false || domains?.previews_enabled !== false)
       throw new PreviewCheckError("alternative-urls", "Alternative Worker URLs are enabled");
     const results = [];
-    for (const path of ["/", "/api/context", "/sync/bootstrap?clientId=release-probe", "/sync/connect"]) {
+    const native = config.vars.AUTH_MODE === "email";
+    const paths = native
+      ? [
+          "/",
+          "/api/auth/config",
+          "/api/context",
+          "/api/members",
+          "/sync/bootstrap?clientId=release-probe",
+          "/sync/connect",
+          "/sync/document",
+        ]
+      : ["/", "/api/context", "/sync/bootstrap?clientId=release-probe", "/sync/connect"];
+    for (const path of paths) {
       let response;
       try {
         response = await fetchImpl(config.vars.APP_ORIGIN + path, {
@@ -101,30 +118,57 @@ export function createPreviewChecks(config, token, { fetchImpl = fetch, checkWeb
       } catch {
         throw new PreviewCheckError("access-http", "Application HTTPS unavailable");
       }
-      if (!accessRedirect(response.status, response.headers.get("location"), config.vars.ACCESS_ISSUER))
+      if (native) {
+        if (path === "/") {
+          if (response.status !== 200 || !response.headers.get("content-type")?.includes("text/html"))
+            throw new PreviewCheckError("access-http", "Public sign-in shell unavailable", response.status);
+        } else {
+          const expectedStatus = path === "/api/auth/config" ? 200 : 401;
+          if (response.status !== expectedStatus)
+            throw new PreviewCheckError("access-http", "Anonymous session authentication gate failed", response.status);
+          let value;
+          try {
+            value = await response.json();
+          } catch {
+            throw new PreviewCheckError("access-http", "Invalid session authentication response", response.status);
+          }
+          if (
+            path === "/api/auth/config"
+              ? value?.method !== "email" ||
+                value.authenticated !== false ||
+                typeof value.siteKey !== "string" ||
+                !value.siteKey ||
+                "email" in value
+              : value?.authentication !== "email"
+          )
+            throw new PreviewCheckError("access-http", "Anonymous session authentication gate failed", response.status);
+        }
+      } else if (!accessRedirect(response.status, response.headers.get("location"), config.vars.ACCESS_ISSUER))
         throw new PreviewCheckError("access-http", "Anonymous HTTP Access gate failed", response.status);
       results.push({ path, status: response.status });
     }
-    let certificates;
-    try {
-      const response = await fetchImpl(config.vars.ACCESS_ISSUER + "/cdn-cgi/access/certs", {
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!response.ok) throw new Error();
-      certificates = await response.json();
-    } catch {
-      throw new PreviewCheckError("access-keys", "Access verification keys unavailable");
+    if (!native) {
+      let certificates;
+      try {
+        const response = await fetchImpl(config.vars.ACCESS_ISSUER + "/cdn-cgi/access/certs", {
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!response.ok) throw new Error();
+        certificates = await response.json();
+      } catch {
+        throw new PreviewCheckError("access-keys", "Access verification keys unavailable");
+      }
+      if (!certificates?.keys?.some((key) => key.kty === "RSA"))
+        throw new PreviewCheckError("access-keys", "Access verification keys unavailable");
     }
-    if (!certificates?.keys?.some((key) => key.kty === "RSA"))
-      throw new PreviewCheckError("access-keys", "Access verification keys unavailable");
     try {
-      await checkWebSocket(config.vars.APP_ORIGIN, config.vars.ACCESS_ISSUER);
+      await checkWebSocket(config.vars.APP_ORIGIN, config.vars.ACCESS_ISSUER, native ? "email" : "preview");
     } catch {
       throw new PreviewCheckError("access-websocket", "Anonymous WebSocket gate failed");
     }
     if ((await version()) !== expected)
       throw new PreviewCheckError("active-version", "Active version changed during checks");
-    results.push({ path: "/sync/connect", transport: "websocket", status: 302 });
+    results.push({ path: "/sync/connect", transport: "websocket", status: native ? 401 : 302 });
     return results;
   }
   async function d1Ping() {

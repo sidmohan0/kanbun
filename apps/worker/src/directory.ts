@@ -1,7 +1,8 @@
 import { uuidv7 } from "@kanbun/model";
 import type { WorkspaceContext } from "@kanbun/sync";
-import { configuration, type AccessIdentity, type AuthEnvironment, type HostedPrincipal } from "./auth";
+import { configuration, emailDomain, type AccessIdentity, type AuthEnvironment, type HostedPrincipal } from "./auth";
 import { RequestError } from "./requests";
+import { requireEmailSession } from "./email-auth";
 
 export type DirectoryEnvironment = AuthEnvironment & { ACCOUNTS?: D1Database };
 type Account = { id: string; email: string; name: string };
@@ -16,24 +17,24 @@ type Invitation = {
   created_at: string;
 };
 
-const provider = "cloudflare-access";
-const providerKey = (identity: Pick<AccessIdentity, "issuer" | "subject">) =>
-  JSON.stringify([identity.issuer, identity.subject]);
+type IdentityKey = Pick<AccessIdentity, "issuer" | "subject"> & {
+  provider?: "email" | "cloudflare-access" | undefined;
+};
+const identityProvider = (identity: IdentityKey) => identity.provider ?? "cloudflare-access";
+const providerKey = (identity: IdentityKey) =>
+  identity.provider === "email" ? identity.subject.toLowerCase() : JSON.stringify([identity.issuer, identity.subject]);
 
 function database(env: DirectoryEnvironment): D1Database {
   if (!env.ACCOUNTS) throw new RequestError("Preview account directory is not configured", 503);
   return env.ACCOUNTS;
 }
 
-export async function accountForIdentity(
-  env: DirectoryEnvironment,
-  identity: Pick<AccessIdentity, "issuer" | "subject">,
-) {
+export async function accountForIdentity(env: DirectoryEnvironment, identity: IdentityKey) {
   return database(env)
     .prepare(
       "SELECT a.id, a.email, a.name FROM auth_identities i JOIN accounts a ON a.id = i.account_id WHERE i.provider = ? AND i.provider_user_id = ?",
     )
-    .bind(provider, providerKey(identity))
+    .bind(identityProvider(identity), providerKey(identity))
     .first<Account>();
 }
 
@@ -64,7 +65,7 @@ export async function admitMember(env: DirectoryEnvironment, identity: AccessIde
             .prepare(
               "INSERT INTO auth_identities (id, account_id, provider, provider_user_id, created_at) VALUES (?, ?, ?, ?, ?)",
             )
-            .bind(uuidv7(), accountId, provider, providerKey(identity), now),
+            .bind(uuidv7(), accountId, identityProvider(identity), providerKey(identity), now),
           db
             .prepare(
               "INSERT INTO workspaces (id, url_key, name, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
@@ -85,6 +86,22 @@ export async function admitMember(env: DirectoryEnvironment, identity: AccessIde
     }
   }
   if (!account) throw new RequestError("Owner identity could not be initialized", 503);
+  if (identity.provider === "email" && identity.email === config.ownerEmail.toLowerCase()) {
+    const workspace = await db.prepare("SELECT id FROM workspaces WHERE id = ?").bind(config.workspaceId).first();
+    if (!workspace) {
+      const now = new Date().toISOString();
+      await db.batch([
+        db
+          .prepare("INSERT INTO workspaces (id,url_key,name,created_at) VALUES (?,?,?,?) ON CONFLICT(id) DO NOTHING")
+          .bind(config.workspaceId, `preview-${config.workspaceId.slice(0, 8)}`, config.workspaceName, now),
+        db
+          .prepare(
+            "INSERT INTO workspace_members (workspace_id,account_id,role,created_at) SELECT ?,?,'owner',? WHERE EXISTS (SELECT 1 FROM workspaces WHERE id = ? AND created_at = ? AND deletion_requested_at IS NULL) ON CONFLICT(workspace_id,account_id) DO NOTHING",
+          )
+          .bind(config.workspaceId, account.id, now, config.workspaceId, now),
+      ]);
+    }
+  }
   const membership = await directoryMembership(env, account.id);
   const principal: HostedPrincipal = {
     mode: "hosted",
@@ -94,6 +111,8 @@ export async function admitMember(env: DirectoryEnvironment, identity: AccessIde
     subject: identity.subject,
     expiresAt: identity.expiresAt,
     admissionId: membership?.admission_id ?? null,
+    ...(identity.provider ? { provider: identity.provider } : {}),
+    ...(identity.sessionId ? { sessionId: identity.sessionId } : {}),
   };
   await activeMember(env, principal);
   return principal;
@@ -102,6 +121,9 @@ export async function admitMember(env: DirectoryEnvironment, identity: AccessIde
 /** Re-read directory authority for every request and every outbound socket notification. */
 export async function activeMember(env: DirectoryEnvironment, principal: HostedPrincipal): Promise<WorkspaceContext> {
   const config = configuration(env);
+  if (env.AUTH_MODE === "email") await requireEmailSession(env, principal);
+  else if (principal.provider === "email" || principal.sessionId)
+    throw new RequestError("Workspace identity is unavailable", 401);
   if (
     principal.workspaceId !== config.workspaceId ||
     principal.issuer !== config.issuer ||
@@ -112,7 +134,7 @@ export async function activeMember(env: DirectoryEnvironment, principal: HostedP
     .prepare(
       "SELECT a.id, a.email, a.name, w.name AS workspace_name, m.role, m.admission_id FROM accounts a JOIN auth_identities i ON i.account_id = a.id JOIN workspace_members m ON m.account_id = a.id JOIN workspaces w ON w.id = m.workspace_id WHERE a.id = ? AND i.provider = ? AND i.provider_user_id = ? AND w.id = ? AND w.deletion_requested_at IS NULL AND m.removed_at IS NULL AND m.role IN ('owner', 'user')",
     )
-    .bind(principal.actor.id, provider, providerKey(principal), config.workspaceId)
+    .bind(principal.actor.id, identityProvider(principal), providerKey(principal), config.workspaceId)
     .first<Account & { workspace_name: string; role: "owner" | "user"; admission_id: string | null }>();
   if (
     !row ||
@@ -124,6 +146,7 @@ export async function activeMember(env: DirectoryEnvironment, principal: HostedP
   if (principal.expiresAt <= Date.now()) throw new RequestError("Workspace identity has expired", 403);
   return {
     mode: "hosted",
+    authentication: env.AUTH_MODE === "email" ? "email" : "access",
     role: row.role === "owner" ? "owner" : "member",
     admissionId: row.admission_id,
     workspaceId: config.workspaceId,
@@ -148,6 +171,8 @@ export function principalForIdentity(
     subject: identity.subject,
     expiresAt: identity.expiresAt,
     admissionId,
+    ...(identity.provider ? { provider: identity.provider } : {}),
+    ...(identity.sessionId ? { sessionId: identity.sessionId } : {}),
   };
 }
 
@@ -220,6 +245,13 @@ export async function createInvitation(
   expiresAt: string | null,
 ) {
   const context = await owner(env, principal);
+  if (
+    env.AUTH_MODE === "email" &&
+    email !== configuration(env).ownerEmail.toLowerCase() &&
+    !email.endsWith(`@${emailDomain(env)}`)
+  )
+    throw new RequestError(`Invitations require an address at @${emailDomain(env)}.`, 400);
+
   const db = database(env);
   const existing = await db
     .prepare(
@@ -405,7 +437,17 @@ export async function acceptInvitation(
         .prepare(
           `INSERT INTO auth_identities (id, account_id, provider, provider_user_id, created_at) SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM accounts WHERE id = ?) AND ${eligible}`,
         )
-        .bind(uuidv7(), accountId, provider, providerKey(identity), now, accountId, row.id, row.workspace_id, now),
+        .bind(
+          uuidv7(),
+          accountId,
+          identityProvider(identity),
+          providerKey(identity),
+          now,
+          accountId,
+          row.id,
+          row.workspace_id,
+          now,
+        ),
     );
   }
   statements.push(
@@ -418,7 +460,7 @@ export async function acceptInvitation(
         accountId,
         now,
         row.id,
-        provider,
+        identityProvider(identity),
         providerKey(identity),
         accountId,
         row.id,

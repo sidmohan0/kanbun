@@ -168,6 +168,9 @@ export function restoreSqlite(driver: SqlDriver, source: DatabaseSnapshot): void
   });
 }
 
+/** Restore durable identities and admission, never reusable sign-in credentials.
+ * The complete source snapshot is still hash/schema validated before this policy is applied.
+ */
 export async function restoreDirectory(database: D1Database, source: DatabaseSnapshot): Promise<void> {
   validateRestore(source, await captureDirectory(database), "d1_migrations");
   // The guard executes in the same transaction as import, closing admission races after preflight.
@@ -184,7 +187,10 @@ export async function restoreDirectory(database: D1Database, source: DatabaseSna
     ),
     ...source.tables.flatMap((table) => [
       database.prepare(deleteTable(table.name, source)),
-      ...table.rows.map((row) =>
+      // A historical cookie or link must not become valid again after a restore.
+      // Keep these tables in the validated inventory, but leave them empty in the
+      // same atomic transaction that imports accounts, identities and membership.
+      ...(table.name === "sessions" || table.name === "magic_links" ? [] : table.rows).map((row) =>
         database
           .prepare(
             `INSERT INTO ${identifier(table.name)} (${table.columns.map(identifier).join(",")}) VALUES (${table.columns.map(() => "?").join(",")})`,

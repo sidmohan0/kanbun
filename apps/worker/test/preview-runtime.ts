@@ -29,6 +29,9 @@ export async function startPreviewRuntime({
   localDev = false,
   backups = false,
   isolatedRestore = false,
+  emailAuth = false,
+  initialAuthMode,
+  resendApiKey = "fixture-resend-secret",
 }: {
   ownerEmail?: string;
   subject?: string;
@@ -37,11 +40,15 @@ export async function startPreviewRuntime({
   localDev?: boolean;
   backups?: boolean;
   isolatedRestore?: boolean;
+  emailAuth?: boolean;
+  initialAuthMode?: "preview" | "email";
+  resendApiKey?: string;
 } = {}) {
   const instance = randomUUID().slice(0, 8);
   const certWorker = `preview-test-certs-${instance}`;
   const assetWorker = `preview-test-assets-${instance}`;
   const backupWorker = `preview-test-backup-control-${instance}`;
+  const authProviderWorker = `preview-test-auth-provider-${instance}`;
   const local = await localWorkerConfig();
   const issuer = "https://test-access.cloudflareaccess.com";
   const audience = "protected-preview-test-audience";
@@ -70,7 +77,16 @@ export async function startPreviewRuntime({
           ...(backups ? { main: "test/backup-runtime-worker.mjs" } : {}),
           vars: {
             LOCAL_DEV: localDev ? "true" : "false",
-            AUTH_MODE: "preview",
+            AUTH_MODE: initialAuthMode ?? (emailAuth ? "email" : "preview"),
+            ...(emailAuth
+              ? {
+                  RESEND_API_KEY: resendApiKey,
+                  AUTH_FROM_EMAIL: "sign-in@example.test",
+                  AUTH_EMAIL_DOMAIN: "datafog.ai",
+                  TURNSTILE_SITE_KEY: "fixture-site-key",
+                  TURNSTILE_SECRET_KEY: "fixture-turnstile-secret",
+                }
+              : {}),
             ACCESS_ISSUER: issuer,
             ACCESS_AUDIENCE: audience,
             PREVIEW_OWNER_EMAIL: ownerEmail,
@@ -91,6 +107,12 @@ export async function startPreviewRuntime({
           services: [
             { binding: "ACCESS_JWKS", service: certWorker },
             { binding: "ASSETS", service: assetWorker },
+            ...(emailAuth
+              ? [
+                  { binding: "AUTH_EMAIL_TRANSPORT", service: authProviderWorker },
+                  { binding: "AUTH_TURNSTILE_TRANSPORT", service: authProviderWorker },
+                ]
+              : []),
           ],
         },
       },
@@ -105,6 +127,18 @@ export async function startPreviewRuntime({
         },
       },
       { config: { name: assetWorker, main: "test/assets-worker.ts", compatibility_date: "2026-10-29" } },
+      ...(emailAuth
+        ? [
+            {
+              config: {
+                name: authProviderWorker,
+                main: "test/auth-provider-worker.ts",
+                compatibility_date: "2026-10-29",
+                vars: { EXPECTED_HOSTNAME: new URL(appOrigin).hostname },
+              },
+            },
+          ]
+        : []),
       ...(backups
         ? [
             {
@@ -124,9 +158,9 @@ export async function startPreviewRuntime({
     ].map((worker) => worker.config),
   );
   try {
-    const { url } = await harness.listen();
+    let { url } = await harness.listen();
     await harness.getWorker().applyD1Migrations("ACCOUNTS");
-    const environment = await harness
+    let environment = await harness
       .getWorker<{
         ACCOUNTS: D1Database;
         BACKUPS?: R2Bucket;
@@ -163,12 +197,96 @@ export async function startPreviewRuntime({
       return fetch(new URL(path, url), { ...init, headers });
     };
     return {
-      origin: url.origin,
+      get origin() {
+        return url.origin;
+      },
       appOrigin,
       ownerEmail,
       workspaceId,
       token,
       fetch: request,
+      async capturedEmails() {
+        if (!emailAuth) throw new Error("Native authentication providers were not configured");
+        return (await (await harness.getWorker(authProviderWorker).fetch("http://fixture/captured")).json()) as {
+          from: string;
+          to: string[];
+          subject: string;
+          text: string;
+        }[];
+      },
+      async setEmailProviderFailure(enabled: boolean) {
+        if (!emailAuth) throw new Error("Native authentication providers were not configured");
+        await harness
+          .getWorker(authProviderWorker)
+          .fetch("http://fixture/delivery-failure", { method: "POST", body: JSON.stringify({ enabled }) });
+      },
+      authLogs: () => harness.getLogs(),
+      async setAuthenticationMode(authMode: "preview" | "email") {
+        if (!emailAuth) throw new Error("Native authentication providers were not configured");
+        await harness.update((options) => ({
+          ...options,
+          workers: options.workers.map((worker, index) => {
+            if (index !== 0 || !("config" in worker)) return worker;
+            return { ...worker, config: { ...worker.config, vars: { ...worker.config.vars, AUTH_MODE: authMode } } };
+          }),
+        }));
+        url = (await harness.listen()).url;
+        environment = await harness.getWorker<typeof environment>().getEnv();
+      },
+      async authRows() {
+        return {
+          accounts: (await environment.ACCOUNTS.prepare("SELECT * FROM accounts ORDER BY id").all()).results,
+          identities: (await environment.ACCOUNTS.prepare("SELECT * FROM auth_identities ORDER BY id").all()).results,
+          members: (await environment.ACCOUNTS.prepare("SELECT * FROM workspace_members ORDER BY account_id").all())
+            .results,
+          links: (await environment.ACCOUNTS.prepare("SELECT * FROM magic_links ORDER BY created_at, token_hash").all())
+            .results,
+          sessions: (await environment.ACCOUNTS.prepare("SELECT * FROM sessions ORDER BY created_at, id").all())
+            .results,
+        };
+      },
+      async expireNativeLinks() {
+        await environment.ACCOUNTS.prepare("UPDATE magic_links SET expires_at = ?")
+          .bind("2020-01-01T00:00:00.000Z")
+          .run();
+      },
+      async expireNativeSession(rawToken: string) {
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawToken));
+        const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+        await environment.ACCOUNTS.prepare("UPDATE sessions SET expires_at = ? WHERE id = ?")
+          .bind("2020-01-01T00:00:00.000Z", hash)
+          .run();
+      },
+      async nativeConnect(clientId: string, cookie: string, origin: string | null = appOrigin) {
+        const response = await harness.getWorker().fetch(`/sync/connect?clientId=${encodeURIComponent(clientId)}`, {
+          headers: { Upgrade: "websocket", Cookie: cookie, ...(origin === null ? {} : { Origin: origin }) },
+        });
+        if (response.status !== 101 || !response.webSocket) return { status: response.status, connection: null };
+        const socket = response.webSocket;
+        const messages: unknown[] = [];
+        const closed = new Promise<{ code: number; reason: string }>((resolve) =>
+          socket.addEventListener("close", (event) => resolve({ code: event.code, reason: event.reason }), {
+            once: true,
+          }),
+        );
+        socket.addEventListener("message", (event) => {
+          try {
+            messages.push(JSON.parse(String(event.data)));
+          } catch {
+            messages.push(event.data);
+          }
+        });
+        socket.accept();
+        return {
+          status: 101,
+          connection: {
+            messages,
+            closed,
+            send: (message: string) => socket.send(message),
+            close: () => socket.close(),
+          },
+        };
+      },
       backup: () => backupRpc("backup"),
       restoreBackup: (key: string) => backupRpc("restore", key),
       primeDocument: (body: BodyBackup) =>

@@ -20,7 +20,7 @@ if (
   config.workers_dev !== false ||
   config.preview_urls !== false ||
   vars.LOCAL_DEV !== "false" ||
-  vars.AUTH_MODE !== "preview" ||
+  !["preview", "email"].includes(vars.AUTH_MODE) ||
   vars.BACKUP_RESTORE_ISOLATED !== undefined ||
   vars.BACKUP_RESTORE_SOURCE_COMMIT !== undefined ||
   config.assets?.binding !== "ASSETS" ||
@@ -29,9 +29,21 @@ if (
   fail(
     "Preview deployment must require Worker authentication and disable local identity and alternative preview URLs.",
   );
-if (!/^[a-f0-9]{64}$/i.test(vars.ACCESS_AUDIENCE)) fail("Configure the hostname Access application's audience.");
-if (!/^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/.test(vars.ACCESS_ISSUER))
-  fail("Configure the exact Cloudflare Access issuer.");
+if (vars.AUTH_MODE === "preview") {
+  if (!/^[a-f0-9]{64}$/i.test(vars.ACCESS_AUDIENCE)) fail("Configure the hostname Access application's audience.");
+  if (!/^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/.test(vars.ACCESS_ISSUER))
+    fail("Configure the exact Cloudflare Access issuer.");
+} else {
+  if (typeof vars.AUTH_EMAIL_DOMAIN !== "string" || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(vars.AUTH_EMAIL_DOMAIN))
+    fail("Configure the invited team's email domain.");
+  if (
+    typeof vars.AUTH_FROM_EMAIL !== "string" ||
+    !/^Kanbun <[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>$/.test(vars.AUTH_FROM_EMAIL)
+  )
+    fail("Configure the verified Kanbun email sender.");
+  if (typeof vars.TURNSTILE_SITE_KEY !== "string" || !/^0x[a-zA-Z0-9_-]+$/.test(vars.TURNSTILE_SITE_KEY))
+    fail("Configure the production hostname's Turnstile site key.");
+}
 if (typeof vars.PREVIEW_OWNER_EMAIL !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(vars.PREVIEW_OWNER_EMAIL))
   fail("Configure the preview owner's email.");
 if (!/^[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(vars.PREVIEW_WORKSPACE_ID))
