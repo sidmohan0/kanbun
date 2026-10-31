@@ -2,6 +2,7 @@ import { uuidv7 } from "@kanbun/model";
 import { z } from "zod";
 import {
   configuration,
+  emailDomain,
   mode,
   requireHostedOrigin,
   type AccessIdentity,
@@ -73,7 +74,7 @@ async function eligible(env: Environment, email: string): Promise<boolean> {
     .first<{ deletion_requested_at: string | null }>();
   if (workspace?.deletion_requested_at) return false;
   if (email === config.ownerEmail.toLowerCase() && !workspace) return true;
-  if (email !== config.ownerEmail.toLowerCase() && !email.endsWith("@datafog.ai")) return false;
+  if (email !== config.ownerEmail.toLowerCase() && !email.endsWith(`@${emailDomain(env)}`)) return false;
   const member = await db
     .prepare(
       "SELECT m.role FROM workspace_members m JOIN accounts a ON a.id = m.account_id WHERE m.workspace_id = ? AND lower(a.email) = ? AND m.removed_at IS NULL AND m.role IN ('owner', 'user')",

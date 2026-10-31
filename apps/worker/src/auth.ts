@@ -15,6 +15,7 @@ export type AuthEnvironment = {
   ACCESS_JWKS?: Fetcher;
   RESEND_API_KEY?: string;
   AUTH_FROM_EMAIL?: string;
+  AUTH_EMAIL_DOMAIN?: string;
   TURNSTILE_SECRET_KEY?: string;
   TURNSTILE_SITE_KEY?: string;
   /** Optional private service transports; production uses the provider HTTPS endpoints. */
@@ -76,7 +77,19 @@ export function mode(env: AuthEnvironment): "local" | "hosted" | "disabled" {
   return "disabled";
 }
 
+export function emailDomain(env: AuthEnvironment): string {
+  const parsed = z
+    .string()
+    .trim()
+    .toLowerCase()
+    .refine((value) => !value.includes("@") && z.email().safeParse(`member@${value}`).success)
+    .safeParse(env.AUTH_EMAIL_DOMAIN);
+  if (!parsed.success) throw new RequestError("Email sign-in domain is not configured", 503);
+  return parsed.data;
+}
+
 export function configuration(env: AuthEnvironment): PreviewConfig {
+  if (env.AUTH_MODE === "email") emailDomain(env);
   const parsed = previewConfig.safeParse({
     issuer: env.AUTH_MODE === "email" ? env.APP_ORIGIN : env.ACCESS_ISSUER,
     audience: env.AUTH_MODE === "email" ? env.APP_ORIGIN : env.ACCESS_AUDIENCE,

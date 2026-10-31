@@ -1,6 +1,6 @@
 import { uuidv7 } from "@kanbun/model";
 import type { WorkspaceContext } from "@kanbun/sync";
-import { configuration, type AccessIdentity, type AuthEnvironment, type HostedPrincipal } from "./auth";
+import { configuration, emailDomain, type AccessIdentity, type AuthEnvironment, type HostedPrincipal } from "./auth";
 import { RequestError } from "./requests";
 import { requireEmailSession } from "./email-auth";
 
@@ -245,6 +245,13 @@ export async function createInvitation(
   expiresAt: string | null,
 ) {
   const context = await owner(env, principal);
+  if (
+    env.AUTH_MODE === "email" &&
+    email !== configuration(env).ownerEmail.toLowerCase() &&
+    !email.endsWith(`@${emailDomain(env)}`)
+  )
+    throw new RequestError(`Invitations require an address at @${emailDomain(env)}.`, 400);
+
   const db = database(env);
   const existing = await db
     .prepare(
