@@ -66,8 +66,8 @@ issue UI. The rehearsal keeps its temporary checkout and stopped container for i
 the checkout path. Remove those disposable resources after inspecting a failure or retaining the
 evidence. It never resets this checkout's data. A successful run covers local evaluation only.
 
-If setup fails, confirm Docker is running and the runtime has the CPU, memory, and disk described
-in the README. Use `./scripts/devcontainer.sh status` to inspect this checkout. Port 5173 is
+If setup fails, confirm Docker is running with free memory and disk for dependencies and Chromium.
+Use `./scripts/devcontainer.sh status` to inspect this checkout. Port 5173 is
 published on a dynamic localhost port; obtain it with `./scripts/devcontainer.sh url`. Inside the
 container, another process occupying 5173 or 8787 must be stopped before `pnpm dev` can start.
 After branch or dependency changes, run the frozen install inside the container; rebuild after

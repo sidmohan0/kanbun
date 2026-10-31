@@ -178,3 +178,34 @@ Unavailable repository settings remain unverified. None of these workflows deplo
 
 Use [`scripts/check-local-install.sh`](../scripts/check-local-install.sh) for clean-checkout and
 container replacement evidence. See [local lifecycle details](local-worker.md#persistence-reset-and-installation-proof).
+
+## Dependency advisory review
+
+On October 31, 2026, the frozen dependency tree's production-only audit reported no known
+advisories. The full audit reported two moderate advisories in development tooling. These commands
+run through the devcontainer and query the advisory database at execution time:
+
+```sh
+./scripts/devcontainer.sh exec pnpm audit --prod
+./scripts/devcontainer.sh exec pnpm audit
+```
+
+- Drizzle Kit's legacy loader depends on `@esbuild-kit/core-utils@3.3.2`, which requires
+  `esbuild~0.18.20`. [GHSA-67mh-4wv8-2f99](https://github.com/evanw/esbuild/security/advisories/GHSA-67mh-4wv8-2f99)
+  affects esbuild's development server and is fixed in `0.25.0`. The installed loader uses
+  `transform`/`transformSync`; this repository uses Drizzle Kit for migration generation and does
+  not start the affected server through it. Drizzle Kit `0.31.11` and core-utils `3.3.2` were the
+  latest published versions at review, and the fixed esbuild version is outside the loader's range.
+- ESLint `10.13.0` depends on `minimatch@10.2.6`.
+  [GHSA-g3hv-75wg-m249](https://github.com/isaacs/minimatch/security/advisories/GHSA-g3hv-75wg-m249)
+  describes pattern amplification with `optimizationLevel >= 2`; the published fix starts at
+  `11.0.1`. ESLint's inspected glob calls and its installed configuration-array helper use
+  `dot: true` without that optimization setting; minimatch defaults to level 1. The latest
+  published ESLint `10.14.0` still requires `minimatch^10.2.6`, and there was no patched 10.x release
+  at review.
+
+The lockfile retains the supported dependency ranges. No advisory suppression or incompatible
+transitive override is configured. Review these findings when the parent tools publish compatible
+updates, or when commands, glob settings or loader usage change. A passing production audit does
+not resolve the development-tool findings, and the audit results can change as advisories are
+published.

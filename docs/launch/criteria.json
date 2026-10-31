@@ -159,7 +159,7 @@
       "criteria": [
         {
           "id": "OPS-01.01",
-          "assertion": "A supported prior-version installation containing representative directory, issue, discussion, collaborative-body and branch data can be upgraded and backed up, then restored into an isolated target with the documented access recovery behavior.",
+          "assertion": "A candidate installation containing representative directory, issue, discussion, collaborative-body and branch data can be backed up and restored into an isolated target with the documented access recovery behavior. Every declared supported upgrade baseline passes a populated-data upgrade exercise; an initial release without a prior supported baseline explicitly documents that boundary.",
           "method": "rehearsal",
           "scope": [
             "apps/worker/",
@@ -171,7 +171,7 @@
           ],
           "tests": ["apps/worker/test/backups.test.ts"],
           "owner": "Operations maintainer",
-          "procedure": "Record the supported source version, populated fixture, upgrade path, destination isolation and restored-data/access assertions. Preserve corruption and nonempty-target rejection proof. A fresh empty database does not establish upgrade compatibility."
+          "procedure": "Record the candidate source, populated fixture, destination isolation and restored-data/access assertions. Preserve corruption and nonempty-target rejection proof. Exercise each declared supported upgrade path with populated data; for an initial release with no prior supported baseline, record that documented applicability decision without claiming upgrade compatibility. A fresh empty database does not establish upgrade compatibility."
         },
         {
           "id": "OPS-01.02",
