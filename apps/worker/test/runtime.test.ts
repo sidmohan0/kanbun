@@ -71,6 +71,39 @@ describe("workspace Durable Object in workerd", () => {
     }
   });
 
+  it("retains the seeded team identity after its key changes and the Worker restarts", async () => {
+    const runtime = await startWorkspaceRuntime();
+    try {
+      const seeded = await runtime.seed();
+      expect(
+        await json(runtime, "/sync/push", {
+          clientId: "rename-seeded-team",
+          mutations: [command(1, "teamUpdate", { id: seeded.teamId, patch: { key: "NEW" } })],
+        }),
+      ).toMatchObject({ rejected: [] });
+      const before = await runtime.inspect();
+      await runtime.restart();
+      expect(await runtime.seed()).toEqual(seeded);
+      const after = await runtime.inspect();
+      expect(after.teams).toEqual(before.teams);
+      expect(after.teams).toMatchObject([{ id: seeded.teamId, key: "NEW", issue_counter: 1 }]);
+      expect(after.issues).toEqual(before.issues);
+      expect(after.events).toEqual(before.events);
+      expect(after.log).toEqual(before.log);
+      expect(
+        await json(runtime, "/sync/push", {
+          clientId: "continue-seeded-team",
+          mutations: [command(1, "issueCreate", create(id(990), seeded.teamId, id(991), "After rename"))],
+        }),
+      ).toMatchObject({ rejected: [] });
+      expect((await runtime.inspect()).issues).toContainEqual(
+        expect.objectContaining({ id: id(990), teamId: seeded.teamId, number: 2 }),
+      );
+    } finally {
+      await runtime.close();
+    }
+  });
+
   it("converges two ordinary sync clients through the HTTP transport", async () => {
     const runtime = await startWorkspaceRuntime();
     try {
