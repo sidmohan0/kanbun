@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Team settings now support editing the issue identifier key, preserving issue links and numbering while enforcing unique uppercase keys.
+
 - Added team-scoped GitHub repository connections and issue-linked PR, branch, review and CI context across lists, boards, details and activity, with signed canonical observations, owner-only setup and current-scope privacy checks.
 
 - Added native email-link sign-in with managed verification, explicit confirmation in the requesting browser, preserved invitation destinations, one-hour request-bound sessions, and sign-out without clearing pending local work.

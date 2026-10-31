@@ -243,6 +243,25 @@ export function App() {
     view,
     filters,
   });
+  const pageDescription = !ready
+    ? null
+    : teamsView
+      ? canManageTeams
+        ? "Manage your workspace, teams and workflow statuses."
+        : null
+      : inboxView
+        ? snapshot.notifications.length
+          ? "Your personal workspace updates."
+          : null
+        : membersView
+          ? context?.mode === "hosted" && context.role === "owner"
+            ? "Manage who can access this workspace."
+            : null
+          : selectedIssue
+            ? identifier(selectedIssue, snapshot.teams)
+            : !issueId && issues.length
+              ? "A place for the work ahead."
+              : null;
   const stateNames = new Map(snapshot.workflowStates.map((state) => [state.id, state.name]));
   const memberNames = new Map(snapshot.members.map((member) => [member.id, member.displayName || member.name]));
   const myIssueCount = snapshot.issues.filter((issue) => issue.assigneeId === context?.actor.id).length;
@@ -456,17 +475,7 @@ export function App() {
                           ? "My Issues"
                           : "Issues"}
               </h1>
-              <p className="page-description">
-                {teamsView
-                  ? "Manage your workspace, teams and workflow statuses."
-                  : inboxView
-                    ? "Your personal workspace updates."
-                    : membersView
-                      ? "Manage who can access this workspace."
-                      : selectedIssue
-                        ? identifier(selectedIssue, snapshot.teams)
-                        : "A place for the work ahead."}
-              </p>
+              {pageDescription && <p className="page-description">{pageDescription}</p>}
             </div>
             {context && <span className="local-badge">{local ? "Local development" : "Private workspace"}</span>}
           </div>

@@ -106,16 +106,10 @@ function OwnerGitHubSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
         </p>
       )}
       {!connection && !error && <p role="status">Loading GitHub connection…</p>}
-      {connection && !connection.configured && (
-        <p>A workspace operator must configure the GitHub App before repositories can be connected.</p>
-      )}
+      {connection && !connection.configured && <h3>GitHub not configured</h3>}
       {connection?.configured && (
         <>
-          <p>
-            {connection.authorizationRequired
-              ? "Authorize the GitHub repositories this workspace may use."
-              : `Connected to ${connection.appName ?? "the GitHub App"}.`}
-          </p>
+          {!connection.authorizationRequired && <p>Connected to {connection.appName ?? "the GitHub App"}.</p>}
           <div className="github-connection-actions">
             {installUrl && (
               <a className="button" href={installUrl} target="_blank" rel="noreferrer">
