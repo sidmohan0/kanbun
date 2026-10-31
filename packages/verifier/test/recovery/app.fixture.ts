@@ -20,7 +20,7 @@ export type AppHarness = {
 export async function startProductServer(
   origin: string,
   cacheDir: string,
-  authenticated?: { token(request?: import("node:http").IncomingMessage): string; appOrigin: string },
+  authenticated?: { token?(request?: import("node:http").IncomingMessage): string; appOrigin: string },
 ) {
   let browserOrigin = "";
   const server = await createServer({
@@ -42,7 +42,7 @@ export async function startProductServer(
               request: import("node:http").ClientRequest,
               incoming: import("node:http").IncomingMessage,
             ) => {
-              request.setHeader("Cf-Access-Jwt-Assertion", authenticated.token(incoming));
+              if (authenticated.token) request.setHeader("Cf-Access-Jwt-Assertion", authenticated.token(incoming));
               // Only this genuine browser origin is translated to the HTTPS edge origin.
               if (incoming.headers.origin === browserOrigin) request.setHeader("Origin", authenticated.appOrigin);
             };
@@ -55,7 +55,7 @@ export async function startProductServer(
           configure(proxy) {
             if (authenticated)
               proxy.on("proxyReq", (request, incoming) => {
-                request.setHeader("Cf-Access-Jwt-Assertion", authenticated.token(incoming));
+                if (authenticated.token) request.setHeader("Cf-Access-Jwt-Assertion", authenticated.token(incoming));
                 if (incoming.headers.origin === browserOrigin) request.setHeader("Origin", authenticated.appOrigin);
               });
           },
