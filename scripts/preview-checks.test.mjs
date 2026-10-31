@@ -78,3 +78,62 @@ test("D1 query errors and Cloudflare authentication failures fail without provid
     return true;
   });
 });
+
+function nativeFixture({ exposed = false, wrongMethod = false, leakedIdentity = false, socket = true } = {}) {
+  const nativeConfig = { ...config, vars: { APP_ORIGIN: config.vars.APP_ORIGIN, AUTH_MODE: "email" } };
+  const requests = [];
+  const checks = createPreviewChecks(nativeConfig, "secret-token", {
+    async fetchImpl(url, options = {}) {
+      requests.push({ url, options });
+      if (url.startsWith("https://api.cloudflare.com/")) {
+        const result = url.endsWith("/deployments")
+          ? { deployments: [{ versions: [{ version_id: active, percentage: 100 }] }] }
+          : { enabled: false, previews_enabled: false };
+        return Response.json({ success: true, result });
+      }
+      const path = new URL(url).pathname;
+      if (path === "/")
+        return new Response("<!doctype html><div id='root'></div>", { headers: { "content-type": "text/html" } });
+      if (path === "/api/auth/config")
+        return Response.json({
+          method: wrongMethod ? "access" : "email",
+          authenticated: false,
+          siteKey: "public-site-key",
+          ...(leakedIdentity ? { email: "private@example.com" } : {}),
+        });
+      return Response.json({ error: "Sign in required", authentication: "email" }, { status: exposed ? 200 : 401 });
+    },
+    async checkWebSocket(origin, issuer, method) {
+      assert.equal(origin, config.vars.APP_ORIGIN);
+      assert.equal(issuer, undefined);
+      assert.equal(method, "email");
+      if (!socket) throw new Error("private-socket-body");
+    },
+  });
+  return { checks, requests };
+}
+
+test("native session probes allow the public login shell and require anonymous API and WebSocket denial", async () => {
+  const { checks, requests } = nativeFixture();
+  const result = await checks.smoke(active);
+  assert.deepEqual(
+    result.find((row) => row.path === "/"),
+    { path: "/", status: 200 },
+  );
+  assert.equal(result.find((row) => row.path === "/api/auth/config").status, 200);
+  assert.equal(result.find((row) => row.path === "/sync/document").status, 401);
+  assert.deepEqual(result.at(-1), { path: "/sync/connect", transport: "websocket", status: 401 });
+  assert(requests.every((request) => request.options.method === undefined));
+  assert(!requests.some((request) => request.url.includes("/certs")));
+  assert(!JSON.stringify(result).includes("private"));
+});
+
+test("native probes fail open data routes, identity leaks, wrong login methods and anonymous socket admission", async () => {
+  for (const options of [{ exposed: true }, { wrongMethod: true }, { leakedIdentity: true }, { socket: false }]) {
+    await assert.rejects(nativeFixture(options).checks.smoke(active), (error) => {
+      assert(error instanceof PreviewCheckError);
+      assert(!error.message.includes("private"));
+      return true;
+    });
+  }
+});

@@ -140,8 +140,8 @@ export function healthSummary(receipt) {
     "",
     `Result: **${receipt.pass ? (receipt.deploymentState ?? "pass") : "failed"}**`,
     "",
-    "Checks cover the anonymous Access boundary, deployed source identity, release state, and a read-only D1 query.",
-    "They do not sign in, execute Worker application routes behind Access, or prove Durable Object/data health.",
+    "Checks cover the anonymous authentication boundary, deployed source identity, release state, and a read-only D1 query.",
+    "They do not sign in, execute authenticated application routes, or prove Durable Object/data health.",
     "",
   ];
   if (receipt.version) lines.push(`Worker version: \`${receipt.version}\``);

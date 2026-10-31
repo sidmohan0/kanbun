@@ -53,8 +53,8 @@ Create the dedicated private bucket before deploying the binding:
 
 Verify private bucket access in the Cloudflare dashboard. Adding or changing this storage binding
 requires a separate compatible deployment rollout; automatic code rollback cannot cross it.
-The production deployment guard rejects recovery-mode variables. Keep ordinary JWT verification,
-the Access application, and disabled alternative preview URLs in place.
+The production deployment guard rejects recovery-mode variables. Keep ordinary session authentication
+and disabled alternative preview URLs in place.
 
 ## Isolated restore procedure
 
@@ -67,7 +67,7 @@ the Access application, and disabled alternative preview URLs in place.
    source commit; a deployed recovery Worker can supply the matching version tag instead.
 3. Make the selected private bundle available through that target's R2 binding. Invoke the
    WorkspaceDO's private `restoreBackup(workspaceId, manifestKey)` RPC through the isolated
-   harness/service binding. There is no HTTP restore endpoint. Normal JWT authentication remains
+   harness/service binding. There is no HTTP restore endpoint. Normal authentication remains
    enabled for subsequent verification. HTTP requests cannot initialize directory membership or
    open workspace data until restoration is complete.
 4. The importer validates all parts and bodies before writes and refuses used SQL or directory
@@ -78,9 +78,14 @@ the Access application, and disabled alternative preview URLs in place.
    recovery never clears or overwrites an existing target.
    Concurrent restore attempts claim the target atomically after read-only validation; only the
    winner begins import. A rejected archive that fails preflight leaves the target unclaimed.
-5. Verify authenticated context, issue and description reads, branch contents, and mutation retries.
+5. Sign in again, then verify authenticated context, issue and description reads, branch contents, and mutation retries.
    Review membership removals and credential/invitation changes since the archive point before any
    separately reviewed production cutover. Preserve fresh production writes during that decision.
+
+Directory archives retain the complete, verified table inventory, including authentication hashes.
+Restoration deliberately leaves sessions and magic links empty in the same atomic D1 import.
+Previously issued links and session cookies cannot resume access after a restore; everyone must request
+a fresh sign-in link. Account identities, workspace membership, and targeted invitations are retained.
 
 The real-runtime restoration exercise uses synthetic data and independent `workerd` namespaces:
 
