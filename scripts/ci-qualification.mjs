@@ -137,6 +137,19 @@ export async function findQualification({ current, repository, runId, token, fet
   return null;
 }
 
+/** Setup diagnostics and complete verification share the artifact; require exactly one full receipt. */
+export async function readQualificationArchive(bytes, archive) {
+  await writeFile(archive, bytes);
+  const options = { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 10 * 1024 * 1024 };
+  const entries = execFileSync("unzip", ["-Z1", archive], options).split("\n");
+  const reports = entries
+    .filter((entry) => /^run-[\w-]+\/report.json$/.test(entry))
+    .map((entry) => JSON.parse(execFileSync("unzip", ["-p", archive, entry], options)))
+    .filter((report) => report.command === "all");
+  if (reports.length !== 1) throw new Error("Missing or ambiguous full qualification receipt");
+  return reports[0];
+}
+
 async function main() {
   const root = process.cwd();
   const output = path.join(root, "artifacts/verification");
@@ -157,15 +170,7 @@ async function main() {
       repository: process.env.GITHUB_REPOSITORY,
       runId: process.env.GITHUB_RUN_ID,
       token: process.env.GITHUB_TOKEN,
-      readReport: async (bytes) => {
-        await writeFile(archive, bytes);
-        const entries = execFileSync("unzip", ["-Z1", archive], { encoding: "utf8" }).split("\n");
-        const reports = entries.filter((entry) => /^run-[\w-]+\/report.json$/.test(entry));
-        if (reports.length !== 1) throw new Error("Ambiguous qualification receipt");
-        return JSON.parse(
-          execFileSync("unzip", ["-p", archive, reports[0]], { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 }),
-        );
-      },
+      readReport: (bytes) => readQualificationArchive(bytes, archive),
     });
     if (qualification) {
       // Produce fresh build artifacts even when tests qualify by identity (including desktop bundles).

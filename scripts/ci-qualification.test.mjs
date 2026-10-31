@@ -1,7 +1,10 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findQualification, qualifies } from "./ci-qualification.mjs";
+import { findQualification, qualifies, readQualificationArchive } from "./ci-qualification.mjs";
 
 const names = [
   "doctor-node",
@@ -241,4 +244,18 @@ test("missing, foreign, malformed, expired or unreachable evidence always falls 
     mutate(f);
     assert.equal(await findQualification(f.options), null, mutate.toString());
   }
+});
+
+test("real artifact ZIPs select the full receipt alongside setup diagnostics and reject missing or ambiguous qualification", async (t) => {
+  const directory = await mkdtemp(path.join(tmpdir(), "kanbun-qualification-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const archive = path.join(directory, "qualification.zip");
+  const fixture = (name) => readFile(new URL(`./fixtures/${name}.zip`, import.meta.url));
+  assert.deepEqual(await readQualificationArchive(await fixture("qualification"), archive), {
+    command: "all",
+    pass: true,
+  });
+  for (const name of ["diagnostics-only", "ambiguous-qualification"])
+    await assert.rejects(readQualificationArchive(await fixture(name), archive), /Missing or ambiguous/);
+  await assert.rejects(readQualificationArchive(Buffer.from("Invalid ZIP"), archive));
 });
