@@ -44,6 +44,16 @@ Receipt steps remain in their planned order. A failing group
 prevents later groups from running. The complete run uses `build:verified` only after typechecking
 passes; standalone `pnpm build` and `pnpm verify build` still typecheck.
 
+When sharing a memory-constrained Docker runtime with other worktrees, limit browser concurrency
+without changing the recovery suite, assertions or timeouts:
+
+```sh
+./scripts/devcontainer.sh exec env KANBUN_RECOVERY_WORKERS=1 pnpm --silent verify --json
+```
+
+`KANBUN_RECOVERY_WORKERS` must be a positive integer. When unset, Playwright chooses its normal
+worker count. The setting applies only to browser recovery; all full-verifier stages still run.
+
 For machine-readable stdout, suppress pnpm's lifecycle banner:
 
 ```sh
