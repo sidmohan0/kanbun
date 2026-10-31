@@ -10,7 +10,12 @@ if (process.env.KANBUN_LOCAL_REHEARSAL !== "1")
 const [operation] = process.argv.slice(2);
 const runId = process.env.KANBUN_LOCAL_REHEARSAL_ID;
 assert.match(runId ?? "", /^kanbun-install\.[A-Za-z0-9]+$/, "A disposable rehearsal run ID is required.");
-const sourceCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+// The host-created clone can have a different UID from the container's node user.
+// Trust only this explicit disposable checkout for this read, without a global Git exception.
+const sourceCommit = execFileSync("git", ["-c", `safe.directory=${root.replace(/\/$/, "")}`, "rev-parse", "HEAD"], {
+  cwd: root,
+  encoding: "utf8",
+}).trim();
 const output = new URL("../artifacts/launch/local/", import.meta.url);
 await mkdir(output, { recursive: true });
 const expectedPath = new URL("expected.json", output);
