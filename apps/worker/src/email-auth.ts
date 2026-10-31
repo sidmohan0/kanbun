@@ -290,18 +290,34 @@ export async function authenticationRoute(request: Request, env: Environment): P
     const token = randomToken(),
       nonce = randomToken();
     const expiresAt = requestedAt + SESSION_LIFETIME_MS;
-    if (await eligible(env, input.email)) {
-      await database(env)
-        .prepare("INSERT INTO magic_links (token_hash,email,expires_at,nonce_hash,created_at) VALUES (?,?,?,?,?)")
-        .bind(
-          await authTokenHash(token),
-          input.email,
-          new Date(expiresAt).toISOString(),
-          await authTokenHash(nonce),
-          new Date(requestedAt).toISOString(),
-        )
-        .run();
-      await sendLink(env, input.email, token, input.returnTo);
+    const tokenHash = await authTokenHash(token);
+    const nonceHash = await authTokenHash(nonce);
+    try {
+      if (await eligible(env, input.email)) {
+        await database(env)
+          .prepare("INSERT INTO magic_links (token_hash,email,expires_at,nonce_hash,created_at) VALUES (?,?,?,?,?)")
+          .bind(
+            tokenHash,
+            input.email,
+            new Date(expiresAt).toISOString(),
+            nonceHash,
+            new Date(requestedAt).toISOString(),
+          )
+          .run();
+        await sendLink(env, input.email, token, input.returnTo);
+      }
+    } catch {
+      // The public response must not reveal whether this address was eligible,
+      // including during a provider/directory failure. Never log provider bodies or recipients.
+      console.error({ event: "kanbun.auth.delivery_failed", errorId: crypto.randomUUID() });
+      try {
+        await database(env)
+          .prepare("DELETE FROM magic_links WHERE token_hash = ? AND nonce_hash = ? AND consumed_at IS NULL")
+          .bind(tokenHash, nonceHash)
+          .run();
+      } catch {
+        console.error({ event: "kanbun.auth.delivery_cleanup_failed", errorId: crypto.randomUUID() });
+      }
     }
     return json({ ok: true }, 202, [setCookie(LOGIN_COOKIE, nonce, expiresAt)]);
   }
