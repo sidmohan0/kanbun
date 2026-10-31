@@ -21,6 +21,7 @@ import {
   type SyncStatus,
 } from "@kanbun/sync/client";
 import { resolveWorkspaceContext, workspacePersistenceKey, WorkspaceContextError } from "./context";
+import { rememberAuthentication, requireEmailSignIn } from "./authentication";
 
 export type WorkspaceRejection = { id: string; issueId: string | null; message: string };
 export type WorkspaceSnapshot = {
@@ -253,6 +254,10 @@ function blockAuthentication(
   realtimeRequested = false;
   socket?.close(1000, "Authentication required");
   publish();
+  if (!denied) {
+    if (context?.authentication === "email") rememberAuthentication("email");
+    requireEmailSignIn();
+  }
 }
 
 async function workspaceFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -260,6 +265,14 @@ async function workspaceFetch(input: RequestInfo | URL, init?: RequestInit): Pro
   const headers = new Headers(init?.headers);
   if (context?.admissionId) headers.set("X-Kanbun-Admission", context.admissionId);
   const response = await fetch(input, { ...init, headers, redirect: "manual" });
+  if (response.status === 401) {
+    const failure: unknown = await response
+      .clone()
+      .json()
+      .catch(() => null);
+    if (failure && typeof failure === "object" && "authentication" in failure && failure.authentication === "email")
+      rememberAuthentication("email");
+  }
   if (
     context?.mode === "hosted" &&
     (response.status === 401 ||
@@ -407,7 +420,11 @@ function connectRealtime() {
     // A server policy close may revoke access while a push is still offline or in flight.
     // Hide hosted caches immediately rather than waiting behind that unacknowledged outbox.
     if (event.code !== 1008) return;
-    if (context?.mode === "hosted") blockAuthentication();
+    if (context?.mode === "hosted")
+      blockAuthentication(
+        undefined,
+        context.authentication === "email" && event.reason === "Workspace access is no longer available",
+      );
     else requestRealtimeRefresh();
   });
   socket.addEventListener("message", (event) => {
@@ -536,6 +553,9 @@ export const workspace = {
   start,
   refresh,
   requireAuthentication: blockAuthentication,
+  async flushPendingChanges(): Promise<void> {
+    await client?.flushPersistence();
+  },
   createIssue(teamId: string, title: string, assigneeId?: string, parentId?: string): void {
     const active = editableClient();
     active.mutate("issueCreate", {
