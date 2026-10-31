@@ -70,6 +70,8 @@ preparation moves them to a dated version heading.
 
 ### Fixed
 
+- Normalize the installer's repository path so command-line configuration and deployment accept root profiles while rejecting profiles in other directories.
+
 - Cloudflare's deploy wizard can submit the inert setup profile without blank required identity fields or prefilled sample credentials; installer deployments retain their committed source tag for recovery provenance.
 
 - Correct container deployment login, initial Worker secret setup, health-check environment forwarding, installer-owned GitHub callbacks, and public capability wording after launch review.
