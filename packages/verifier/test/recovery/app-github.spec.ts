@@ -27,7 +27,7 @@ test("links real GitHub PR context and converges after signed webhook updates in
       return route.fulfill({
         status: 302,
         headers: {
-          location: `${app.origin}/api/integrations/github/callback?code=fixture-code&state=${encodeURIComponent(state)}`,
+          location: `${app.origin}/api/integrations/github/callback?code=fixture-code&iss=${encodeURIComponent("https://github.com/login/oauth")}&state=${encodeURIComponent(state)}`,
         },
       });
     });

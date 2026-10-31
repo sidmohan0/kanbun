@@ -29,10 +29,13 @@ async function connect(agent: Agent) {
   expect(url.searchParams.get("code_challenge_method")).toBe("S256");
   return { response, url, state: url.searchParams.get("state")! };
 }
-const callback = (agent: Agent, state: string) =>
-  agent.fetch(`/api/integrations/github/callback?code=fixture-code&state=${encodeURIComponent(state)}`, {
-    redirect: "manual",
-  });
+const callback = (agent: Agent, state: string, issuer: string | null = "https://github.com/login/oauth") =>
+  agent.fetch(
+    `/api/integrations/github/callback?code=fixture-code&state=${encodeURIComponent(state)}${issuer === null ? "" : `&iss=${encodeURIComponent(issuer)}`}`,
+    {
+      redirect: "manual",
+    },
+  );
 
 it("keeps GitHub OAuth tied to the native owner session and binds only the user-granted installation catalog", async () => {
   const runtime = await startGithubRuntime();
@@ -48,11 +51,15 @@ it("keeps GitHub OAuth tied to the native owner session and binds only the user-
       .getSetCookie()
       .find((value) => value.startsWith("__Host-kanbun-github="))!;
     for (const flag of ["Secure", "HttpOnly", "SameSite=Lax", "Path=/"]) expect(cookie).toContain(flag);
+    expect((await callback(owner, authorization.state, "https://attacker.example.test")).status).toBe(400);
+    expect(await runtime.githubRequests()).toHaveLength(0);
     otherSession.cookies.set("__Host-kanbun-github", owner.cookies.get("__Host-kanbun-github")!);
     expect((await callback(otherSession, authorization.state)).status).toBeGreaterThanOrEqual(400);
     expect((await runtime.githubRequests()).length).toBe(0);
     expect((await callback(owner, authorization.state)).status).toBe(303);
     expect((await callback(owner, authorization.state)).status).toBeGreaterThanOrEqual(400);
+    const legacy = await connect(owner);
+    expect((await callback(owner, legacy.state, null)).status).toBe(303);
     const status = await owner.fetch("/api/integrations/github");
     expect(status.status).toBe(200);
     const body = await status.text();
@@ -101,7 +108,7 @@ it("keeps GitHub OAuth tied to the native owner session and binds only the user-
     expect(bound.rows.githubRepository).toHaveLength(1);
     expect(bound.rows.githubRepository![0]).toMatchObject({ teamId, repositoryId: GITHUB_REPOSITORY_ID });
     const providerRequests = await runtime.githubRequests();
-    expect(providerRequests.filter((request) => request.url.includes("/login/oauth/access_token"))).toHaveLength(1);
+    expect(providerRequests.filter((request) => request.url.includes("/login/oauth/access_token"))).toHaveLength(2);
     expect(providerRequests.some((request) => request.url.includes("/app/installations/999/"))).toBe(false);
   } finally {
     await runtime.close();

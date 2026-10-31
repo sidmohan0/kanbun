@@ -56,6 +56,8 @@ preparation moves them to a dated version heading.
 
 ### Fixed
 
+- GitHub authorization now accepts the provider's issuer parameter, rejects foreign issuers before consuming authorization state, and remains compatible with callbacks that omit the issuer.
+
 - Workspace entry now distinguishes missing access from expired sign-in, explains invitation sharing, and lets invitees retry with the correct account without losing their invitation link.
 
 - Reconnect and focus signals received during an older refresh now queue a fresh synchronization pass, so a failed offline push cannot leave a restored outbox waiting for another user action.
