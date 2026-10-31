@@ -19,6 +19,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/devcontainer
+        with:
+          profile: policy
         id: container
       - name: Check documentation
         id: documentation

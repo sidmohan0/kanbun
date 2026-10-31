@@ -19,6 +19,7 @@ _to_delete/
 artifacts/verification/
 artifacts/docs-drift/
 artifacts/recovery/
+artifacts/recovery-preflight/
 
 artifacts/deployment/
 

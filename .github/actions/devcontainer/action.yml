@@ -1,14 +1,43 @@
 name: Start development container
 description: Initialize the same pinned development environment used locally.
+inputs:
+  profile:
+    description: full installs workspace dependencies and Chromium; policy runs Node-only checks without installation.
+    default: full
 runs:
   using: composite
   steps:
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version-file: .nvmrc
+    - name: Validate setup profile
+      shell: bash
+      env:
+        PROFILE: ${{ inputs.profile }}
+      run: case "$PROFILE" in full|policy) ;; *) exit 1 ;; esac
+    - name: Restore package and browser downloads
+      if: inputs.profile == 'full'
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: ${{ runner.temp }}/kanbun-cache
+        key: devcontainer-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'package.json', 'packages/verifier/package.json', '.devcontainer/Dockerfile') }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: |
+          devcontainer-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'package.json', 'packages/verifier/package.json', '.devcontainer/Dockerfile') }}-
     - name: Build and initialize development container
       shell: bash
-      run: ./scripts/devcontainer.sh up
+      env:
+        PROFILE: ${{ inputs.profile }}
+      run: |
+        if [ "$PROFILE" = policy ]; then
+          ./scripts/devcontainer.sh up --skip-post-create
+        else
+          mkdir -p "$RUNNER_TEMP/kanbun-cache/store" "$RUNNER_TEMP/kanbun-cache/browsers"
+          chmod -R a+rwX "$RUNNER_TEMP/kanbun-cache"
+          ./scripts/devcontainer.sh up --skip-post-create \
+            --mount "type=bind,source=$RUNNER_TEMP/kanbun-cache/store,target=/home/node/.local/share/pnpm/store" \
+            --mount "type=bind,source=$RUNNER_TEMP/kanbun-cache/browsers,target=/home/node/.cache/ms-playwright"
+          ./scripts/devcontainer.sh exec bash .devcontainer/setup.sh
+        fi
     - name: Confirm container runtime
       shell: bash
       run: ./scripts/devcontainer.sh exec sh -c 'test -f /.dockerenv && test "$(id -un)" = node && uname -sm && node --version && pnpm --version'

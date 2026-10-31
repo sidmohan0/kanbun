@@ -15,7 +15,8 @@ try {
   });
   json = values.json ?? false;
   if (values.help) {
-    const usage = "kanbun-verify [all|doctor|check|build|smoke|recovery|docs] [--json] [--output <directory>]";
+    const usage =
+      "kanbun-verify [all|doctor|check|build|smoke|preflight|recovery|docs] [--json] [--output <directory>]";
     console.log(json ? JSON.stringify({ usage }) : usage);
   } else {
     if (positionals.length > 1) throw new Error("Choose one verification profile.");
@@ -23,6 +24,10 @@ try {
       root: fileURLToPath(new URL("../../../", import.meta.url)),
       command: positionals[0] ?? "all",
       outputDirectory: values.output,
+      onProgress: ({ name, state, durationMs }) =>
+        console.error(
+          `[verify] ${state.toUpperCase()} ${name}${durationMs === undefined ? "" : ` (${(durationMs / 1000).toFixed(1)}s)`}`,
+        ),
     });
     if (json) console.log(JSON.stringify(report));
     else {

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { release, assertCompatibleSchema } from "./preview-release-control.mjs";
+import { release, assertCompatibleSchema, SupersededRelease } from "./preview-release-control.mjs";
 import { readFileSync } from "node:fs";
 
 test("code-only releases keep rollback safe while schema and storage changes require review", () => {
@@ -103,4 +103,17 @@ test("failed rollback records recovery failure and preserves the original releas
   await assert.rejects(release(s.hooks, receipt), /bad candidate/);
   assert.equal(receipt.recoveryError, "control plane unavailable");
   assert.notEqual(receipt.rollback, "previous");
+});
+
+test("a superseded candidate is a recorded no-op without publishing or rollback", async () => {
+  const s = scenario();
+  s.hooks.deploy = async () => {
+    throw new SupersededRelease();
+  };
+  const receipt = { pass: false, candidate: null };
+  await release(s.hooks, receipt);
+  assert.equal(receipt.skipped, "superseded");
+  assert.equal(receipt.pass, false);
+  assert.equal(receipt.candidate, null);
+  assert.deepEqual(s.events, []);
 });

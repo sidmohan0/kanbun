@@ -3,8 +3,13 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
+  actions: read
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -12,8 +17,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/devcontainer
-      - name: Verify repository
-        run: ./scripts/devcontainer.sh exec env CI=true pnpm --silent verify --json
+      - name: Verify pull request
+        if: github.event_name == 'pull_request'
+        run: ./scripts/devcontainer.sh exec env CI=true node scripts/ci-qualification.mjs
+      - name: Qualify main and build fresh artifacts
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          ./scripts/devcontainer.sh exec --remote-env CI=true \
+            --remote-env "GITHUB_EVENT_NAME=$GITHUB_EVENT_NAME" --remote-env "GITHUB_REF=$GITHUB_REF" \
+            --remote-env "GITHUB_REPOSITORY=$GITHUB_REPOSITORY" --remote-env "GITHUB_RUN_ID=$GITHUB_RUN_ID" \
+            --remote-env "GITHUB_TOKEN=$GITHUB_TOKEN" node scripts/ci-qualification.mjs
       - name: Upload verification evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -26,5 +41,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: recovery-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/recovery/
+          path: |
+            artifacts/recovery/
+            artifacts/recovery-preflight/
           if-no-files-found: warn

@@ -5,6 +5,10 @@ preparation moves them to a dated version heading.
 
 ## [Unreleased]
 
+### Changed
+
+- CI now reports verification phase timings, checks core browser recovery flows earlier, cancels superseded verification runs, and skips dependency/browser installation for Node-only policy and health jobs while retaining the full test suite. Main can reuse matching successful PR qualification with verified source/runtime provenance and fresh builds, falling back to full verification when evidence does not match.
+
 ### Added
 
 - Team settings now support editing the issue identifier key, preserving issue links and numbering while enforcing unique uppercase keys.
