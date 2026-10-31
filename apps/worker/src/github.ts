@@ -6,6 +6,7 @@ import { configuration, requireHostedOrigin, type HostedPrincipal } from "./auth
 import { activeMember } from "./directory";
 import { authTokenHash } from "./email-auth";
 import { body, query, RequestError } from "./requests";
+import { githubRpcValue } from "./github-rpc";
 
 export interface GithubEnvironment {
   GITHUB_APP_ID?: string;
@@ -420,7 +421,7 @@ export async function githubRoute(request: Request, env: Env, principal: HostedP
       configured: configured(env),
       appName: env.GITHUB_APP_SLUG ?? null,
       installUrl: env.GITHUB_APP_SLUG ? `https://github.com/apps/${env.GITHUB_APP_SLUG}/installations/new` : null,
-      repositories: await authority.githubRepositories(principal),
+      repositories: await githubRpcValue(authority.githubRepositories(principal)),
       catalog: grant ? catalogSchema.parse(JSON.parse(grant.catalog)) : [],
       authorizationRequired: !grant,
       error: grant?.error ?? null,
@@ -449,12 +450,14 @@ export async function githubRoute(request: Request, env: Env, principal: HostedP
         .find((r) => r.installationId === input.installationId && r.repositoryId === input.repositoryId);
     if (!source)
       throw new RequestError("Authorize access to this repository with GitHub before mapping it to a team.", 403);
-    return response(await authority.configureGitHubRepository(principal, { teamId: input.teamId, source }));
+    return response(
+      await githubRpcValue(authority.configureGitHubRepository(principal, { teamId: input.teamId, source })),
+    );
   }
   if (url.pathname === prefix + "/repositories/disconnect") {
     await owner(env, principal);
     const { bindingId } = await body(z.strictObject({ bindingId: z.uuidv7() }), request);
-    return response(await authority.disconnectGitHubRepository(principal, bindingId));
+    return response(await githubRpcValue(authority.disconnectGitHubRepository(principal, bindingId)));
   }
   if (url.pathname === prefix + "/pull-requests/link") {
     const input = await body(
@@ -471,7 +474,7 @@ export async function githubRoute(request: Request, env: Env, principal: HostedP
       issueIncarnation: input.issueIncarnation,
       repositoryBindingId: input.repositoryBindingId,
     };
-    const { source, revision } = await authority.githubRepositoryForIssue(principal, lookup);
+    const { source, revision } = await githubRpcValue(authority.githubRepositoryForIssue(principal, lookup));
     const parsed = new URL(input.url);
     const match = /^\/([^/]+)\/([^/]+)\/pull\/([1-9][0-9]*)\/?$/.exec(parsed.pathname);
     if (
@@ -484,21 +487,25 @@ export async function githubRoute(request: Request, env: Env, principal: HostedP
     )
       throw new RequestError("Use a pull request URL from the selected repository.");
     const snapshot = await readGitHubPullRequest(env, source, number.parse(Number(match[3])));
-    return response(await authority.linkGitHubPullRequest(principal, { ...lookup, snapshot, revision }));
+    return response(
+      await githubRpcValue(authority.linkGitHubPullRequest(principal, { ...lookup, snapshot, revision })),
+    );
   }
   if (url.pathname === prefix + "/pull-requests/refresh") {
     const { linkId } = await body(z.strictObject({ linkId: z.uuidv7() }), request);
-    const link = await authority.refreshGitHubPullRequest(principal, linkId);
+    const link = await githubRpcValue(authority.refreshGitHubPullRequest(principal, linkId));
     const snapshot = await readGitHubPullRequest(env, link.source, link.number);
     return response(
-      await authority.linkGitHubPullRequest(principal, {
-        issueId: link.issueId,
-        issueIncarnation: link.issueIncarnation,
-        repositoryBindingId: link.bindingId,
-        snapshot,
-        revision: link.revision,
-        expectedLinkId: link.linkId,
-      }),
+      await githubRpcValue(
+        authority.linkGitHubPullRequest(principal, {
+          issueId: link.issueId,
+          issueIncarnation: link.issueIncarnation,
+          repositoryBindingId: link.bindingId,
+          snapshot,
+          revision: link.revision,
+          expectedLinkId: link.linkId,
+        }),
+      ),
     );
   }
   return response({ error: "Not found" }, 404);
@@ -552,29 +559,35 @@ export async function githubWebhookRoute(request: Request, env: Env): Promise<Re
   const authority = env.WORKSPACES.getByName(workspaceId);
   const base = { deliveryId, installationId: item.installation.id };
   if (event === "installation" && ["deleted", "suspend"].includes(item.action ?? ""))
-    await authority.githubWebhook(workspaceId, { ...base, kind: "revoke" });
+    await githubRpcValue(authority.githubWebhook(workspaceId, { ...base, kind: "revoke" }));
   else if (event === "installation_repositories" && item.repositories_removed?.length)
-    await authority.githubWebhook(workspaceId, {
-      ...base,
-      kind: "revoke",
-      repositoryIds: item.repositories_removed.map((r) => r.id),
-    });
+    await githubRpcValue(
+      authority.githubWebhook(workspaceId, {
+        ...base,
+        kind: "revoke",
+        repositoryIds: item.repositories_removed.map((r) => r.id),
+      }),
+    );
   else if (["pull_request", "pull_request_review"].includes(event ?? "") && item.repository && item.pull_request)
-    await authority.githubWebhook(workspaceId, {
-      ...base,
-      kind: "pull_request",
-      repositoryId: item.repository.id,
-      number: item.pull_request.number,
-    });
+    await githubRpcValue(
+      authority.githubWebhook(workspaceId, {
+        ...base,
+        kind: "pull_request",
+        repositoryId: item.repository.id,
+        number: item.pull_request.number,
+      }),
+    );
   else if (["check_run", "check_suite", "status"].includes(event ?? "") && item.repository) {
     const headSha = item.check_run?.head_sha ?? item.check_suite?.head_sha ?? item.sha;
     if (headSha && /^[a-f0-9]{40,64}$/i.test(headSha))
-      await authority.githubWebhook(workspaceId, {
-        ...base,
-        kind: "checks",
-        repositoryId: item.repository.id,
-        headSha,
-      });
+      await githubRpcValue(
+        authority.githubWebhook(workspaceId, {
+          ...base,
+          kind: "checks",
+          repositoryId: item.repository.id,
+          headSha,
+        }),
+      );
   }
   return response({ ok: true }, 202);
 }
