@@ -8,7 +8,9 @@ if [ -n "$(git -C "$repo_root" status --porcelain)" ]; then
   printf 'Commit the candidate first; the rehearsal clones the exact clean HEAD.\n' >&2
   exit 1
 fi
-rehearsal_root="$(mktemp -d "${TMPDIR:-/tmp}/kanbun-install.XXXXXX")"
+# Keep clones under the already shared workspace. Colima does not necessarily share macOS TMPDIR.
+mkdir -p "$repo_root/artifacts/launch/checkouts"
+rehearsal_root="$(mktemp -d "$repo_root/artifacts/launch/checkouts/kanbun-install.XXXXXX")"
 checkout="$rehearsal_root/repo"
 evidence="$repo_root/artifacts/launch/local"
 # Keep prior runs available for inspection, but never mix their receipts with this candidate.
