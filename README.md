@@ -50,10 +50,13 @@ the seed still use `node:sqlite`. The web app lists, creates, and renames issues
 with parent selection, inverse blocking links, and cycle validation.
 IndexedDB-backed offline recovery, automatic cross-browser updates, and visible sync/rejection
 state apply to these issue changes. See the
-[local issue flow](docs/ux/issues.md). A [protected hosted preview](docs/hosted-preview.md) uses
-Cloudflare Access, actual user/workspace context, and a D1 directory. Owners manage
-[targeted invitations and membership](docs/ux/workspace-members.md); native sign-in and public
-onboarding remain planned. [Issue details](docs/ux/issue-details.md) add collaborative descriptions
+[local issue flow](docs/ux/issues.md). The [hosted workspace](docs/hosted-preview.md) supports native
+[email-link sign-in](docs/ux/email-sign-in.md), actual user/workspace context and a D1 directory.
+People use their invited email without a password or Cloudflare account. Owners manage
+[targeted invitations and membership](docs/ux/workspace-members.md); public self-service registration
+remains outside the pilot. The hosted Access-to-email cutover is a separately reviewed rollout;
+merging native support alone does not complete that infrastructure change.
+[Issue details](docs/ux/issue-details.md) add collaborative descriptions
 in a separate SQLite DocumentDO, with Yjs merging and durable browser recovery. See
 [local Worker development](docs/local-worker.md).
 

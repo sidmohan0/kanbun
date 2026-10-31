@@ -17,17 +17,22 @@ A source mismatch without an active release also fails; an active release is exp
 `release-pending`, rather than current. There is no elapsed-time threshold that silently tolerates
 a stale release. After a pending release finishes, inspect its result or rerun the health workflow.
 
-The checks also verify anonymous HTTPS and WebSocket requests are redirected to the configured
-Cloudflare Access issuer, alternative Worker URLs remain disabled, and Access verification keys
-are available. A read-only `SELECT 1 AS healthy` query checks connectivity to the configured accounts
-D1 database. The active version must remain unchanged through the check.
+In native email mode, the boundary probe expects public HTML at `/` and public
+`/api/auth/config` with `method: email`, `authenticated: false`, a nonempty public site key and no
+email address. Anonymous context, member, bootstrap, document and connect requests must return
+JSON `401` with `authentication: email`; an actual unauthenticated WebSocket upgrade must also
+return `401`. Alternative Worker URLs stay disabled. The probe does not fetch Access verification
+keys in this mode. Legacy `AUTH_MODE=preview` retains the Access redirect/JWKS checks for that
+different authentication contract. A read-only `SELECT 1 AS healthy` checks accounts D1 connectivity.
+The active version must remain unchanged through the check.
 
-An Access redirect proves the edge gate is reachable; it does **not** execute the protected
-application behind it. A D1 control-plane query does **not** prove the Worker's D1 binding or
-WorkspaceDO/DocumentDO behavior. These checks do not authenticate as a teammate, read issue data,
-exercise an actual document, or prove durable storage integrity. Authenticated application flows
-and offline/concurrent recovery remain covered by the real-runtime PR verifier. Live authenticated
-checks require a normal authorized session; no test authentication bypass is installed.
+Public HTML proves the sign-in shell is available, not that workspace rows are public. Anonymous
+`401` responses prove denial at the boundary; they do **not** execute an authenticated application
+flow, send an email, verify Resend delivery, or complete a Turnstile challenge. A D1 control-plane
+query does **not** prove the Worker's D1 binding or WorkspaceDO/DocumentDO behavior. The probes read
+no issue data and do not prove durable storage integrity. Authenticated flows and offline/concurrent
+recovery remain covered by the real-runtime PR verifier. Live checks require a normal native email
+session; no test authentication bypass is installed.
 
 ## Finding and handling failures
 
@@ -40,9 +45,26 @@ fallback summary. The report is operational evidence and is not a required PR ch
 - **Credential or API failure:** check the Actions secret and its existing scoped permissions.
   The deployment token expires January 28, 2027. Rotate it before expiry without broadening access.
   An unavailable Cloudflare or GitHub control plane can prevent checks while the app remains usable.
-- **Access gate, keys, or alternative URLs:** inspect the hostname-based Access application for
-  `kanbun.ai`, its configured issuer and owner/team policy, and the Worker's custom domain.
-  Keep workers.dev and version preview URLs disabled. Do not bypass Access to make a probe green.
+- **Sign-in shell or native boundary:** check `AUTH_MODE`, `APP_ORIGIN`, the public auth configuration
+  and the Worker's custom domain. Workspace data, documents and WebSocket upgrades must remain
+  session-gated even though assets are public. Keep workers.dev and version URLs disabled; never
+  add an authentication bypass to make a probe green. During the
+  [staged cutover](hosted-preview.md#email-authentication-rollout), Access redirects remain expected
+  until native owner proof and confirmed removal of the outer Access application. A staged redirect
+  is not a passing native probe. Legacy-mode failures still require its configured issuer/JWKS gate.
+- **Sign-in email or verification:** inspect the Resend verified sender/domain, `AUTH_FROM_EMAIL`,
+  secret `RESEND_API_KEY`, Turnstile hostname/site key, secret `TURNSTILE_SECRET_KEY`, and the
+  `magic_link` action. The hosted sender is `signin@auth.kanbun.ai`; retain enforced TLS and disabled
+  click/open tracking for sign-in mail. Check provider delivery/error reports without copying recipients, links,
+  tokens or provider response bodies into logs or issues. A generic `202` deliberately conceals
+  eligibility and delivery failures. Sanitized `kanbun.auth.delivery_failed` and
+  `kanbun.auth.delivery_cleanup_failed` console events indicate internal delivery/cleanup failures;
+  correlate their generated `errorId` and invocation time. Never expose private test transports.
+- **Link unavailable or sign-in expired:** use the newest link in the same browser that requested
+  it. Another browser, an expired or consumed link, a replaced request cookie, or revoked eligibility
+  requires a fresh request. The session expires one hour after the original request, not an hour
+  after confirmation. A signed-in person with `403` needs a valid workspace invitation/admission;
+  repeated sign-in does not restore removed access. See the [email flow](ux/email-sign-in.md).
 - **D1 connectivity:** inspect the accounts database binding and Cloudflare D1 status. The health
   query reads no account or issue rows. Do not recreate the database or apply unreviewed migrations.
 - **Unknown or stale deployed source:** inspect the latest successful main CI and
@@ -75,7 +97,7 @@ From a checkout with complete main history, run:
 
 Inspect `artifacts/preview-health/receipt.json` and `summary.md`. The files contain check names,
 public deployment identifiers, and bounded failure categories; they exclude API response bodies,
-Access redirect URLs, database rows, and credentials. They are ignored by Git and retained as
+authentication response bodies, redirect URLs, database rows and credentials. They are ignored by Git and retained as
 workflow artifacts. Health and deployment probes use the same implementation in
 [`scripts/preview-checks.mjs`](../scripts/preview-checks.mjs).
 
