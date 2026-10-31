@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mutators } from "@kanbun/mutators";
+import migrationJournal from "@kanbun/model/migrations/workspace/meta/_journal.json";
 import type { Mutation, PushResponse } from "@kanbun/sync";
 import { httpTransport, SyncClient } from "@kanbun/sync/client";
 import type { BranchMergeReceipt, BranchPreview } from "@kanbun/sync/server";
@@ -49,7 +50,9 @@ describe("workspace Durable Object in workerd", () => {
     try {
       const seeded = await runtime.seed();
       const before = await runtime.inspect();
-      expect(before.migrations).toHaveLength(8);
+      expect(before.migrations.map((migration) => migration["tag"])).toEqual(
+        migrationJournal.entries.map((entry) => entry.tag).sort(),
+      );
       expect(before.issues).toMatchObject([{ id: seeded.issueId, teamId: seeded.teamId, number: 1 }]);
       expect(before.teams).toMatchObject([{ id: seeded.teamId, issue_counter: 1 }]);
       expect(before.events).toContainEqual(

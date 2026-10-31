@@ -149,3 +149,22 @@ export const oauthStates = sqliteTable("oauth_states", {
   codeVerifier: text("code_verifier"),
   expiresAt: text("expires_at").notNull(),
 });
+
+/** Owner/session-bound repository catalog. OAuth bearer tokens are never retained. */
+export const githubSetups = sqliteTable("github_setups", {
+  workspaceId: text("workspace_id").primaryKey(),
+  accountId: text("account_id").notNull(),
+  sessionId: text("session_id").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  catalog: json<
+    Array<{
+      installationId: number;
+      repositoryId: number;
+      owner: string;
+      name: string;
+      url: string;
+      private: boolean;
+    }>
+  >("catalog").notNull(),
+  error: text("error"),
+});

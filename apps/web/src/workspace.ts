@@ -5,6 +5,8 @@ import {
   isPoke,
   issueIncarnation,
   notificationVisible,
+  githubRepositoryVisible,
+  issuePullRequestVisible,
   workspaceContextSchema,
   type Mutation,
   type Transport,
@@ -42,6 +44,8 @@ export type WorkspaceSnapshot = {
   labels: Row<"issueLabel">[];
   labelLinks: Row<"issueLabelLink">[];
   issueRelations: Row<"issueRelation">[];
+  githubRepositories: Row<"githubRepository">[];
+  issuePullRequests: Row<"issuePullRequest">[];
   teamMemberships: Row<"teamMembership">[];
   rejections: WorkspaceRejection[];
   error: string | null;
@@ -89,6 +93,8 @@ let snapshot: WorkspaceSnapshot = {
   labels: [],
   labelLinks: [],
   issueRelations: [],
+  githubRepositories: [],
+  issuePullRequests: [],
   teamMemberships: [],
   rejections,
   error,
@@ -173,6 +179,14 @@ function publish() {
     comments: authenticationRequired ? [] : (client?.list("comment").filter((comment) => !comment.archivedAt) ?? []),
     knownMembers: authenticationRequired ? [] : (client?.list("user") ?? []),
     knownAgents: authenticationRequired ? [] : (client?.list("agent") ?? []),
+    githubRepositories:
+      authenticationRequired || !client
+        ? []
+        : client.list("githubRepository").filter((row) => githubRepositoryVisible(client!.view, visibleTeamIds, row)),
+    issuePullRequests:
+      authenticationRequired || !client
+        ? []
+        : client.list("issuePullRequest").filter((row) => issuePullRequestVisible(client!.view, visibleTeamIds, row)),
     pendingCommentIds: authenticationRequired
       ? []
       : [
@@ -367,6 +381,8 @@ async function initialize() {
     "issueLabel",
     "issueLabelLink",
     "issueRelation",
+    "githubRepository",
+    "issuePullRequest",
     "teamMembership",
     "comment",
     "agent",
@@ -553,6 +569,12 @@ export const workspace = {
   start,
   refresh,
   requireAuthentication: blockAuthentication,
+  unlinkPullRequest(id: string): void {
+    const active = editableClient();
+    active.mutate("issuePullRequestUnlink", { id });
+    publish();
+    flush(active);
+  },
   async flushPendingChanges(): Promise<void> {
     await client?.flushPersistence();
   },

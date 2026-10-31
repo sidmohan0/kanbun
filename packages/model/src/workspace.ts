@@ -925,3 +925,65 @@ export const projectTeam = sqliteTable(
   },
   (t) => [uniqueIndex("project_team_pair").on(t.projectId, t.teamId)],
 );
+
+// Team-scoped GitHub disclosure bindings and normalized metadata, never provider credentials.
+export const githubRepository = sqliteTable(
+  "github_repository",
+  {
+    ...syncedColumns,
+    teamId: text("team_id").notNull(),
+    installationId: integer("installation_id").notNull(),
+    repositoryId: integer("repository_id").notNull(),
+    owner: text("owner").notNull(),
+    name: text("name").notNull(),
+    url: text("url").notNull(),
+    private: bool("private").notNull(),
+  },
+  (t) => [
+    uniqueIndex("github_repository_team_repository").on(t.teamId, t.repositoryId),
+    index("github_repository_installation").on(t.installationId),
+  ],
+);
+
+export const issuePullRequest = sqliteTable(
+  "issue_pull_request",
+  {
+    ...syncedColumns,
+    teamId: text("team_id").notNull(),
+    issueId: text("issue_id").notNull(),
+    issueIncarnation: text("issue_incarnation").notNull(),
+    repositoryBindingId: text("repository_binding_id").notNull(),
+    number: integer("number").notNull(),
+    title: text("title").notNull(),
+    url: text("url").notNull(),
+    state: text("state").$type<"draft" | "open" | "closed" | "merged">().notNull(),
+    headRef: text("head_ref").notNull(),
+    baseRef: text("base_ref").notNull(),
+    headSha: text("head_sha").notNull(),
+    reviewStatus: text("review_status").$type<"unknown" | "pending" | "approved" | "changes_requested">().notNull(),
+    reviewHeadSha: text("review_head_sha"),
+    checksStatus: text("checks_status").$type<"unknown" | "pending" | "passing" | "failing">().notNull(),
+    checksHeadSha: text("checks_head_sha"),
+    checksUrl: text("checks_url"),
+    observationRevision: integer("observation_revision").notNull(),
+    providerUpdatedAt: text("provider_updated_at").notNull(),
+    observedAt: text("observed_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("issue_pull_request_association").on(t.issueId, t.repositoryBindingId, t.number),
+    index("issue_pull_request_issue").on(t.issueId),
+  ],
+);
+
+/** Receipt and queue targeting survive restarts and are included in full SQL backups. */
+export const githubDelivery = sqliteTable("github_delivery", {
+  id: text("id").primaryKey(),
+  createdAt: text("created_at").notNull(),
+  completedAt: text("completed_at"),
+});
+
+/** Monotonic request-start ordering, independent of wall-clock ties across Edge isolates. */
+export const githubObservationCursor = sqliteTable("github_observation_cursor", {
+  id: text("id").primaryKey(),
+  lastRevision: integer("last_revision").notNull(),
+});

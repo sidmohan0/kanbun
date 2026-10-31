@@ -4,6 +4,14 @@ import { createRuntimeHarness, localWorkerConfig } from "./harness";
 
 export { startPreviewRuntime } from "./preview-runtime";
 export {
+  startGithubRuntime,
+  githubResponses,
+  githubPullRequest,
+  githubSignature,
+  GITHUB_INSTALLATION_ID,
+  GITHUB_REPOSITORY_ID,
+} from "./github-runtime";
+export {
   startEmailRuntime,
   emailLink,
   linkToken,

@@ -12,6 +12,7 @@ export type EventProvenance = {
   causationSeq: number | null;
   reason: string | null;
   branchId?: string;
+  sourceRef?: string;
 };
 
 /** Called inside the same savepoint as reducer application and change capture. */
@@ -22,7 +23,7 @@ export function appendEvent(driver: SqlDriver, pending: PendingEvent, provenance
     seq: 0,
     branchId: provenance.branchId ?? "main",
     sessionId: null,
-    sourceRef: null,
+    sourceRef: provenance.sourceRef ?? null,
   });
   if (event.type === "IssueCreated" && event.branchId === "main" && event.payload.number === 0)
     throw new Error("Committed issue creation requires an authoritative issue number");

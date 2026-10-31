@@ -4,10 +4,11 @@ import type { Row } from "@kanbun/model";
 import { DEFAULT_EVENT_PAGE_SIZE, type WorkspaceContext } from "@kanbun/sync";
 import { workspace, type WorkspaceSnapshot } from "./workspace";
 import { MentionPicker, validateMentions } from "./MentionPicker";
+import { checksLabel, checksStatus, githubActivityVisible, githubUrl, reviewLabel, reviewStatus } from "./github";
 
 function actorName(actor: DomainEvent["actor"], snapshot: WorkspaceSnapshot): string {
   if (actor.type === "system") return "Kanbun";
-  if (actor.type === "integration") return "Integration";
+  if (actor.type === "integration") return actor.id.startsWith("github:") ? "GitHub" : "Integration";
   if (actor.type === "agent") return snapshot.knownAgents.find((agent) => agent.id === actor.id)?.name ?? "Agent";
   const member = snapshot.knownMembers.find((member) => member.id === actor.id);
   return member
@@ -17,6 +18,12 @@ function actorName(actor: DomainEvent["actor"], snapshot: WorkspaceSnapshot): st
 
 function activityText(event: DomainEvent, snapshot: WorkspaceSnapshot): string {
   switch (event.type) {
+    case "GitHubPullRequestLinked":
+      return `linked pull request #${event.payload.snapshot.number}: ${event.payload.snapshot.title}`;
+    case "GitHubPullRequestUnlinked":
+      return "unlinked a GitHub pull request";
+    case "ObservedGitHubPullRequest":
+      return `confirmed pull request #${event.payload.snapshot.number}: ${event.payload.snapshot.state}; ${checksLabel[checksStatus(event.payload.snapshot)]}; ${reviewLabel[reviewStatus(event.payload.snapshot)]}`;
     case "IssueCreated":
       return "created the issue";
     case "IssueTitled":
@@ -248,8 +255,10 @@ export function IssueDiscussion({
   const [loadingOlder, setLoadingOlder] = useState(false);
   const activityLoaded = useRef(false);
   const newestSeen = useRef(0);
+  // Previously fetched facts must disappear with their repository scope, even before another page fetch.
+  const visibleEvents = events.filter((event) => githubActivityVisible(event, issue, snapshot.githubRepositories));
   const groups = [
-    ...events
+    ...visibleEvents
       .reduce((groups, event) => {
         const group = groups.get(event.txnId) ?? [];
         group.push(event);
@@ -402,7 +411,7 @@ export function IssueDiscussion({
       </section>
       <section aria-label="Activity">
         <h3>Activity</h3>
-        {!events.length && !activityError && <p className="description-help">No recorded activity yet.</p>}
+        {!visibleEvents.length && !activityError && <p className="description-help">No recorded activity yet.</p>}
         <ol className="issue-activity">
           {groups.map((group) => {
             const event = group[0]!;
@@ -413,6 +422,18 @@ export function IssueDiscussion({
                   .sort((a, b) => a.eventIndex - b.eventIndex)
                   .map((fact) => activityText(fact, snapshot))
                   .join("; ")}
+                {event.sourceRef &&
+                  (event.type === "ObservedGitHubPullRequest" || event.type === "GitHubPullRequestLinked") &&
+                  githubUrl(event.sourceRef) && (
+                    <a
+                      className="github-activity-source"
+                      href={githubUrl(event.sourceRef)!}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      View pull request
+                    </a>
+                  )}
                 <time dateTime={new Date(event.ts).toISOString()}>{new Date(event.ts).toLocaleString()}</time>
               </li>
             );

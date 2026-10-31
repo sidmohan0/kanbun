@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { Row } from "@kanbun/model";
 import { issueIdentifier } from "./issueViews";
 import { workspace, type WorkspaceSnapshot } from "./workspace";
+import { GitHubPullRequestChips } from "./GitHubContext";
+import { groupPullRequests } from "./github";
 import "./styles/board.css";
 
 /** Columns stay scoped to a team: similarly named states are not interchangeable across teams. */
@@ -12,6 +14,7 @@ export function IssueBoard({ issues, snapshot }: { issues: Row<"issue">[]; snaps
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState<string | null>(null);
   const pending = new Set(snapshot.pendingIssueIds);
+  const pullRequestsByIssue = groupPullRequests(snapshot.issuePullRequests);
   useEffect(() => {
     if (restoreFocus.current) {
       statusControls.current.get(restoreFocus.current)?.focus();
@@ -135,6 +138,12 @@ export function IssueBoard({ issues, snapshot }: { issues: Row<"issue">[]; snaps
                                 ))}
                               </select>
                             </label>
+                            {(pullRequestsByIssue.get(issue.id)?.length ?? 0) > 0 && (
+                              <GitHubPullRequestChips
+                                pullRequests={pullRequestsByIssue.get(issue.id)!}
+                                repositories={snapshot.githubRepositories}
+                              />
+                            )}
                             <span className={pending.has(issue.id) ? "row-state pending" : "row-state"}>
                               {pending.has(issue.id)
                                 ? "Pending"

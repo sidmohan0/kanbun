@@ -1,0 +1,223 @@
+.github-settings,
+.issue-development {
+  margin: 24px 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.github-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.github-section-heading h2,
+.github-section-heading h3 {
+  margin: 0;
+}
+.github-section-heading > span,
+.github-settings > p,
+.issue-development > p,
+.github-bind-form > p,
+.github-link-form > p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.github-bind-form,
+.github-link-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+}
+.github-bind-form select,
+.github-link-form input {
+  min-width: 0;
+  padding: 8px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+.github-bind-form label,
+.github-link-form label {
+  font-size: var(--text-sm);
+}
+.github-bind-form .button,
+.github-link-form .button {
+  justify-self: start;
+}
+.github-connection-actions,
+.github-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.github-activity-source {
+  margin-left: 8px;
+  color: var(--text);
+  text-underline-offset: 3px;
+}
+.github-binding-list,
+.github-pr-cards,
+.github-pr-chips {
+  padding: 0;
+  list-style: none;
+}
+.github-binding-list > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding: 12px 0;
+}
+.github-binding-list > li > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.github-binding-list span {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+.github-pr-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 8px 0 0;
+}
+.github-pr-chips a {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  text-decoration: none;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.github-pr-chips li,
+.github-pr-chips span {
+  min-width: 0;
+  max-width: 100%;
+}
+.github-pr-chips a:hover {
+  background: var(--surface-sunken);
+  color: var(--text);
+}
+.github-chip-branch {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.github-pr-cards {
+  display: grid;
+  gap: 12px;
+}
+.github-pr-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  min-width: 0;
+  animation: github-card-enter 160ms ease-out;
+}
+.github-pr-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.github-pr-card h4 {
+  margin: 10px 0;
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+}
+.github-pr-card a,
+.github-binding-list a {
+  color: var(--text);
+  text-underline-offset: 3px;
+}
+.github-branches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  font-size: var(--text-sm);
+}
+.github-branches > span:first-child {
+  color: var(--text-secondary);
+}
+.github-branches code {
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.github-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: var(--text-xs);
+}
+.github-signals > span {
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.github-state[data-state="merged"] {
+  color: var(--accent);
+}
+[data-checks="failing"],
+[data-review="changes_requested"] {
+  color: var(--cinnabar);
+}
+.github-observation {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.github-card-actions {
+  font-size: var(--text-xs);
+}
+.github-card-actions a,
+.github-pr-chips a {
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+@keyframes github-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .github-pr-card {
+    animation: none;
+  }
+  .github-card-actions a,
+  .github-pr-chips a {
+    transition: none;
+  }
+}
+@media (max-width: 620px) {
+  .github-settings,
+  .issue-development {
+    padding: 14px;
+  }
+  .github-binding-list > li {
+    align-items: start;
+    flex-wrap: wrap;
+  }
+}

@@ -187,15 +187,16 @@ export async function restoreDirectory(database: D1Database, source: DatabaseSna
     ),
     ...source.tables.flatMap((table) => [
       database.prepare(deleteTable(table.name, source)),
-      // A historical cookie or link must not become valid again after a restore.
+      // A historical cookie, link, or session-bound OAuth setup must not revive after a restore.
       // Keep these tables in the validated inventory, but leave them empty in the
       // same atomic transaction that imports accounts, identities and membership.
-      ...(table.name === "sessions" || table.name === "magic_links" ? [] : table.rows).map((row) =>
-        database
-          .prepare(
-            `INSERT INTO ${identifier(table.name)} (${table.columns.map(identifier).join(",")}) VALUES (${table.columns.map(() => "?").join(",")})`,
-          )
-          .bind(...row.map(decoded)),
+      ...(["sessions", "magic_links", "oauth_states", "github_setups"].includes(table.name) ? [] : table.rows).map(
+        (row) =>
+          database
+            .prepare(
+              `INSERT INTO ${identifier(table.name)} (${table.columns.map(identifier).join(",")}) VALUES (${table.columns.map(() => "?").join(",")})`,
+            )
+            .bind(...row.map(decoded)),
       ),
     ]),
   ];

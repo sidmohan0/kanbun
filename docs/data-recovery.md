@@ -83,7 +83,9 @@ and disabled alternative preview URLs in place.
    separately reviewed production cutover. Preserve fresh production writes during that decision.
 
 Directory archives retain the complete, verified table inventory, including authentication hashes.
-Restoration deliberately leaves sessions and magic links empty in the same atomic D1 import.
+Restoration deliberately leaves sessions, magic links, OAuth handshake states and GitHub setup
+catalogs empty in the same atomic D1 import. A historical `github_setups` or `oauth_states` record
+cannot restore owner integration authority; reconnect GitHub through a fresh native owner session.
 Previously issued links and session cookies cannot resume access after a restore; everyone must request
 a fresh sign-in link. Account identities, workspace membership, and targeted invitations are retained.
 

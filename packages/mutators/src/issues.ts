@@ -61,6 +61,7 @@ function requireTeamAdminOrSelf(ctx: MutatorContext, issueId: string): void {
 
 /** Rows that hang off an issue and carry its team; moved with it. */
 export const ISSUE_CHILD_MODELS = [
+  "issuePullRequest",
   "issueLabelLink",
   "issueSubscription",
   "issueRelation",

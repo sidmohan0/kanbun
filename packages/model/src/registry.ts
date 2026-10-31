@@ -29,6 +29,8 @@ const def = <T extends SQLiteTable>(name: string, table: T, policy: SyncPolicy, 
   ({ name, table, policy, teamColumn }) satisfies ModelDef;
 
 export const models = {
+  githubRepository: def("githubRepository", ws.githubRepository, { kind: "full" }, "teamId"),
+  issuePullRequest: def("issuePullRequest", ws.issuePullRequest, { kind: "full" }, "teamId"),
   organization: def("organization", ws.organization, { kind: "full" }),
   user: def("user", ws.user, { kind: "full" }),
   agent: def("agent", ws.agent, { kind: "full" }),
@@ -71,6 +73,8 @@ export type Insert<M extends ModelName> = (typeof models)[M]["table"]["$inferIns
 
 /** Tables that are not synced models but live in the same database. */
 export const internalTables = {
+  githubDelivery: ws.githubDelivery,
+  githubObservationCursor: ws.githubObservationCursor,
   workspaceBranch: ws.workspaceBranch,
   branchMerge: ws.branchMerge,
   branchRow: ws.branchRow,

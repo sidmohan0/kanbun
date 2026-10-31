@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added team-scoped GitHub repository connections and issue-linked PR, branch, review and CI context across lists, boards, details and activity, with signed canonical observations, owner-only setup and current-scope privacy checks.
+
 - Added native email-link sign-in with managed verification, explicit confirmation in the requesting browser, preserved invitation destinations, one-hour request-bound sessions, and sign-out without clearing pending local work.
 
 - Issue details now support sub-issues, parent selection, and cross-team blocking or related links, with inverse views, cycle validation, offline recovery, and access-aware relationship visibility.
