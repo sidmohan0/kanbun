@@ -12,9 +12,13 @@ const challengeScript = `window.turnstile = {
   reset() {}, remove() {}
 };`;
 export async function nativeBrowser(context: BrowserContext) {
-  await context.route("https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit", (route) => route.fulfill({
-    status: 200, contentType: "application/javascript", body: challengeScript,
-  }));
+  await context.route("https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/javascript",
+      body: challengeScript,
+    }),
+  );
 }
 export async function requestEmail(page: Page, app: EmailHarness, email: string, destination = "#issues") {
   const before = (await app.runtime.capturedEmails()).length;
@@ -31,7 +35,12 @@ export async function consumeEmail(page: Page, app: EmailHarness, email: string,
   await expect(page.getByRole("button", { name: `Sign in as ${email}`, exact: true })).toBeVisible();
   await page.getByRole("button", { name: `Sign in as ${email}`, exact: true }).click();
 }
-export async function loginEmail(page: Page, app: EmailHarness, email = app.runtime.ownerEmail, destination = "#issues") {
+export async function loginEmail(
+  page: Page,
+  app: EmailHarness,
+  email = app.runtime.ownerEmail,
+  destination = "#issues",
+) {
   const link = await requestEmail(page, app, email, destination);
   await consumeEmail(page, app, email, link);
   await expect(page.locator(".sync-indicator")).toContainText("Saved");
@@ -43,7 +52,9 @@ export const test = base.extend<{ emailApp: EmailHarness }>({
     const temporary = await mkdtemp(path.join(tmpdir(), "kanbun-email-ui-"));
     let product: Awaited<ReturnType<typeof startProductServer>> | undefined;
     try {
-      product = await startProductServer(runtime.origin, path.join(temporary, "vite"), { appOrigin: runtime.appOrigin });
+      product = await startProductServer(runtime.origin, path.join(temporary, "vite"), {
+        appOrigin: runtime.appOrigin,
+      });
       await use({ origin: product.origin, runtime });
     } finally {
       await product?.server.close();

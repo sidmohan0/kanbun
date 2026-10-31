@@ -28,24 +28,38 @@ export function nativeAgent(runtime: Awaited<ReturnType<typeof startPreviewRunti
     for (const cookie of response.headers.getSetCookie()) {
       const pair = cookie.split(";", 1)[0]!;
       const equal = pair.indexOf("=");
-      const name = pair.slice(0, equal), value = pair.slice(equal + 1);
+      const name = pair.slice(0, equal),
+        value = pair.slice(equal + 1);
       if (/max-age=0(?:;|$)/iu.test(cookie) || !value) cookies.delete(name);
       else cookies.set(name, value);
     }
     return response;
   }
-  const json = (path: string, body: unknown, init: RequestInit = {}, withOrigin = true) => request(path, {
-    ...init, method: "POST", headers: { "content-type": "application/json", ...Object.fromEntries(new Headers(init.headers)) }, body: JSON.stringify(body),
-  }, withOrigin);
+  const json = (path: string, body: unknown, init: RequestInit = {}, withOrigin = true) => {
+    const headers = new Headers(init.headers);
+    if (!headers.has("content-type")) headers.set("content-type", "application/json");
+    return request(path, { ...init, method: "POST", headers, body: JSON.stringify(body) }, withOrigin);
+  };
   return {
-    cookies, cookieHeader: header, fetch: request, json,
-    requestLink: (email: string, returnTo = "#issues", turnstileToken = HUMAN_TOKEN) => json("/api/auth/request", { email, returnTo, turnstileToken }),
+    cookies,
+    cookieHeader: header,
+    fetch: request,
+    json,
+    requestLink: (email: string, returnTo = "#issues", turnstileToken = HUMAN_TOKEN) =>
+      json("/api/auth/request", { email, returnTo, turnstileToken }),
     inspect: (token: string) => json("/api/auth/inspect", { token }),
     consume: (token: string) => json("/api/auth/consume", { token }),
     logout: () => json("/api/auth/logout", {}),
   };
 }
 
-export function startEmailRuntime(options: { initialAuthMode?: "preview" | "email" } = {}) {
-  return startPreviewRuntime({ ownerEmail: "owner@datafog.ai", emailAuth: true, ...options });
+export function startEmailRuntime(
+  options: {
+    initialAuthMode?: "preview" | "email";
+    resendApiKey?: string;
+    backups?: boolean;
+    isolatedRestore?: boolean;
+  } = {},
+) {
+  return startPreviewRuntime({ ownerEmail: "owner@example.com", emailAuth: true, ...options });
 }

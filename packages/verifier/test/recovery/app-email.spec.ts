@@ -3,24 +3,43 @@ import { SESSION_COOKIE } from "@kanbun/worker/testing";
 import { test, expect, nativeBrowser, requestEmail, consumeEmail, loginEmail } from "./app-email.fixture";
 import { readWorkspaceState } from "./app.fixture";
 
-const persistedKey = (context: WorkspaceContext) => JSON.stringify([
-  "v1", context.mode, context.workspaceId, context.actor.type, context.actor.id, "main", ...(context.admissionId ? [context.admissionId] : []),
-]);
+const persistedKey = (context: WorkspaceContext) =>
+  JSON.stringify([
+    "v1",
+    context.mode,
+    context.workspaceId,
+    context.actor.type,
+    context.actor.id,
+    "main",
+    ...(context.admissionId ? [context.admissionId] : []),
+  ]);
 
-test("native sign-in needs the requesting browser and explicit confirmation, and logout hides workspace data", async ({ browser, emailApp }, testInfo) => {
-  const ownerContext = await browser.newContext(), otherContext = await browser.newContext();
-  await nativeBrowser(ownerContext); await nativeBrowser(otherContext);
-  const owner = await ownerContext.newPage(), other = await otherContext.newPage();
+test("native sign-in needs the requesting browser and explicit confirmation, and logout hides workspace data", async ({
+  browser,
+  emailApp,
+}, testInfo) => {
+  const ownerContext = await browser.newContext(),
+    otherContext = await browser.newContext();
+  await nativeBrowser(ownerContext);
+  await nativeBrowser(otherContext);
+  const owner = await ownerContext.newPage(),
+    other = await otherContext.newPage();
   try {
     const link = await requestEmail(owner, emailApp, emailApp.runtime.ownerEmail);
     await other.goto(`${emailApp.origin}/${link.hash}`);
     await expect(other.getByRole("alert")).toContainText("different browser");
-    await expect(other.getByRole("button", { name: `Sign in as ${emailApp.runtime.ownerEmail}`, exact: true })).toHaveCount(0);
+    await expect(
+      other.getByRole("button", { name: `Sign in as ${emailApp.runtime.ownerEmail}`, exact: true }),
+    ).toHaveCount(0);
     expect(await otherContext.cookies()).not.toContainEqual(expect.objectContaining({ name: SESSION_COOKIE }));
     await owner.goto(`${emailApp.origin}/${link.hash}`);
-    await expect(owner.getByRole("button", { name: `Sign in as ${emailApp.runtime.ownerEmail}`, exact: true })).toBeVisible();
+    await expect(
+      owner.getByRole("button", { name: `Sign in as ${emailApp.runtime.ownerEmail}`, exact: true }),
+    ).toBeVisible();
     expect((await ownerContext.cookies()).some((cookie) => cookie.name === SESSION_COOKIE)).toBe(false);
-    expect(await owner.evaluate(async () => (await indexedDB.databases()).map((db) => db.name))).not.toContain("kanbun");
+    expect(await owner.evaluate(async () => (await indexedDB.databases()).map((db) => db.name))).not.toContain(
+      "kanbun",
+    );
     await owner.getByRole("button", { name: `Sign in as ${emailApp.runtime.ownerEmail}`, exact: true }).click();
     await expect(owner.locator(".sync-indicator")).toContainText("Saved");
     expect(new URL(owner.url()).hash).toBe("#issues");
@@ -35,15 +54,26 @@ test("native sign-in needs the requesting browser and explicit confirmation, and
     await expect(owner.getByRole("heading", { name: "Sign in to kanbun", exact: true })).toBeVisible();
     await expect(owner.getByText("Native owner work", { exact: true })).toHaveCount(0);
     expect((await ownerContext.cookies()).some((cookie) => cookie.name === SESSION_COOKIE)).toBe(false);
-    await testInfo.attach("native-email-sign-in", { body: await owner.screenshot({ fullPage: true }), contentType: "image/png" });
-  } finally { await Promise.allSettled([ownerContext.close(), otherContext.close()]); }
+    await testInfo.attach("native-email-sign-in", {
+      body: await owner.screenshot({ fullPage: true }),
+      contentType: "image/png",
+    });
+  } finally {
+    await Promise.allSettled([ownerContext.close(), otherContext.close()]);
+  }
 });
 
-test("an email-only invite preserves its destination through sign-in and opens the targeted workspace", async ({ browser, emailApp }) => {
-  const ownerContext = await browser.newContext(), memberContext = await browser.newContext();
-  await nativeBrowser(ownerContext); await nativeBrowser(memberContext);
-  const owner = await ownerContext.newPage(), member = await memberContext.newPage();
-  const memberEmail = "josh@datafog.ai";
+test("an email-only invite preserves its destination through sign-in and opens the targeted workspace", async ({
+  browser,
+  emailApp,
+}) => {
+  const ownerContext = await browser.newContext(),
+    memberContext = await browser.newContext();
+  await nativeBrowser(ownerContext);
+  await nativeBrowser(memberContext);
+  const owner = await ownerContext.newPage(),
+    member = await memberContext.newPage();
+  const memberEmail = "invited-member@datafog.ai";
   try {
     await loginEmail(owner, emailApp);
     await owner.getByRole("link", { name: "Members", exact: true }).click();
@@ -57,19 +87,31 @@ test("an email-only invite preserves its destination through sign-in and opens t
     await consumeEmail(member, emailApp, memberEmail, signIn);
     await expect(member.getByRole("heading", { name: "Join Private preview", exact: true })).toBeVisible();
     expect(new URL(member.url()).hash).toBe(destination);
-    expect(await member.evaluate(async () => (await indexedDB.databases()).map((db) => db.name))).not.toContain("kanbun");
+    expect(await member.evaluate(async () => (await indexedDB.databases()).map((db) => db.name))).not.toContain(
+      "kanbun",
+    );
     await member.getByRole("button", { name: "Accept invitation", exact: true }).click();
     await expect(member.locator(".sync-indicator")).toContainText("Saved");
     expect(new URL(member.url()).hash).toBe("#issues");
     await expect(member.getByRole("link", { name: "Members", exact: true })).toHaveCount(0);
     const context = await memberContext.request.get(`${emailApp.origin}/api/context`);
     expect(context.status()).toBe(200);
-    expect((await context.json()) as WorkspaceContext).toMatchObject({ email: memberEmail, role: "member", workspaceId: emailApp.runtime.workspaceId });
-  } finally { await Promise.allSettled([ownerContext.close(), memberContext.close()]); }
+    expect((await context.json()) as WorkspaceContext).toMatchObject({
+      email: memberEmail,
+      role: "member",
+      workspaceId: emailApp.runtime.workspaceId,
+    });
+  } finally {
+    await Promise.allSettled([ownerContext.close(), memberContext.close()]);
+  }
 });
 
-test("native expiry hides cached work while the same person can sign in again and recover the saved offline queue", async ({ browser, emailApp }) => {
-  const context = await browser.newContext(); await nativeBrowser(context);
+test("native expiry hides cached work while the same person can sign in again and recover the saved offline queue", async ({
+  browser,
+  emailApp,
+}) => {
+  const context = await browser.newContext();
+  await nativeBrowser(context);
   const page = await context.newPage();
   try {
     await loginEmail(page, emailApp);
@@ -101,5 +143,7 @@ test("native expiry hides cached work while the same person can sign in again an
     await expect.poll(async () => (await readWorkspaceState(page, key))?.pending.length).toBe(0);
     await page.reload();
     await expect(page.getByRole("button", { name: /Edit title for KAN-1/ })).toContainText("Recovered native task");
-  } finally { await context.close(); }
+  } finally {
+    await context.close();
+  }
 });
