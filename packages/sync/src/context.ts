@@ -16,6 +16,7 @@ export const workspaceContextSchema = z.strictObject({
   actor: z.strictObject({ id: z.string().min(1), type: z.literal("user") }),
   name: z.string().min(1),
   email: z.string().nullable(),
+  authentication: z.enum(["access", "email"]).optional(),
 });
 
 export type WorkspaceContext = z.infer<typeof workspaceContextSchema>;
