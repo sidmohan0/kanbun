@@ -219,9 +219,33 @@ it("cuts over the existing owner and invited member without changing identity or
     expect(rows.identities.filter((row) => row.provider === "email")).toHaveLength(2);
     const memberSocket = await runtime.nativeConnect("native-member-socket", member.cookieHeader());
     expect(memberSocket.status).toBe(101);
+    await expect.poll(() => memberSocket.connection!.messages.length).toBeGreaterThan(0);
+    const beforeRemoval = Math.max(
+      ...memberSocket.connection!.messages.map((message) => Number((message as { seq: number }).seq)),
+    );
     expect((await owner.json("/api/members/remove", { userId: memberAfter.actor.id })).status).toBe(200);
-    memberSocket.connection!.send("ping");
-    expect(await memberSocket.connection!.closed).toEqual({ code: 1008 });
+    expect(
+      await (
+        await owner.json("/sync/push", {
+          clientId: "before-native",
+          mutations: [
+            {
+              id: 2,
+              name: "issueUpdate",
+              ts: new Date().toISOString(),
+              args: { id: issueId, patch: { title: "Active members only" } },
+            },
+          ],
+        })
+      ).json(),
+    ).toMatchObject({ ok: true, rejected: [] });
+    expect(await memberSocket.connection!.closed).toEqual({
+      code: 1008,
+      reason: "Workspace access is no longer available",
+    });
+    expect(
+      memberSocket.connection!.messages.some((message) => Number((message as { seq: number }).seq) > beforeRemoval),
+    ).toBe(false);
     expect((await member.fetch("/api/context")).status).toBe(403);
     expect((await member.fetch(`/sync/document?issueId=${issueId}`)).status).toBe(403);
     const mailCount = (await runtime.capturedEmails()).length;
@@ -282,18 +306,62 @@ it("revokes only the logged-out device and enforces native session expiry on HTT
     const connected = await runtime.nativeConnect("native-session-owner", first.cookieHeader());
     expect(connected.status).toBe(101);
     expect((await first.json("/api/auth/logout", {}, {}, false)).status).toBe(403);
+    await expect.poll(() => connected.connection!.messages.length).toBeGreaterThan(0);
+    const beforeLogout = Math.max(
+      ...connected.connection!.messages.map((message) => Number((message as { seq: number }).seq)),
+    );
     const oldCookie = first.cookieHeader();
     expect((await first.logout()).status).toBe(200);
-    connected.connection!.send("ping");
-    expect(await connected.connection!.closed).toEqual({ code: 1008 });
+    expect(
+      await (
+        await second.json("/sync/push", {
+          clientId: "native-owner-writes",
+          mutations: [
+            {
+              id: 2,
+              name: "issueUpdate",
+              ts: new Date().toISOString(),
+              args: { id: issueId, patch: { title: "Second device after logout" } },
+            },
+          ],
+        })
+      ).json(),
+    ).toMatchObject({ ok: true, rejected: [] });
+    expect(await connected.connection!.closed).toEqual({ code: 1008, reason: "Workspace identity has expired" });
+    expect(
+      connected.connection!.messages.some((message) => Number((message as { seq: number }).seq) > beforeLogout),
+    ).toBe(false);
     expect((await first.fetch("/api/context", { headers: { Cookie: oldCookie } })).status).toBe(401);
     expect((await first.fetch(documentPath, { headers: { Cookie: oldCookie } })).status).toBe(401);
     expect((await second.fetch("/api/context")).status).toBe(200);
     const secondSocket = await runtime.nativeConnect("native-second-owner", second.cookieHeader());
     expect(secondSocket.status).toBe(101);
+    await expect.poll(() => secondSocket.connection!.messages.length).toBeGreaterThan(0);
+    const beforeExpiry = Math.max(
+      ...secondSocket.connection!.messages.map((message) => Number((message as { seq: number }).seq)),
+    );
     await runtime.expireNativeSession(second.cookies.get(SESSION_COOKIE)!);
-    secondSocket.connection!.send("ping");
-    expect(await secondSocket.connection!.closed).toEqual({ code: 1008 });
+    const third = nativeAgent(runtime);
+    await signIn(runtime, third, runtime.ownerEmail);
+    expect(
+      await (
+        await third.json("/sync/push", {
+          clientId: "native-owner-writes",
+          mutations: [
+            {
+              id: 3,
+              name: "issueUpdate",
+              ts: new Date().toISOString(),
+              args: { id: issueId, patch: { title: "Third device after expiry" } },
+            },
+          ],
+        })
+      ).json(),
+    ).toMatchObject({ ok: true, rejected: [] });
+    expect(await secondSocket.connection!.closed).toEqual({ code: 1008, reason: "Workspace identity has expired" });
+    expect(
+      secondSocket.connection!.messages.some((message) => Number((message as { seq: number }).seq) > beforeExpiry),
+    ).toBe(false);
     for (const path of ["/api/context", "/sync/bootstrap?clientId=expired", documentPath])
       expect((await second.fetch(path)).status).toBe(401);
     expect((await runtime.nativeConnect("expired-owner", second.cookieHeader())).status).not.toBe(101);

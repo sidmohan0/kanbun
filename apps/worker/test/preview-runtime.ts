@@ -264,8 +264,10 @@ export async function startPreviewRuntime({
         if (response.status !== 101 || !response.webSocket) return { status: response.status, connection: null };
         const socket = response.webSocket;
         const messages: unknown[] = [];
-        const closed = new Promise<{ code: number }>((resolve) =>
-          socket.addEventListener("close", (event) => resolve({ code: event.code }), { once: true }),
+        const closed = new Promise<{ code: number; reason: string }>((resolve) =>
+          socket.addEventListener("close", (event) => resolve({ code: event.code, reason: event.reason }), {
+            once: true,
+          }),
         );
         socket.addEventListener("message", (event) => {
           try {
