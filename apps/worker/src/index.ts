@@ -12,7 +12,7 @@ import {
   queueGitHubDelivery,
   consumeGitHubJob,
 } from "./github-observer";
-import { readGitHubPullRequest, type GithubEnvironment } from "./github";
+import { githubRoute, githubWebhookRoute, readGitHubPullRequest, type GithubEnvironment } from "./github";
 import { mutators, requireIssue } from "@kanbun/mutators";
 import { issueIncarnation, MutationError, type Actor, type Poke, type WorkspaceContext } from "@kanbun/sync";
 import { durableObjectDriver, SyncServer, type SqlDriver } from "@kanbun/sync/server";
@@ -979,6 +979,8 @@ export default {
         return env.WORKSPACES.getByName("local").fetch(request);
       }
       if (localRoute(url.pathname)) return json({ error: "Not found" }, 404);
+      const webhook = await githubWebhookRoute(request, env);
+      if (webhook) return webhook;
       if (env.AUTH_MODE === "email" && !(url.pathname.startsWith("/api/") || syncRoute(url.pathname)))
         return env.ASSETS ? env.ASSETS.fetch(request) : json({ error: "Not found" }, 404);
       const identity =
@@ -1005,6 +1007,8 @@ export default {
         const expected = request.headers.get("X-Kanbun-Admission");
         if (expected !== null && expected !== principal.admissionId)
           throw new RequestError("Workspace admission has changed; reload this page", 403);
+        const integration = await githubRoute(request, env, principal);
+        if (integration) return integration;
         return env.WORKSPACES.getByName(principal.workspaceId).fetch(forwardedRequest(request, principal));
       }
       return env.ASSETS ? env.ASSETS.fetch(request) : json({ error: "Not found" }, 404);
