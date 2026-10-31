@@ -10,6 +10,7 @@ import { TeamSettings } from "./TeamSettings";
 import { Inbox } from "./Inbox";
 import { IssueViewToolbar } from "./IssueViewToolbar";
 import { IssueBoard } from "./IssueBoard";
+import { EmailSignOut } from "./EmailSignIn";
 import { emptyIssueFilters, visibleIssues, type IssueFilters, type IssueView } from "./issueViews";
 import { refreshDescriptions } from "./description";
 import "./styles/issues.css";
@@ -395,6 +396,7 @@ export function App() {
               <option value="dark">Dark</option>
             </select>
           </label>
+          {context?.authentication === "email" && <EmailSignOut />}
         </div>
       </aside>
       <main className="issues-main" id="issues">

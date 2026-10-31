@@ -1,3 +1,5 @@
+import { requireEmailSignIn } from "./authentication";
+
 export type WorkspaceMember = {
   userId: string;
   name: string;
@@ -24,7 +26,7 @@ export class MembershipError extends Error {
   }
 }
 
-/** Browser requests carry only the current Access session; invitations remain in request bodies. */
+/** Browser requests carry the current authenticated session; invitations remain in request bodies. */
 export async function membershipRequest(path: string, input?: object): Promise<unknown> {
   let response: Response;
   try {
@@ -40,8 +42,10 @@ export async function membershipRequest(path: string, input?: object): Promise<u
   }
   if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400))
     throw new MembershipError("Sign in again with the invited account, then reopen this link.", 401);
-  if (response.status === 401)
+  if (response.status === 401) {
+    requireEmailSignIn();
     throw new MembershipError("Your sign-in has expired. Sign in with the invited email, then reopen this link.", 401);
+  }
   let value: unknown;
   try {
     value = await response.json();
