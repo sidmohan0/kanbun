@@ -122,7 +122,7 @@ test("two verified people receive their own assignment and explicit mention upda
     await update.getByRole("link", { name: "Review the launch plan", exact: true }).click();
     await expect(commentRegion(recipient)).toContainText("Please review the release decision.");
     await owner.getByRole("link", { name: /^Inbox/ }).click();
-    await expect(inbox(owner)).toContainText("No updates in your inbox yet.");
+    await expect(inbox(owner).getByRole("heading", { name: "You’re caught up.", exact: true })).toBeVisible();
     await commentRegion(recipient).getByRole("button", { name: "Reply", exact: true }).click();
     const reply = recipient.locator(".comment-reply");
     await reply.getByRole("textbox", { name: /^Reply to/ }).fill("The release decision is approved.");
@@ -271,7 +271,7 @@ test("private-team access removal hides cached inbox updates and removes that pe
     await expect.poll(() => ownerPullStarted).toBe(true);
     await push(membership, [{ name: "teamMembershipDelete", args: { teamId, userId: member.actor.id } }]);
     await expect(inbox(recipient).getByText("Private inbox material", { exact: true })).toHaveCount(0);
-    await expect(inbox(recipient)).toContainText("No updates in your inbox yet.");
+    await expect(inbox(recipient).getByRole("heading", { name: "You’re caught up.", exact: true })).toBeVisible();
     await expect(
       owner
         .locator(".comment-compose")
@@ -292,7 +292,7 @@ test("private-team access removal hides cached inbox updates and removes that pe
     await owner.getByRole("button", { name: "Post comment", exact: true }).click();
     await expect(owner.locator(".sync-indicator")).toContainText("Saved");
     await recipient.reload();
-    await expect(inbox(recipient)).toContainText("No updates in your inbox yet.");
+    await expect(inbox(recipient).getByRole("heading", { name: "You’re caught up.", exact: true })).toBeVisible();
   } finally {
     releaseOwnerPull();
     await Promise.allSettled([ownerContext.close(), memberContext.close()]);

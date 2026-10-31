@@ -409,7 +409,9 @@ test("a second tab waits for the workspace writer and recovers its offline queue
     await expect(first.getByRole("status")).toContainText("Offline");
     await expectStoredTitle(first, "The next tab recovers this offline draft");
     await second.goto(app.origin);
-    await expect(second.getByText("Workspace open in another tab", { exact: true })).toBeVisible();
+    await expect(
+      second.getByRole("heading", { name: "Close the other kanbun tab to continue", exact: true }),
+    ).toBeVisible();
     expect(secondSockets).toHaveLength(0);
     await expect(
       second.getByRole("button", { name: "Create issue", exact: true }).and(second.locator(":enabled")),

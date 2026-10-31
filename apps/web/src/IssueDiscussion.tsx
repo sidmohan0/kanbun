@@ -364,9 +364,6 @@ export function IssueDiscussion({
             Retry comments
           </button>
         )}
-        {!commentStatus && !comments.length && (
-          <p className="description-help">No comments yet. Start the discussion.</p>
-        )}
         {comments
           .filter((comment) => !comment.parentId)
           .map((comment) => (
@@ -411,7 +408,6 @@ export function IssueDiscussion({
       </section>
       <section aria-label="Activity">
         <h3>Activity</h3>
-        {!visibleEvents.length && !activityError && <p className="description-help">No recorded activity yet.</p>}
         <ol className="issue-activity">
           {groups.map((group) => {
             const event = group[0]!;

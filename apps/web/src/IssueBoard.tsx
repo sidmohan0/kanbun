@@ -159,7 +159,6 @@ export function IssueBoard({ issues, snapshot }: { issues: Row<"issue">[]; snaps
                         );
                       })}
                     </ul>
-                    {!rows.length && <p className="board-empty">No matching issues</p>}
                   </section>
                 ))}
               </div>

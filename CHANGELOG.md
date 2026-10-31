@@ -54,6 +54,10 @@ preparation moves them to a dated version heading.
 - Added a pinned Linux devcontainer with automatic pnpm and Chromium setup, local command helpers, package-management guidance, and container execution for every repository-owned CI check.
 - Added Chromium integration tests for offline IndexedDB recovery and durable mutation retries over HTTP and file-backed SQLite.
 
+### Changed
+
+- Removed secondary explanatory copy from empty views and lists while retaining headings, actions and access/error guidance.
+
 ### Fixed
 
 - GitHub authorization now accepts the provider's issuer parameter, rejects foreign issuers before consuming authorization state, and remains compatible with callbacks that omit the issuer.

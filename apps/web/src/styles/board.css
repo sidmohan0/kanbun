@@ -12,8 +12,7 @@
 }
 .board-help,
 .board-feedback,
-.board-properties,
-.board-empty {
+.board-properties {
   color: var(--text-secondary);
   font-size: var(--text-xs);
 }

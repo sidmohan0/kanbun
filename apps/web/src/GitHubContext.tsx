@@ -136,15 +136,14 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
     <section className="issue-development" aria-label="Development">
       <header className="github-section-heading">
         <h3>Development</h3>
-        <span>GitHub context</span>
+        {links.length > 0 && <span>GitHub context</span>}
       </header>
-      <p>Checks and reviews describe the current commit. GitHub controls merge requirements.</p>
+      {links.length > 0 && <p>Checks and reviews describe the current commit. GitHub controls merge requirements.</p>}
       {error && (
         <p className="notice" role="alert">
           {error}
         </p>
       )}
-      {!links.length && repositories.length > 0 && <p>No pull requests linked to this issue yet.</p>}
       <ul className="github-pr-cards">
         {links.map((pr) => {
           const repository = repositories.find((binding) => binding.id === pr.repositoryBindingId)!;
@@ -237,20 +236,15 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
           <button className="button" disabled={Boolean(busy) || !url.trim()}>
             {busy === "link" ? "Linking pull request…" : "Link pull request"}
           </button>
-          <p>Linking and refreshing require a connection. GitHub permissions still apply when opening source links.</p>
+          {links.length > 0 && (
+            <p>
+              Linking and refreshing require a connection. GitHub permissions still apply when opening source links.
+            </p>
+          )}
         </form>
       ) : (
-        <p>
-          No GitHub repository is connected to this team.
-          {snapshot.context?.mode === "hosted" && snapshot.context.role === "owner" ? (
-            <>
-              {" "}
-              <a href="#settings">Connect one in Settings</a>.
-            </>
-          ) : (
-            " Ask your workspace owner to connect a repository."
-          )}
-        </p>
+        snapshot.context?.mode === "hosted" &&
+        snapshot.context.role === "owner" && <a href="#settings">Connect one in Settings</a>
       )}
     </section>
   );

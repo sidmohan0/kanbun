@@ -188,9 +188,7 @@ export function Members() {
               </div>
             )}
             <h2 className="invitation-list-heading">Invitations</h2>
-            {!data.invitations.length ? (
-              <p className="members-description">No invitations yet.</p>
-            ) : (
+            {data.invitations.length > 0 && (
               <ul className="member-list" aria-label="Invitations">
                 {data.invitations.map((invitation) => (
                   <li key={invitation.id}>
