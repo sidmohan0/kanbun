@@ -3,7 +3,13 @@ import migrations from "@kanbun/model/migrations/workspace/migrations.js";
 import { uuidv7 } from "@kanbun/model";
 import type { GitHubRepositorySource, GitHubPullRequestSnapshot, GitHubWebhookDelivery } from "@kanbun/events";
 import { githubRepositoryVisible } from "@kanbun/sync";
-import { githubIssueLookupSchema, githubLinkSchema, githubRepositoryConfigureSchema } from "./github-rpc";
+import {
+  githubRpc,
+  GitHubRpcError,
+  githubIssueLookupSchema,
+  githubLinkSchema,
+  githubRepositoryConfigureSchema,
+} from "./github-rpc";
 import {
   GITHUB_JOB,
   githubSource,
@@ -180,6 +186,8 @@ function failure(error: unknown, env?: AuthEnvironment): Response {
     return json(
       {
         error: error.message,
+        ...(error instanceof GitHubRpcError && error.code ? { code: error.code } : {}),
+        ...(error instanceof GitHubRpcError && error.errorId ? { errorId: error.errorId } : {}),
         ...(env?.AUTH_MODE === "email" && error.status === 401 ? { authentication: "email" } : {}),
       },
       error.status,
@@ -266,40 +274,46 @@ export class WorkspaceDO extends DurableObject<Env> {
   }
 
   async githubRepositories(principal: HostedPrincipal) {
-    const context = await this.githubPerson(principal);
-    if (context.role !== "owner") throw new RequestError("Workspace owner access required", 403);
-    const server = this.server!;
-    const teams = server.visibleTeamIds(context.actor);
-    return server.store.list("githubRepository").filter((row) => githubRepositoryVisible(server.store, teams, row));
+    return githubRpc(async () => {
+      const context = await this.githubPerson(principal);
+      if (context.role !== "owner") throw new RequestError("Workspace owner access required", 403);
+      const server = this.server!;
+      const teams = server.visibleTeamIds(context.actor);
+      return server.store.list("githubRepository").filter((row) => githubRepositoryVisible(server.store, teams, row));
+    });
   }
 
   async configureGitHubRepository(
     principal: HostedPrincipal,
     input: { teamId: string; source: GitHubRepositorySource },
   ) {
-    const context = await this.githubPerson(principal);
-    if (context.role !== "owner") throw new RequestError("Workspace owner access required", 403);
-    const args = githubRepositoryConfigureSchema.parse(input);
-    const server = this.server!;
-    const current = server.store.list("githubRepository", {
-      teamId: args.teamId,
-      repositoryId: args.source.repositoryId,
-    })[0];
-    const id = current?.installationId === args.source.installationId ? current.id : uuidv7();
-    server.github("githubRepositoryConfigure", { ...args, id }, context.actor);
-    return server.store.get("githubRepository", id)!;
+    return githubRpc(async () => {
+      const context = await this.githubPerson(principal);
+      if (context.role !== "owner") throw new RequestError("Workspace owner access required", 403);
+      const args = githubRepositoryConfigureSchema.parse(input);
+      const server = this.server!;
+      const current = server.store.list("githubRepository", {
+        teamId: args.teamId,
+        repositoryId: args.source.repositoryId,
+      })[0];
+      const id = current?.installationId === args.source.installationId ? current.id : uuidv7();
+      server.github("githubRepositoryConfigure", { ...args, id }, context.actor);
+      return server.store.get("githubRepository", id)!;
+    });
   }
 
   async githubRepositoryForIssue(
     principal: HostedPrincipal,
     input: { issueId: string; issueIncarnation: string; repositoryBindingId: string },
   ) {
-    const context = await this.githubPerson(principal);
-    const { binding } = this.githubIssue(context, githubIssueLookupSchema.parse(input));
-    return {
-      source: githubSource(binding),
-      revision: this.driver.transaction(() => reserveGitHubRevision(this.driver)),
-    };
+    return githubRpc(async () => {
+      const context = await this.githubPerson(principal);
+      const { binding } = this.githubIssue(context, githubIssueLookupSchema.parse(input));
+      return {
+        source: githubSource(binding),
+        revision: this.driver.transaction(() => reserveGitHubRevision(this.driver)),
+      };
+    });
   }
 
   async linkGitHubPullRequest(
@@ -313,67 +327,75 @@ export class WorkspaceDO extends DurableObject<Env> {
       expectedLinkId?: string;
     },
   ) {
-    const context = await this.githubPerson(principal);
-    const args = githubLinkSchema.parse(input);
-    const { issue, binding } = this.githubIssue(context, args);
-    requireReservedGitHubRevision(this.driver, args.revision);
-    const current = this.server!.store.list("issuePullRequest", {
-      issueId: issue.id,
-      repositoryBindingId: binding.id,
-      number: args.snapshot.number,
-    })[0];
-    if (args.expectedLinkId && (!current || current.id !== args.expectedLinkId))
-      throw new RequestError("This pull request link was removed. Link it again to resume tracking.", 409);
-    this.server!.github(
-      "githubPullRequestLink",
-      {
-        id: current?.id ?? uuidv7(),
+    return githubRpc(async () => {
+      const context = await this.githubPerson(principal);
+      const args = githubLinkSchema.parse(input);
+      const { issue, binding } = this.githubIssue(context, args);
+      requireReservedGitHubRevision(this.driver, args.revision);
+      const current = this.server!.store.list("issuePullRequest", {
         issueId: issue.id,
-        issueIncarnation: args.issueIncarnation,
         repositoryBindingId: binding.id,
-        revision: args.revision,
-        snapshot: args.snapshot,
-      },
-      context.actor,
-      args.snapshot.url,
-    );
-    return this.server!.store.list("issuePullRequest", {
-      issueId: issue.id,
-      repositoryBindingId: binding.id,
-      number: args.snapshot.number,
-    })[0]!;
+        number: args.snapshot.number,
+      })[0];
+      if (args.expectedLinkId && (!current || current.id !== args.expectedLinkId))
+        throw new RequestError("This pull request link was removed. Link it again to resume tracking.", 409);
+      this.server!.github(
+        "githubPullRequestLink",
+        {
+          id: current?.id ?? uuidv7(),
+          issueId: issue.id,
+          issueIncarnation: args.issueIncarnation,
+          repositoryBindingId: binding.id,
+          revision: args.revision,
+          snapshot: args.snapshot,
+        },
+        context.actor,
+        args.snapshot.url,
+      );
+      return this.server!.store.list("issuePullRequest", {
+        issueId: issue.id,
+        repositoryBindingId: binding.id,
+        number: args.snapshot.number,
+      })[0]!;
+    });
   }
 
   async refreshGitHubPullRequest(principal: HostedPrincipal, linkId: string) {
-    const context = await this.githubPerson(principal);
-    const row = this.server!.store.get("issuePullRequest", linkId);
-    if (!row) throw new RequestError("Pull request link is unavailable", 404);
-    const { binding } = this.githubIssue(context, row);
-    return {
-      source: githubSource(binding),
-      number: row.number,
-      bindingId: binding.id,
-      issueId: row.issueId,
-      issueIncarnation: row.issueIncarnation,
-      linkId: row.id,
-      revision: this.driver.transaction(() => reserveGitHubRevision(this.driver)),
-    };
+    return githubRpc(async () => {
+      const context = await this.githubPerson(principal);
+      const row = this.server!.store.get("issuePullRequest", linkId);
+      if (!row) throw new RequestError("Pull request link is unavailable", 404);
+      const { binding } = this.githubIssue(context, row);
+      return {
+        source: githubSource(binding),
+        number: row.number,
+        bindingId: binding.id,
+        issueId: row.issueId,
+        issueIncarnation: row.issueIncarnation,
+        linkId: row.id,
+        revision: this.driver.transaction(() => reserveGitHubRevision(this.driver)),
+      };
+    });
   }
 
   async disconnectGitHubRepository(principal: HostedPrincipal, bindingId: string) {
-    const context = await this.githubPerson(principal);
-    if (context.role !== "owner") throw new RequestError("Workspace owner access required", 403);
-    this.server!.github("githubRepositoryDisconnect", { id: bindingId }, context.actor);
-    return { ok: true };
+    return githubRpc(async () => {
+      const context = await this.githubPerson(principal);
+      if (context.role !== "owner") throw new RequestError("Workspace owner access required", 403);
+      this.server!.github("githubRepositoryDisconnect", { id: bindingId }, context.actor);
+      return { ok: true };
+    });
   }
 
   async githubWebhook(workspaceId: string, delivery: GitHubWebhookDelivery) {
-    await this.ready;
-    this.requireWorkspace(workspaceId);
-    if (!this.maintenanceEnabled()) throw new RequestError("GitHub observations are unavailable", 503);
-    const result = queueGitHubDelivery(this.driver, this.server!, delivery);
-    await this.armNextJob(true);
-    return result;
+    return githubRpc(async () => {
+      await this.ready;
+      this.requireWorkspace(workspaceId);
+      if (!this.maintenanceEnabled()) throw new RequestError("GitHub observations are unavailable", 503);
+      const result = queueGitHubDelivery(this.driver, this.server!, delivery);
+      await this.armNextJob(true);
+      return result;
+    });
   }
 
   private async scheduleMaintenance() {
