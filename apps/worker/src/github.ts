@@ -404,6 +404,8 @@ async function callback(request: Request, env: Env, principal: HostedPrincipal) 
 export async function githubRoute(request: Request, env: Env, principal: HostedPrincipal): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith(prefix)) return null;
+  if (env.BACKUP_RESTORE_ISOLATED === "true")
+    throw new RequestError("GitHub integration is disabled on isolated recovery targets", 503);
   const authority = env.WORKSPACES.getByName(principal.workspaceId);
   if (url.pathname === callbackPath) {
     if (request.method !== "GET") return response({ error: "Method not allowed" }, 405);
@@ -490,6 +492,7 @@ export async function githubRoute(request: Request, env: Env, principal: HostedP
         repositoryBindingId: link.bindingId,
         snapshot,
         revision: link.revision,
+        expectedLinkId: link.linkId,
       }),
     );
   }
@@ -500,6 +503,8 @@ export async function githubRoute(request: Request, env: Env, principal: HostedP
 export async function githubWebhookRoute(request: Request, env: Env): Promise<Response | null> {
   const url = new URL(request.url);
   if (url.pathname !== prefix + "/webhook") return null;
+  if (env.BACKUP_RESTORE_ISOLATED === "true")
+    throw new RequestError("GitHub integration is disabled on isolated recovery targets", 503);
   if (request.method !== "POST") return response({ error: "Method not allowed" }, 405);
   if (url.search) throw new RequestError("Unexpected query parameters");
   if (!env.GITHUB_WEBHOOK_SECRET) throw new RequestError("GitHub webhook is not configured", 503);
