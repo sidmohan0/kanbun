@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added desktop packaging targets for macOS 15+, Windows and Linux, with separate x64 and ARM64 artifacts.
+
 - Added an Electron desktop shell for the hosted web app with persistent sessions, native menus, restricted navigation, and container-run desktop smoke coverage.
 
 - Team settings now support editing the issue identifier key, preserving issue links and numbering while enforcing unique uppercase keys.

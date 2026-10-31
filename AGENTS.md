@@ -4,6 +4,13 @@ Use the repository's devcontainer for package installation, dependency changes, 
 typechecking, tests, builds, and seed runs. Local development and all repository-owned CI workflows
 use the same configuration in `.devcontainer/devcontainer.json`.
 
+Desktop distribution has one narrow exception: macOS and Windows CI jobs may bootstrap the pinned
+Node/pnpm toolchain, install frozen dependencies without lifecycle scripts, and perform native
+Electron packaging/signing. They must consume desktop JavaScript compiled by the successful
+devcontainer verifier job. Dependency changes, compilation, lint, typechecking, tests, builds of
+repository source, and seed runs remain in the devcontainer. Native packaging is not a substitute
+for repository verification. Linux desktop packaging also runs in the devcontainer.
+
 ```sh
 ./scripts/devcontainer.sh up
 ./scripts/devcontainer.sh exec pnpm install --frozen-lockfile

@@ -1,0 +1,38 @@
+{
+  "appId": "ai.kanbun.desktop",
+  "productName": "Kanbun",
+  "executableName": "kanbun",
+  "icon": "../web/public/icons/icon-512.png",
+  "directories": { "output": "release" },
+  "files": ["dist/**/*.js", "package.json"],
+  "asar": true,
+  "artifactName": "Kanbun-${version}-${os}-${arch}.${ext}",
+  "publish": null,
+  "mac": {
+    "minimumSystemVersion": "15.0.0",
+    "category": "public.app-category.productivity",
+    "target": [
+      { "target": "dmg", "arch": ["arm64", "x64"] },
+      { "target": "zip", "arch": ["arm64", "x64"] }
+    ]
+  },
+  "win": {
+    "target": [{ "target": "nsis", "arch": ["x64", "arm64"] }]
+  },
+  "nsis": {
+    "buildUniversalInstaller": false,
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "artifactName": "Kanbun-${version}-windows-${arch}-setup.${ext}"
+  },
+  "linux": {
+    "syncDesktopName": true,
+    "category": "Office",
+    "maintainer": "Kanbun contributors",
+    "target": [
+      { "target": "AppImage", "arch": ["x64", "arm64"] },
+      { "target": "deb", "arch": ["x64", "arm64"] }
+    ]
+  }
+}

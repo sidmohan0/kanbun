@@ -44,7 +44,8 @@ Current workspace packages:
 <!-- workspace-inventory:end -->
 
 The [Electron desktop shell](docs/desktop.md) loads the hosted web app with its own persistent session,
-native menus and restricted navigation. Local agent tools and packaged desktop releases are follow-up work.
+native menus and restricted navigation. CI builds Mac, Windows and Linux development packages;
+local agent tools and signed public releases are follow-up work.
 
 The local Worker runs the existing engine in a SQLite-backed `WorkspaceDO`, with HTTP sync and
 branch APIs. Runtime tests and browser recovery checks use actual `workerd`; fast engine tests and

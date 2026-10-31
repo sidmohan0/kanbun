@@ -18,8 +18,10 @@ test("desktop shell isolates hosted content, restricts navigation and restores i
   const url = `http://127.0.0.1:${server.address().port}`;
   const launch = () =>
     electron.launch({
-      executablePath,
-      args: ["--no-sandbox", fileURLToPath(new URL("../dist/main.js", import.meta.url))],
+      executablePath: process.env.KANBUN_DESKTOP_EXECUTABLE ?? executablePath,
+      args: process.env.KANBUN_DESKTOP_EXECUTABLE
+        ? ["--no-sandbox"]
+        : ["--no-sandbox", fileURLToPath(new URL("../dist/main.js", import.meta.url))],
       env: { ...process.env, KANBUN_DESKTOP_URL: url, XDG_CONFIG_HOME: directory },
     });
   let desktop;
