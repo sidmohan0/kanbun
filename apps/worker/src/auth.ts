@@ -13,6 +13,13 @@ export type AuthEnvironment = {
   APP_ORIGIN?: string;
   /** Optional service transport for fetching the configured issuer's public certificates. */
   ACCESS_JWKS?: Fetcher;
+  RESEND_API_KEY?: string;
+  AUTH_FROM_EMAIL?: string;
+  TURNSTILE_SECRET_KEY?: string;
+  TURNSTILE_SITE_KEY?: string;
+  /** Optional private service transports; production uses the provider HTTPS endpoints. */
+  AUTH_EMAIL_TRANSPORT?: Fetcher;
+  AUTH_TURNSTILE_TRANSPORT?: Fetcher;
 };
 
 const origin = z
@@ -42,6 +49,8 @@ export type AccessIdentity = {
   email: string;
   name: string;
   expiresAt: number;
+  provider?: "email" | "cloudflare-access";
+  sessionId?: string;
 };
 
 export const hostedPrincipalSchema = z.strictObject({
@@ -52,20 +61,25 @@ export const hostedPrincipalSchema = z.strictObject({
   subject: z.string().min(1).max(512),
   expiresAt: z.number().int().positive().safe(),
   admissionId: z.string().nullable(),
+  provider: z.enum(["email", "cloudflare-access"]).optional(),
+  sessionId: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
 });
 export type HostedPrincipal = z.infer<typeof hostedPrincipalSchema>;
 export const principalHeader = "X-Kanbun-Principal";
 
 export function mode(env: AuthEnvironment): "local" | "hosted" | "disabled" {
-  if (env.AUTH_MODE === "preview") return env.LOCAL_DEV === "true" ? "disabled" : "hosted";
+  if (env.AUTH_MODE === "preview" || env.AUTH_MODE === "email") return env.LOCAL_DEV === "true" ? "disabled" : "hosted";
   if (env.AUTH_MODE === undefined && env.LOCAL_DEV === "true") return "local";
   return "disabled";
 }
 
 export function configuration(env: AuthEnvironment): PreviewConfig {
   const parsed = previewConfig.safeParse({
-    issuer: env.ACCESS_ISSUER,
-    audience: env.ACCESS_AUDIENCE,
+    issuer: env.AUTH_MODE === "email" ? env.APP_ORIGIN : env.ACCESS_ISSUER,
+    audience: env.AUTH_MODE === "email" ? env.APP_ORIGIN : env.ACCESS_AUDIENCE,
     ownerEmail: env.PREVIEW_OWNER_EMAIL,
     workspaceId: env.PREVIEW_WORKSPACE_ID,
     workspaceName: env.PREVIEW_WORKSPACE_NAME,
