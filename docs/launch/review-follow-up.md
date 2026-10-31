@@ -5,17 +5,16 @@ Retained assessments identify their AI reviewers and inspected source; the sourc
 report records which acceptance criteria have applicable evidence. These reviews do not establish
 the owner's rights to publish organizational material or create provider accounts.
 
-## Owner decisions
+## Authorized launch work
 
-| Decision                       | Criteria             | Exact input needed                                                                                                                                                                                                                                                                                                                                                                                          |
-| ------------------------------ | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Publication rights and privacy | PUB-01.02            | Confirm the repository's code and original assets can be released under its Apache-2.0 license; approve public Git author metadata, installer/maintainer identifiers, and DataFog-specific roadmap material in the specification, archived specifications and build-order figure. Identify any employer, client or third-party restrictions. The retained publication review lists the inspected locations. |
-| Publication and release        | REL-01.02, RUN-02.01 | Approve the intended public source repository and qualified release identity after the privacy decision. The current draft PR, a passing build and an unpublished tag proposal do not establish a published release.                                                                                                                                                                                        |
+The repository owner has authorized public source publication and a live installation using
+isolated resources in the existing Cloudflare account. That authorization covers the technical
+publication and resource-isolation work. Actual credential entry and provider consent remain with
+the account owner. Receipts identify which authorized actions have actually completed.
 
 The maintainer's stated intention to receive paid setup inquiries supplies the service-offer
-authorization. The reviewed offer agrees deliverables, feasibility, pricing, access and availability
-per engagement and scopes maintenance separately. It promises no price, response time or guaranteed
-acceptance, so no further standing-capacity attestation is required for BIZ-01.01.
+authorization. Deliverables, feasibility, pricing, access and availability are agreed per
+engagement; the reviewed offer promises no standing price, response time or guaranteed acceptance.
 
 ## Account prerequisites for the live exercises
 
@@ -26,11 +25,11 @@ the `sid@datafog.ai` receiving inbox with recent delivered Kanbun mail, establis
 private contact route. No test message was sent. Those existing deployment resources are not an
 independent installer rehearsal and their secrets were not retrieved.
 
-| Prerequisite                        | Criteria  | Minimum access or input                                                                                                                                                                                                                                                                                                    |
-| ----------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Independent Cloudflare installation | RUN-02.01 | An existing separate account with Workers, SQLite Durable Objects, D1 and R2 available, permission to create dedicated resources and deploy the candidate, and an agreed account spending limit. Use its assigned `workers.dev` hostname to avoid requiring a new application domain.                                      |
-| Real sign-in and membership         | RUN-02.01 | A verified Resend sender and scoped sending key; a managed Turnstile widget and server secret for the new hostname; an owner address and a second eligible address in the configured email domain, with access to both receiving mailboxes. Existing sender access can be reused only with its owner's authorization.      |
-| Optional GitHub integration         | RUN-02.02 | Authority to register and install a separate GitHub App for the new origin; a disposable selected repository and PR; the documented read permissions and event subscriptions. The native owner must approve the OAuth/installation grants. Configure generated credentials directly in the isolated Worker's secret store. |
+| Prerequisite                     | Criteria  | Minimum access or input                                                                                                                                                                                                                                                                                                    |
+| -------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Isolated Cloudflare installation | RUN-02.01 | The authorized existing account with Workers, SQLite Durable Objects, D1 and R2 available, and dedicated Worker/namespace, D1, R2 and workspace identities for this rehearsal. Use its assigned `workers.dev` hostname to avoid requiring a new application domain.                                                        |
+| Real sign-in and membership      | RUN-02.01 | A verified Resend sender and scoped sending key; a managed Turnstile widget and server secret for the new hostname; an owner address and a second eligible address in the configured email domain, with access to both receiving mailboxes. Existing sender access can be reused only with its owner's authorization.      |
+| Optional GitHub integration      | RUN-02.02 | Authority to register and install a separate GitHub App for the new origin; a disposable selected repository and PR; the documented read permissions and event subscriptions. The native owner must approve the OAuth/installation grants. Configure generated credentials directly in the isolated Worker's secret store. |
 
 Enter secret values through the provider UI or the documented local secret commands. Do not put
 them in chat, Git, screenshots, review notes or retained deployment output. Account creation,
@@ -38,13 +37,14 @@ billing acceptance and new sensitive access grants require the account owner's p
 
 ## Controlled completion order
 
-1. Resolve the publication/privacy decision. Review and merge the qualified PR when
-   its required checks pass; keep the repository private until publication is authorized.
+1. Publish the authorized source after reviewing the publication inventory and qualified PR.
+   Retain the actual visibility change and merged source identity; report any concrete rights or
+   privacy findings before including affected material.
 2. Make the approved candidate source available at the chosen public URL. Cloudflare's
    [official button requires a public repository](https://developers.cloudflare.com/workers/platform/deploy-buttons/).
    A separately approved public rehearsal copy can establish provider behavior before the main
    repository is announced; it must contain the same qualified source and use its own button URL.
-3. Run the independent Cloudflare procedure with synthetic data. Retain provisioning, migration,
+3. Run the isolated Cloudflare procedure with synthetic data in the authorized existing account. Retain provisioning, migration,
    real owner/member sign-in, removal, redeployment/retry, issue persistence and isolated restore
    observations. Record failures and fix them before claiming that path works.
 4. Run the separate GitHub App connection, selected-repository link, signed observation,

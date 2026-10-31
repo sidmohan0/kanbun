@@ -8,6 +8,23 @@ import { createRuntimeHarness } from "./harness";
 it("the deploy-button setup profile serves assets while denying sign-in, fixture identities and workspace access", async () => {
   const root = fileURLToPath(new URL("../../../", import.meta.url));
   const config = JSON.parse(await readFile(resolve(root, "wrangler.json"), "utf8")) as Unstable_RawConfig;
+  if (config.vars?.["INSTALLATION_STAGE"] === "ready") {
+    // Configured forks still exercise an unconfigured setup identity; the installer tests
+    // separately require the actual ready profile to pass all deployment safety checks.
+    config.vars = { LOCAL_DEV: "false", AUTH_MODE: "email", INSTALLATION_STAGE: "setup" };
+    config.workers_dev = true;
+    delete config.routes;
+  }
+  for (const key of [
+    "APP_ORIGIN",
+    "AUTH_EMAIL_DOMAIN",
+    "AUTH_FROM_EMAIL",
+    "TURNSTILE_SITE_KEY",
+    "PREVIEW_OWNER_EMAIL",
+    "PREVIEW_WORKSPACE_ID",
+    "PREVIEW_WORKSPACE_NAME",
+  ])
+    expect(Object.hasOwn(config.vars!, key)).toBe(false);
   // The fixture substitutes only the asset service; the shipped identity configuration is unchanged.
   delete config.assets;
   const harness = await createRuntimeHarness([
@@ -34,6 +51,12 @@ it("the deploy-button setup profile serves assets while denying sign-in, fixture
     }
     const seed = await fetch(new URL("/__local/seed", url), { method: "POST" });
     expect(seed.status).toBe(404);
+    const signIn = await fetch(new URL("/api/auth/request", url), {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: new URL(url).origin },
+      body: JSON.stringify({ email: "owner@acme.dev", turnstileToken: "unconfigured-setup" }),
+    });
+    expect(signIn.status).toBe(503);
   } finally {
     await harness.close();
   }

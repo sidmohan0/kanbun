@@ -32,14 +32,19 @@ The [local quickstart](../local-worker.md) runs the application in the devcontai
 fixture identities. Its maintained lifecycle rehearsal covers initialization, issue operations,
 stop/restart, container replacement, and deliberate reset with isolated local data.
 
-The official deployment button starts the Cloudflare setup flow. The setup shell keeps sign-in
-and workspace access disabled until installer-owned settings and provider secrets are configured.
+The official deployment button starts the Cloudflare setup flow. Initial public identity keys are
+omitted so the wizard does not require blank identity inputs. Disable preview builds in the wizard
+and supply real private provider credentials directly to the isolated Worker when available.
+The setup shell keeps sign-in and workspace access disabled until installer-owned settings and
+provider secrets are configured.
 Follow the [Cloudflare installation guide](../cloudflare-deployment.md) for Worker resources,
 the owner identity, a verified email sender, Turnstile, and the optional GitHub App.
 
 Use synthetic data for evaluation and complete the relevant live-account rehearsals before team
-adoption. The [operating overview](../operations-overview.md) describes service responsibilities,
-cost drivers, upgrades, backup retention, credential rotation, and teardown.
+adoption. An authorized existing account can host dedicated rehearsal resources; the receipt
+identifies account reuse and resource isolation. This does not imply separate-account or
+separate-organization approval proof. The [operating overview](../operations-overview.md) describes
+service responsibilities, cost drivers, upgrades, backup retention, credential rotation, and teardown.
 
 ## Current limitations
 

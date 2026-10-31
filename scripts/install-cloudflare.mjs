@@ -70,7 +70,7 @@ export function validateInstallation(config, { allowSetup = false, provisioned =
     fail("ACCOUNTS needs a provisioned D1 database ID; provision it before deploying.");
   if (!config.r2_buckets?.some((b) => b.binding === "BACKUPS" && resource.test(b.bucket_name ?? "")))
     fail("Configure a dedicated private BACKUPS bucket.");
-  const blank = publicSettings.every((key) => config.vars[key] === "");
+  const blank = publicSettings.every((key) => config.vars[key] === undefined || config.vars[key] === "");
   if (allowSetup && config.vars.INSTALLATION_STAGE === "setup" && blank) {
     if (config.workers_dev !== true || config.routes?.length)
       fail("The setup shell uses only its own workers.dev hostname.");
@@ -179,17 +179,62 @@ export function environmentConfig(config, environment) {
   return next;
 }
 
-export function installationPlan(config, options) {
+export function deploymentSourceCommit(directory = root) {
+  let sourceCommit, changedCode;
+  try {
+    sourceCommit = execFileSync("git", ["rev-parse", "--verify", "HEAD^{commit}"], {
+      cwd: directory,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+    changedCode = execFileSync(
+      "git",
+      [
+        "status",
+        "--porcelain",
+        "--untracked-files=all",
+        "--",
+        "apps",
+        "packages",
+        "scripts",
+        "package.json",
+        "pnpm-lock.yaml",
+      ],
+      { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    ).trim();
+  } catch {
+    fail("Cloudflare deployment needs a Git checkout with an existing committed HEAD.");
+  }
+  if (!/^[a-f0-9]{40}$/.test(sourceCommit)) fail("Deployment needs a full 40-character source commit.");
+  if (changedCode)
+    fail(
+      "Commit application, workspace, installer and dependency changes before deployment; generated installation configuration may remain local.",
+    );
+  return sourceCommit;
+}
+
+export function installationPlan(config, options, sourceCommit) {
   const status = validateInstallation(config, options);
+  if (sourceCommit !== undefined && !/^[a-f0-9]{40}$/.test(sourceCommit))
+    fail("Deployment needs a full 40-character source commit.");
   return {
     ...status,
+    ...(sourceCommit === undefined ? {} : { sourceCommit }),
     worker: config.name,
     origin: config.vars.APP_ORIGIN || null,
     database: config.d1_databases.find((b) => b.binding === "ACCOUNTS").database_name,
     backupBucket: config.r2_buckets.find((b) => b.binding === "BACKUPS").bucket_name,
     commands: [
       ["pnpm", "--filter", "@kanbun/worker", "exec", "wrangler", "d1", "migrations", "apply", "ACCOUNTS", "--remote"],
-      ["pnpm", "--filter", "@kanbun/worker", "exec", "wrangler", "deploy"],
+      [
+        "pnpm",
+        "--filter",
+        "@kanbun/worker",
+        "exec",
+        "wrangler",
+        "deploy",
+        ...(sourceCommit === undefined ? [] : ["--tag", sourceCommit]),
+      ],
     ],
   };
 }
@@ -223,7 +268,7 @@ function main() {
   if (!["check", "deploy"].includes(action)) fail("Use check, configure or deploy.");
   const config = environmentConfig(template, process.env);
   const options = { allowSetup: values.config === "wrangler.json", provisioned: action === "deploy" };
-  const plan = installationPlan(config, options);
+  const plan = installationPlan(config, options, action === "deploy" ? deploymentSourceCommit() : undefined);
   if (action === "check" || values["dry-run"]) {
     console.log(JSON.stringify(plan, null, 2));
     return;

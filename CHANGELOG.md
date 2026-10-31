@@ -70,6 +70,8 @@ preparation moves them to a dated version heading.
 
 ### Fixed
 
+- Cloudflare's deploy wizard can submit the inert setup profile without blank required identity fields or prefilled sample credentials; installer deployments retain their committed source tag for recovery provenance.
+
 - Correct container deployment login, initial Worker secret setup, health-check environment forwarding, installer-owned GitHub callbacks, and public capability wording after launch review.
 
 - GitHub authorization now accepts the provider's issuer parameter, rejects foreign issuers before consuming authorization state, and remains compatible with callbacks that omit the issuer.

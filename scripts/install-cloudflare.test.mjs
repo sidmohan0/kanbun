@@ -1,15 +1,32 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
+  deploymentSourceCommit,
   environmentConfig,
   installationConfig,
   installationPlan,
+  publicSettings,
   validateInstallation,
   workspaceId,
 } from "./install-cloudflare.mjs";
 
-const template = JSON.parse(readFileSync(new URL("../wrangler.json", import.meta.url)));
+const rootProfile = JSON.parse(readFileSync(new URL("../wrangler.json", import.meta.url)));
+// Installation functions are exercised against an explicit unconfigured fixture so that
+// Cloudflare-provisioned IDs and deliberately configured forks do not change these cases.
+const template = structuredClone(rootProfile);
+template.name = "kanbun";
+delete template.account_id;
+delete template.routes;
+template.workers_dev = true;
+template.vars = { LOCAL_DEV: "false", AUTH_MODE: "email", INSTALLATION_STAGE: "setup" };
+const accounts = template.d1_databases.find((binding) => binding.binding === "ACCOUNTS");
+accounts.database_name = "kanbun-accounts";
+accounts.database_id = "00000000-0000-0000-0000-000000000000";
+template.r2_buckets.find((binding) => binding.binding === "BACKUPS").bucket_name = "kanbun-backups";
 const settings = {
   name: "kanbun-independent",
   account_id: "a".repeat(32),
@@ -25,16 +42,84 @@ const settings = {
 };
 const configured = () => installationConfig(template, settings);
 
+test("the root profile omits unset setup inputs or passes full configured-installation safety", () => {
+  if (rootProfile.vars?.INSTALLATION_STAGE === "setup") {
+    for (const key of publicSettings)
+      assert.equal(
+        Object.hasOwn(rootProfile.vars, key),
+        false,
+        `${key} must be configured after the inert setup deployment`,
+      );
+    assert.deepEqual(validateInstallation(rootProfile, { allowSetup: true, provisioned: false }), {
+      stage: "setup",
+      ready: false,
+    });
+  } else {
+    assert.deepEqual(validateInstallation(rootProfile), { stage: "ready", ready: true });
+  }
+});
+
+test("the runtime-secret example contains guidance without generated wizard credentials", () => {
+  const lines = readFileSync(new URL("../.dev.vars.example", import.meta.url), "utf8").split(/\r?\n/);
+  assert.equal(
+    lines.filter((line) => line.trim() && !line.trim().startsWith("#")).length,
+    0,
+    "Keep .dev.vars.example comments-only; active assignments become prefilled deploy-button secret inputs.",
+  );
+  for (const name of ["RESEND_API_KEY", "TURNSTILE_SECRET_KEY"])
+    assert.ok(
+      lines.some((line) => new RegExp(`^#\\s*${name}:`).test(line)),
+      `Document ${name} setup without a credential value`,
+    );
+});
+
 test("portable template has no hosted identity and only permits an inert setup stage before provisioning", () => {
   assert.deepEqual(validateInstallation(template, { allowSetup: true, provisioned: false }), {
     stage: "setup",
     ready: false,
   });
-  assert.throws(() => validateInstallation(template, { allowSetup: true }), /provisioned D1/);
+  const unprovisioned = structuredClone(template);
+  unprovisioned.d1_databases.find((binding) => binding.binding === "ACCOUNTS").database_id =
+    "00000000-0000-0000-0000-000000000000";
+  assert.throws(() => validateInstallation(unprovisioned, { allowSetup: true }), /provisioned D1/);
   assert.throws(() => validateInstallation(template, { provisioned: false }), /APP_ORIGIN/);
   assert(!JSON.stringify(template).includes("datafog"));
   assert(!JSON.stringify(template).includes("kanbun.ai"));
   assert(!template.account_id);
+});
+
+test("omitted or empty identity values are accepted only in the explicit inert setup mode", () => {
+  const options = { allowSetup: true, provisioned: false };
+  const empty = structuredClone(template);
+  empty.vars.APP_ORIGIN = "";
+  empty.vars.AUTH_EMAIL_DOMAIN = "";
+  assert.deepEqual(validateInstallation(empty, options), { stage: "setup", ready: false });
+  for (const key of publicSettings) {
+    const partial = structuredClone(template);
+    partial.vars[key] = "nonempty-incomplete-setting";
+    assert.throws(() => validateInstallation(partial, options));
+  }
+  for (const change of [
+    (config) => {
+      config.vars.INSTALLATION_STAGE = "ready";
+    },
+    (config) => {
+      delete config.vars.INSTALLATION_STAGE;
+    },
+    (config) => {
+      config.vars.LOCAL_DEV = "true";
+    },
+    (config) => {
+      config.workers_dev = false;
+    },
+    (config) => {
+      config.routes = [{ pattern: "unexpected.acme.dev", custom_domain: true }];
+    },
+  ]) {
+    const unsafe = structuredClone(template);
+    change(unsafe);
+    assert.throws(() => validateInstallation(unsafe, options));
+  }
 });
 
 test("configuration creates installer-owned state and reruns preserve workspace identity", () => {
@@ -116,7 +201,7 @@ test("build environment accepts public inputs only and cannot turn a partial con
   assert(!JSON.stringify(merged).includes("private-secret"));
   const partial = environmentConfig(template, { PREVIEW_OWNER_EMAIL: "owner@acme.dev" });
   assert.throws(() => validateInstallation(partial, { allowSetup: true, provisioned: false }), /APP_ORIGIN/);
-  assert.equal(template.vars.PREVIEW_OWNER_EMAIL, "");
+  assert.equal(template.vars.PREVIEW_OWNER_EMAIL, undefined);
 });
 
 test("configuration rejects malformed email domains and mailbox forms before reaching runtime", () => {
@@ -142,4 +227,33 @@ test("configuration rejects malformed email domains and mailbox forms before rea
     () => installationConfig(template, { ...settings, origin: "https://work.acme.dev:8443" }),
     /HTTPS origin/,
   );
+});
+
+test("deployment tags identify committed code while generated resource configuration may remain local", (t) => {
+  const directory = mkdtempSync(path.join(tmpdir(), "kanbun-deployment-source-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  assert.throws(() => deploymentSourceCommit(directory), /Git checkout with an existing committed HEAD/);
+  const git = (...args) =>
+    execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  git("init", "-b", "main");
+  assert.throws(() => deploymentSourceCommit(directory), /existing committed HEAD/);
+  mkdirSync(path.join(directory, "apps"));
+  writeFileSync(path.join(directory, "apps/worker.ts"), "export default {};\n");
+  writeFileSync(path.join(directory, "wrangler.json"), "{}\n");
+  git("add", ".");
+  git("-c", "user.name=Deployment test", "-c", "user.email=deployment@example.com", "commit", "-m", "fixture");
+  const sourceCommit = git("rev-parse", "HEAD");
+  assert.equal(deploymentSourceCommit(directory), sourceCommit);
+  writeFileSync(path.join(directory, "wrangler.json"), '{"database_id":"generated-resource-id"}\n');
+  assert.equal(deploymentSourceCommit(directory), sourceCommit);
+  const plan = installationPlan(configured(), undefined, sourceCommit);
+  assert.equal(plan.sourceCommit, sourceCommit);
+  assert.deepEqual(plan.commands[1].slice(-3), ["deploy", "--tag", sourceCommit]);
+  assert.equal(plan.commands[0].includes("--tag"), false);
+  assert.throws(() => installationPlan(configured(), undefined, "unknown"), /full 40-character source commit/);
+  writeFileSync(path.join(directory, "apps/worker.ts"), "export default { changed: true };\n");
+  assert.throws(() => deploymentSourceCommit(directory), /Commit application/);
+  git("restore", "apps/worker.ts");
+  writeFileSync(path.join(directory, "apps/untracked.ts"), "export {};\n");
+  assert.throws(() => deploymentSourceCommit(directory), /Commit application/);
 });

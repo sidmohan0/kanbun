@@ -123,12 +123,12 @@
     },
     {
       "id": "RUN-02",
-      "title": "Cloudflare installation succeeds in an independent account",
+      "title": "Cloudflare installation succeeds with isolated installer resources",
       "priority": 1,
       "criteria": [
         {
           "id": "RUN-02.01",
-          "assertion": "From a fork and independent Cloudflare account, the documented button/setup procedure provisions resources, migrations, assets and an owner; native sign-in, issue creation, member admission, and persistence succeed, and setup retries preserve data.",
+          "assertion": "From the published source repository, the documented button/setup procedure provisions a fresh installation with a dedicated Worker, D1 database, private R2 bucket, Durable Object namespaces, separate origin and installer workspace identity; native sign-in, issue creation, member admission/removal and persistence succeed, and setup retries preserve data. A rehearsal in the owner's existing authorized Cloudflare account explicitly records shared account/provider dependencies and does not establish separate-account onboarding.",
           "method": "rehearsal",
           "scope": [
             "wrangler.json",
@@ -140,7 +140,7 @@
             "pnpm-lock.yaml"
           ],
           "owner": "Cloudflare installation maintainer",
-          "procedure": "Run the published installation procedure in a separate account with installer-owned domain, email sender, Turnstile and resources. Retain sanitized deployment and authenticated browser evidence. Include anonymous denial, disabled fixture identities, retry, and restart checks; record manual provider steps."
+          "procedure": "Exercise the official deployment-button and documented setup flow using fresh dedicated resources and a separate origin in an account explicitly authorized for rehearsal. Record source/deployed version, Worker/D1/R2/DO identities, new workspace state, resource separation from the maintainer pilot, and whether the account, sender or provider credentials are shared. Retain actual owner/member mail, admission, removal, issue persistence, redeployment/retry, anonymous denial and disabled fixture-identity observations. Record manual provider steps and existing account entitlement/permission assumptions; same-account resource isolation does not prove account creation, billing eligibility or cross-account onboarding."
         },
         {
           "id": "RUN-02.02",

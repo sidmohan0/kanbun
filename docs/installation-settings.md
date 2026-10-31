@@ -3,7 +3,8 @@
 [Cloudflare deployment](cloudflare-deployment.md) uses a separate root Wrangler configuration.
 `installation.local.json` is the input to `pnpm install:cloudflare configure`; the generated
 `wrangler.install.json` is ignored by Git. The official button uses `wrangler.json` at the repository
-root. Required identity settings start blank so the setup deployment cannot admit a synthetic user.
+root. Initial public identity keys are omitted so the deployment wizard does not turn them into
+required blank inputs. The setup deployment cannot admit a synthetic user.
 
 ## Public configuration
 
@@ -23,8 +24,10 @@ root. Required identity settings start blank so the setup deployment cannot admi
 | `backup_bucket`      | `r2_buckets[BACKUPS].bucket_name`      | Your dedicated private R2 bucket                                |
 
 `LOCAL_DEV=false`, `AUTH_MODE=email`, authenticated asset routing, source metadata and the maintained
-migrations remain mandatory. `INSTALLATION_STAGE=setup` permits only the blank default profile;
-`ready` requires complete public identity settings. Partial settings fail installation validation.
+migrations remain mandatory. `INSTALLATION_STAGE=setup` permits only the explicitly inert setup
+profile with every public identity value absent or empty; the shipped template omits those keys.
+`ready` requires complete public identity settings. Partial nonempty settings fail installation
+validation. Do not use placeholder identities, site keys or secret values to bypass the setup flow.
 
 The deployment script accepts `APP_ORIGIN`, `AUTH_EMAIL_DOMAIN`, `AUTH_FROM_EMAIL`,
 `TURNSTILE_SITE_KEY`, `PREVIEW_OWNER_EMAIL`, `PREVIEW_WORKSPACE_ID` and `PREVIEW_WORKSPACE_NAME`
@@ -45,6 +48,11 @@ Runtime secrets must be stored using the provider's Worker secret interface.
 GitHub's public App ID, client ID and slug are documented in [GitHub setup](github-integration.md).
 Add them only after the initial installation succeeds. Public site keys and App identifiers are
 configuration; API keys, private keys, session tokens and webhook secrets belong outside Git.
+
+The tracked `.dev.vars.example` contains comments-only guidance. Keep active sample credential
+assignments out of it: the deployment wizard treats such assignments as required secret inputs.
+After deploying the inert setup shell, supply actual runtime secrets to the target Worker through
+Cloudflare. Actual local credentials belong in ignored local files or private process input.
 
 ## Provider access
 

@@ -33,19 +33,19 @@ CI run does not claim that the repository is ready for public promotion.
 
 ## Implementation and verification order
 
-| Priority | Requirement                      | Automated verification                                           | External evidence                                                                                         |
-| -------- | -------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| 0        | PUB-01 Publication safety        | Current-tree/history scanner results                             | Sanitized finding resolution, rotation where needed, privacy and provenance review                        |
-| 0        | PUB-02 Independent configuration | Installer file checks and configuration/workflow tests           | Plan and fork-safety rehearsal                                                                            |
-| 0        | PUB-03 Accurate public claims    | Existing product scenarios and spec-lock checks                  | Claim-to-behavior review across README, spec, and guides                                                  |
-| 1        | RUN-01 Local installation        | Container and lifecycle procedure checks                         | Clean setup, repeat initialization, issue operations, stop/restart, replacement, reset, newcomer review   |
-| 1        | RUN-02 Cloudflare installation   | Installer plan and default-safety tests                          | Separate-account deployment, actual sign-in/member flow, persistence/retry, separate GitHub App setup     |
-| 1        | OPS-01 Operating lifecycle       | Existing recovery and migration tests                            | Populated supported-version upgrade, isolated restore, operator-guide review                              |
-| 2        | DOC-01 README                    | Links, command references, metadata and writing rules            | Accuracy, screenshot, tone and newcomer clarity review                                                    |
-| 2        | GOV-01 Support and contribution  | Policy/template checks and applicable repository-security checks | Actual GitHub settings/private-reporting evidence and policy review                                       |
-| 2        | BIZ-01 Implementation help       | Documentation and contact-link checks                            | Deliverables, prerequisites and maintenance-scope review                                                  |
-| 2        | PORT-01 Portfolio presentation   | Case-study artifact and documentation checks                     | Attribution, synthetic walkthrough, and technical-measurement review                                      |
-| 3        | REL-01 Qualified release         | Complete same-source devcontainer receipt with bound logs        | Separate history-aware PR checks, release notes, candidate/tag identity and evidence applicability review |
+| Priority | Requirement                      | Automated verification                                           | External evidence                                                                                                                                   |
+| -------- | -------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0        | PUB-01 Publication safety        | Current-tree/history scanner results                             | Sanitized finding resolution, rotation where needed, privacy and provenance review                                                                  |
+| 0        | PUB-02 Independent configuration | Installer file checks and configuration/workflow tests           | Plan and fork-safety rehearsal                                                                                                                      |
+| 0        | PUB-03 Accurate public claims    | Existing product scenarios and spec-lock checks                  | Claim-to-behavior review across README, spec, and guides                                                                                            |
+| 1        | RUN-01 Local installation        | Container and lifecycle procedure checks                         | Clean setup, repeat initialization, issue operations, stop/restart, replacement, reset, newcomer review                                             |
+| 1        | RUN-02 Cloudflare installation   | Installer plan and default-safety tests                          | Isolated installer resources, actual sign-in/member flow, persistence/retry, separate GitHub App setup; record shared account/provider dependencies |
+| 1        | OPS-01 Operating lifecycle       | Existing recovery and migration tests                            | Populated supported-version upgrade, isolated restore, operator-guide review                                                                        |
+| 2        | DOC-01 README                    | Links, command references, metadata and writing rules            | Accuracy, screenshot, tone and newcomer clarity review                                                                                              |
+| 2        | GOV-01 Support and contribution  | Policy/template checks and applicable repository-security checks | Actual GitHub settings/private-reporting evidence and policy review                                                                                 |
+| 2        | BIZ-01 Implementation help       | Documentation and contact-link checks                            | Deliverables, prerequisites and maintenance-scope review                                                                                            |
+| 2        | PORT-01 Portfolio presentation   | Case-study artifact and documentation checks                     | Attribution, synthetic walkthrough, and technical-measurement review                                                                                |
+| 3        | REL-01 Qualified release         | Complete same-source devcontainer receipt with bound logs        | Separate history-aware PR checks, release notes, candidate/tag identity and evidence applicability review                                           |
 
 Complete publication safety and configuration work first. Local and cloud installation can then
 proceed independently alongside documentation. Rehearse operating procedures against populated
@@ -54,6 +54,15 @@ data, review public presentation, and evaluate the final candidate after integra
 The registry's assertions are deliberately bounded. A file-presence check establishes that its
 named artifacts exist and contain bytes. It does not establish that an installation works or a
 policy is appropriate. Those promises have their own rehearsal or review criteria.
+
+The owner authorized a live rehearsal using isolated resources in the existing Cloudflare
+account. RUN-02.01 therefore requires a new Worker, D1 database, private R2 bucket, Worker-scoped
+Durable Object namespaces, workspace identity and separate origin. The existing maintainer pilot's
+resources and routes remain outside that rehearsal. Receipts identify reused account entitlements,
+email services and provider dependencies. This establishes the recorded deployment and isolation
+behavior; separate-account creation, billing eligibility and first-time provider onboarding remain
+outside the same-account result. RUN-02.02 still uses a distinct installer-owned GitHub App and
+selected disposable repository.
 
 ## Evidence format
 

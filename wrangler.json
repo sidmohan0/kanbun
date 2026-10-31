@@ -14,14 +14,7 @@
   "vars": {
     "LOCAL_DEV": "false",
     "AUTH_MODE": "email",
-    "INSTALLATION_STAGE": "setup",
-    "APP_ORIGIN": "",
-    "AUTH_EMAIL_DOMAIN": "",
-    "AUTH_FROM_EMAIL": "",
-    "TURNSTILE_SITE_KEY": "",
-    "PREVIEW_OWNER_EMAIL": "",
-    "PREVIEW_WORKSPACE_ID": "",
-    "PREVIEW_WORKSPACE_NAME": ""
+    "INSTALLATION_STAGE": "setup"
   },
   "d1_databases": [
     {

@@ -24,6 +24,20 @@ observability and accumulated backups determine cost. Backups have no automatic 
 Set account usage notifications and review the private bucket's growth. There is no measured
 monthly-cost estimate for a real team yet.
 
+## Isolated rehearsal in an existing account
+
+An authorized existing Cloudflare account can host a separate installation for the live exercise.
+Give it a unique Worker name and workers.dev origin, a new D1 database, a new private R2 bucket,
+and a fresh workspace identity. The unique Worker owns its own WorkspaceDO and DocumentDO
+namespaces. Keep the maintained pilot's Worker, routes, bindings, database, bucket, App and
+configuration unchanged. Upload credentials only to the new Worker's secret store.
+
+Record the account reuse and every dedicated resource identity in sanitized rehearsal evidence.
+This exercises installation isolation, provisioning, authentication and persistence inside that
+account. It does not establish a separate account's permissions, billing eligibility or limits.
+Check the planned resource names against the account inventory before deploying. Keep synthetic
+data in the rehearsal and record which resources will be retained or removed afterward.
+
 ## Deploy button
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fsidmohan0%2Fkanbun)
@@ -35,19 +49,36 @@ Keep the repository root as the build root: the application uses workspace packa
 
 Use the root build command `pnpm build` and deployment command `pnpm run deploy`. Review the Worker,
 database and bucket names before starting. Resource names must be dedicated to this installation.
+In the deployment wizard, turn **Enable preview builds** off before submitting. The wizard can
+enable branch builds independently of the Worker's version-preview URL setting; this initial
+installation uses only its production setup shell.
 The root profile enables the Worker's own `workers.dev` hostname and disables version-preview URLs.
 It contains no maintainer account, domain, GitHub App, or owner identity.
 
 **Initial completion scope:** the default deployment is a setup shell. It applies the D1 migrations
-and deploys application assets, with email authentication selected and all installation identity
-settings blank. Workspace and sign-in APIs fail closed until configuration is complete. A successful
-build alone does not prove usable sign-in, email delivery, invitations or backup recovery.
+and deploys application assets, with email authentication selected and installation identity
+keys omitted from the initial public variables. Workspace and sign-in APIs fail closed until
+configuration is complete. A successful build alone does not prove usable sign-in, email delivery,
+invitations or backup recovery.
 
-The button's independent-account deployment has not yet been rehearsed. The launch report retains
-that requirement until an installer records a successful real installation. Cloudflare documents that it writes provisioned IDs into the cloned configuration and supports
-applying migrations before `wrangler deploy` in the custom deployment command. This installer
+Keep those initial identity keys absent. Empty public variables become required blank inputs in
+the deployment wizard and can prevent submitting the setup form. Do not insert placeholder
+identities or synthetic provider values to bypass required inputs.
+
+The comments-only `.dev.vars.example` documents the `RESEND_API_KEY` and `TURNSTILE_SECRET_KEY`
+names without active sample assignments or credential values. Active assignments in that file
+are interpreted by the wizard as required secret inputs, so do not add placeholder assignments
+to complete setup. Deploy the inert setup shell first, then have the account owner provide real
+runtime secrets directly to that Worker's secret store. Email sign-in remains unavailable until
+those secrets and the public identity configuration are complete.
+
+The launch report retains the button and installer-owned resource requirement until an installer
+records a successful real installation. Cloudflare documents that it writes provisioned IDs into
+the cloned configuration and supports applying migrations before `wrangler deploy` in the custom
+deployment command. This installer
 requires that provisioned ID before applying migrations; an unchanged placeholder stops it before
-any database operation. The independent-account rehearsal must still confirm this provider flow.
+any database operation. The live rehearsal must confirm this provider flow and state whether the
+account was reused.
 
 ### Complete the installation
 
@@ -60,8 +91,9 @@ any database operation. The independent-account rehearsal must still confirm thi
    setting names listed in [the settings reference](installation-settings.md) from build environment
    variables. Persist the public settings in your fork before subsequent deployments so a build
    without those environment variables cannot return the app to setup mode.
-4. Set `RESEND_API_KEY` and `TURNSTILE_SECRET_KEY` as Worker secrets. Keep actual values out of Git,
-   build logs and launch evidence. The example file supplies prompts, not usable credentials.
+4. Set `RESEND_API_KEY` and `TURNSTILE_SECRET_KEY` as Worker secrets after the inert setup deploy.
+   Keep actual values out of Git, build logs and launch evidence. The comments-only example file
+   supplies names and local guidance without active credential assignments.
 5. Redeploy, then complete the acceptance exercise below. Keep GitHub disabled until core sign-in
    and membership are working.
 
@@ -127,6 +159,13 @@ It does not create or reset resources. Applied migrations are tracked in D1, so 
 initial deployment reuses existing state. If the provider fails, inspect its output and current
 resources before retrying; never delete the database to resolve a deployment error.
 
+Deployment and deployment dry-runs require committed application and installer code. The installer
+derives the full current Git HEAD and tags the Worker version with that source commit; there is no
+caller-supplied SHA override. Commit deployment-code changes under the application, package,
+script and manifest paths before deploying. Provider-generated root Wrangler settings and local
+installation configuration can remain local. The provider-free `check` command validates settings
+without requiring a deployment source tag.
+
 ## Acceptance exercise
 
 Use a fresh installer-owned account or isolated resources and retain the candidate source commit,
@@ -145,7 +184,7 @@ contents in public evidence.
   in the launch report.
 
 Local automated runtime tests exercise the auth implementation using private test transports;
-real mail delivery and independent-account installation require this live exercise.
+real mail delivery and installer-owned resource setup require this live exercise.
 
 ## Optional GitHub integration
 

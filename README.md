@@ -17,8 +17,8 @@ repository's Docker-based devcontainer.
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fsidmohan0%2Fkanbun)
 
 The button provisions a setup shell. Complete owner, origin, email, and Turnstile configuration
-using the [installation guide](docs/cloudflare-deployment.md) before signing in. An independent
-account rehearsal is tracked in launch readiness.
+using the [installation guide](docs/cloudflare-deployment.md) before signing in. An isolated-installation
+rehearsal is tracked in launch readiness.
 
 ![Kanbun issue list using synthetic local data](docs/images/issue-list.png)
 
