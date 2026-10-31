@@ -62,6 +62,8 @@ preparation moves them to a dated version heading.
 
 ### Changed
 
+- Browser recovery concurrency can be capped with `KANBUN_RECOVERY_WORKERS` on memory-constrained shared runtimes.
+
 - Removed secondary explanatory copy from empty views and lists while retaining headings, actions and access/error guidance.
 
 ### Fixed

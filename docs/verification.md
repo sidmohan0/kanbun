@@ -30,6 +30,16 @@ and current spec/archive validation. `build` runs the production build, `smoke` 
 documentation contracts. The complete run includes browser recovery; `check` retains the faster
 non-browser checks.
 
+When sharing a memory-constrained Docker runtime with other worktrees, limit browser concurrency
+without changing the recovery suite, assertions or timeouts:
+
+```sh
+./scripts/devcontainer.sh exec env KANBUN_RECOVERY_WORKERS=1 pnpm --silent verify --json
+```
+
+`KANBUN_RECOVERY_WORKERS` must be a positive integer. When unset, Playwright chooses its normal
+worker count. The setting applies only to browser recovery; all full-verifier stages still run.
+
 For machine-readable stdout, suppress pnpm's lifecycle banner:
 
 ```sh
