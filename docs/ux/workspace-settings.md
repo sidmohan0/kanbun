@@ -16,14 +16,16 @@ its development label; workspace naming is a hosted setting.
 
 ## Teams
 
-Choose an existing team, edit its name and description, or create a new team with a name and issue
+Choose an existing team, edit its name, key and description, or create a new team with a name and issue
 identifier key. A new team is visible to everyone already admitted to this workspace. This does not
 make the workspace publicly accessible. The existing default workflow creates Backlog, Todo,
 In Progress, Done and Canceled statuses. The creator receives the existing team-owner membership.
 
-Keys follow the existing one-to-seven letter/digit contract and cannot be changed here. New teams
-cannot reuse an existing key. Private teams keep their existing membership restrictions; this
-interface neither changes visibility nor grants private-team access. Team deletion, retirement and
+Keys contain one to seven letters or digits, starting with a letter, and save in uppercase.
+A key must be unique across all teams. Changing a key updates existing issue identifiers (for example,
+`KAN-12` becomes `DF-12`) while preserving issue IDs, numbers, links and the next issue number.
+Private teams keep their existing membership restrictions; this interface neither changes visibility
+nor grants private-team access. Team deletion, retirement and
 private-team membership administration are outside this flow.
 
 ## Workflow statuses

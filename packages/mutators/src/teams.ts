@@ -4,6 +4,8 @@ import { z } from "zod";
 import { firstKey, keyAfter } from "./ordering";
 import { color, id, nullable } from "./schema";
 
+const teamKey = z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,6}$/, "1–7 letters or digits, starting with a letter");
+
 const stateType = z.enum(["triage", "backlog", "unstarted", "started", "completed", "canceled"]);
 
 export const DEFAULT_STATES: {
@@ -50,6 +52,7 @@ export function requireTeamAccess(ctx: DecideContext, teamId: string): Row<"team
 const teamPatch = z
   .object({
     name: z.string().trim().min(1).max(80),
+    key: teamKey,
     displayName: z.string().trim().min(1).max(80),
     description: nullable(z.string()),
     icon: nullable(z.string()),
@@ -83,7 +86,7 @@ export const mutators = {
     args: z.object({
       id,
       name: z.string().trim().min(1).max(80),
-      key: z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,6}$/, "1–7 letters or digits, starting with a letter"),
+      key: teamKey,
       icon: nullable(z.string()).optional(),
       color: nullable(color).optional(),
       visibility: z.enum(["public", "private"]).optional(),
@@ -147,7 +150,7 @@ export const mutators = {
 
   teamUpdate: defineMutator({
     args: z.object({ id, patch: teamPatch }),
-    description: "Change team settings (name, key display, cycles, triage, estimation, auto-archive).",
+    description: "Change team settings (name, issue key, cycles, triage, estimation, auto-archive).",
     run(ctx, args) {
       requireTeamAdmin(ctx, args.id);
       if (args.patch.parentId === args.id) throw new MutationError("a team cannot be its own parent", "invalid");
@@ -158,7 +161,10 @@ export const mutators = {
         if (!state || state.teamId !== args.id || state.archivedAt)
           throw new MutationError("team state must be active and belong to this team", "invalid");
       }
-      ctx.store.patch("team", args.id, { ...args.patch, updatedAt: ctx.now });
+      const key = args.patch.key?.toUpperCase();
+      if (key && ctx.store.list("team").some((team) => team.id !== args.id && team.key.toUpperCase() === key))
+        throw new MutationError(`team key ${key} is taken`, "conflict");
+      ctx.store.patch("team", args.id, { ...args.patch, ...(key ? { key } : {}), updatedAt: ctx.now });
     },
   }),
 

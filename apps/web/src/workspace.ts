@@ -642,7 +642,13 @@ export const workspace = {
   },
   updateTeam(
     id: string,
-    patch: { name?: string; displayName?: string; description?: string | null; defaultIssueStateId?: string },
+    patch: {
+      name?: string;
+      key?: string;
+      displayName?: string;
+      description?: string | null;
+      defaultIssueStateId?: string;
+    },
   ): void {
     const active = editableClient();
     active.mutate("teamUpdate", { id, patch });
