@@ -1,13 +1,13 @@
 kanbun logo kit v1 (Bone & Cinnabar, Shippori Mincho wordmark)
 
 Name         kanbun (lowercase)
-Tagline      The issue tracker where agents pick up the work.
-Description  An AI-native, local-first issue tracker for people and agents.
+Tagline      Collaborative issue tracking.
+Description  A local-first issue tracker with collaborative editing and GitHub context.
 
 Assets (paths relative to this kit)
   svg/                        vector masters: marks, wordmarks, light/dark lockups,
-                              app icons, avatars, and the social card. Text is
-                              converted to outlines, no font needed.
+                              app icons, avatars, and the social card. Wordmarks
+                              are outlined; the social headline uses a system serif.
   ../apps/web/public/          favicon.svg, favicon.ico (16/32/48), and og.png (1200x630).
   ../apps/web/public/icons/    raster app icons: 180 Apple touch, 192/512 PWA.
   ../apps/web/src/brand/       theme-aware React mark and color/reverse SVG copies.
@@ -21,7 +21,7 @@ Colors
   Cinnabar Bright #F0573E  lit card on Ink only
 
 Type
-  Shippori Mincho SemiBold - wordmark, headlines (SIL Open Font License)
+  Shippori Mincho SemiBold - wordmark, application headlines (SIL Open Font License)
   Inter 400/500/600 - product UI
 
 Rules

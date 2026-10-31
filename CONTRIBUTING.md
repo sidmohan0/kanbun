@@ -1,5 +1,18 @@
 # Contributing
 
+Start with a focused issue describing the problem, expected behavior, and proposed scope. Bug
+reports should include the source commit, deployment mode, reproduction steps, and redacted logs.
+Use synthetic data. Report vulnerabilities privately through [SECURITY.md](SECURITY.md).
+
+## Source and asset attribution
+
+Keep Kanbun's product-specific code, icons, illustrations, and styles original. Do not copy another
+product's source, proprietary assets, or captured traffic. Licensed dependencies, fonts, and
+official provider assets need source and license information, required notices, and maintainer
+review. Update [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) when introducing these materials.
+
+## Before opening a pull request
+
 See the [README](README.md#development) for the pinned toolchain, setup, and verification commands.
 
 Run `pnpm verify` before opening a PR. The same verifier runs in PR CI and retains per-check logs
@@ -53,8 +66,8 @@ policy. CI reruns when the description, labels, commits, or target branch change
 ## Checking locally
 
 ```sh
-pnpm test:changelog
-pnpm changelog:check --base origin/main
+./scripts/devcontainer.sh exec pnpm test:changelog
+./scripts/devcontainer.sh exec pnpm changelog:check --base origin/main
 ```
 
 The checker reads committed changes, not working-tree or staged entries. Fetch the target branch

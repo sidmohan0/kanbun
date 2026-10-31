@@ -1,8 +1,8 @@
 # Daily issue views
 
-The issue list currently shows every active issue with its identifier, title, and save state.
-Properties can be edited in the detail view, but there is no way to find assigned work, search the
-list, narrow it by properties, or choose its ordering.
+The issue list shows active issues with identifiers, titles, property summaries, and save state.
+Daily views add assigned work, search, combined property filters, and stable sorting to the same
+authorized working set.
 
 All issues remains the default destination. My Issues shows active issues assigned to the signed-in
 person. Both views share the existing create form, title editing, issue detail links, synchronization

@@ -17,6 +17,7 @@ export default defineConfig([
     "artifacts/preview-health/",
     "artifacts/verification/",
     "artifacts/docs-drift/",
+    "artifacts/launch/",
     "_to_delete/",
     "packages/model/migrations/",
     "SPEC.md",

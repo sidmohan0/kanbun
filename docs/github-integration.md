@@ -8,14 +8,26 @@ GitHub login button.
 
 ## App and Worker configuration
 
-Register the GitHub App with these hosted destinations:
+Register an installer-owned GitHub App with the destinations below, replacing `<APP_ORIGIN>`
+with the exact HTTPS origin in your installation configuration, without a trailing slash. The
+maintainer preview uses `https://kanbun.ai`; independent installations use their own origin.
 
-| Setting                     | Destination                                          |
-| --------------------------- | ---------------------------------------------------- |
-| Homepage                    | `https://kanbun.ai`                                  |
-| User authorization callback | `https://kanbun.ai/api/integrations/github/callback` |
-| Setup after installation    | `https://kanbun.ai/#settings`                        |
-| Active webhook              | `https://kanbun.ai/api/integrations/github/webhook`  |
+| Setting                     | Destination                                     |
+| --------------------------- | ----------------------------------------------- |
+| Homepage                    | `<APP_ORIGIN>`                                  |
+| User authorization callback | `<APP_ORIGIN>/api/integrations/github/callback` |
+| Setup after installation    | `<APP_ORIGIN>/#settings`                        |
+| Active webhook              | `<APP_ORIGIN>/api/integrations/github/webhook`  |
+
+Leave **Request user authorization (OAuth) during installation** unchecked. Kanbun starts user
+authorization separately through **Connect GitHub** after native owner sign-in; that action
+creates the browser-bound state and PKCE verifier required by its callback. An installation-time
+OAuth callback has no matching Kanbun setup state. Keep **Expire user authorization tokens**
+selected and leave **Enable Device Flow** unchecked; this integration uses the web application
+flow. The setup URL returns the installer to Settings and grants no workspace authority.
+
+GitHub distinguishes the [user-authorization callback](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/about-the-user-authorization-callback-url)
+from the setup URL. Use the exact origin and paths in the table; avoid wildcard callbacks.
 
 Use selected-repository installation and read-only repository permissions for **Metadata**,
 **Pull requests**, **Checks** and **Commit statuses**. The implementation requests no source-code
@@ -34,7 +46,11 @@ for the provider settings; do not expand permissions to work around a failed con
 | `GITHUB_APP_PRIVATE_KEY`   | Private Worker secret containing PKCS8 PEM            |
 | `GITHUB_WEBHOOK_SECRET`    | Private Worker secret matching the App webhook secret |
 
-The provider's downloaded RSA key must be converted to PKCS8 before storing it for `importPKCS8`.
+GitHub downloads its RSA key in PKCS#1 PEM format. Convert it to PKCS#8 PEM before storing it for
+`importPKCS8`; the resulting private-key header is `BEGIN PRIVATE KEY`. Perform conversion in a
+private directory outside Git and send the result directly to the target Worker's secret store.
+GitHub's [key-management guidance](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/managing-private-keys-for-github-apps)
+describes the downloaded format and provider fingerprint verification.
 Keep the downloaded and converted private files outside Git, restrict their local permissions,
 and never print key contents or secrets into chat, logs or retained artifacts. Public identifiers
 belong in the reviewed hosted configuration; private values belong only in Worker secret storage.
@@ -94,6 +110,25 @@ sessions and magic links, so historical setup authority cannot revive. Normal em
 fresh owner authorization are required after restoration. Isolated recovery targets disable GitHub
 management and webhook/observer effects; follow the [data recovery procedure](data-recovery.md)
 before any separately reviewed activation.
+
+## Isolated live integration exercise
+
+For a separate installation in an existing Cloudflare account, create a distinct GitHub App for
+the new application origin. Install it only on a disposable selected repository. Core Kanbun
+sign-in and issue work should succeed before adding any GitHub credentials. Record that
+observation before configuring the App.
+
+After an authorized owner completes App registration, installation and OAuth consent, map the
+disposable repository to the synthetic Kanbun team and link a disposable PR. Make a real PR
+change and observe the signed webhook delivery and refreshed context. Revoke the selected
+repository or App installation, verify stale context cannot regain authority, then reconnect
+through a fresh owner authorization. A GitHub ping delivery verifies webhook reachability and
+signature setup; it does not establish canonical PR fetching or repository-to-team isolation.
+
+Retain source/configuration fingerprints and sanitized observations with App, repository and
+delivery identifiers. Keep authorization codes, cookies, downloaded keys and credential values
+out of evidence. Label blocked credential or consent steps explicitly. A same-account exercise
+does not establish a separate organization's App approval policy.
 
 ## Deployment and operational proof
 

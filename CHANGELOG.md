@@ -7,6 +7,11 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Add installer-owned Cloudflare setup, an official deployment button, and documented local persistence and recovery workflows.
+- Add public launch criteria with source-bound evidence, publication and writing audits, security/support policies, and adoption documentation.
+
+### Added
+
 - Team settings now support editing the issue identifier key, preserving issue links and numbering while enforcing unique uppercase keys.
 
 - Added team-scoped GitHub repository connections and issue-linked PR, branch, review and CI context across lists, boards, details and activity, with signed canonical observations, owner-only setup and current-scope privacy checks.
@@ -64,6 +69,10 @@ preparation moves them to a dated version heading.
 - Removed secondary explanatory copy from empty views and lists while retaining headings, actions and access/error guidance.
 
 ### Fixed
+
+- Cloudflare's deploy wizard can submit the inert setup profile without blank required identity fields or prefilled sample credentials; installer deployments retain their committed source tag for recovery provenance.
+
+- Correct container deployment login, initial Worker secret setup, health-check environment forwarding, installer-owned GitHub callbacks, and public capability wording after launch review.
 
 - GitHub authorization now accepts the provider's issuer parameter, rejects foreign issuers before consuming authorization state, and remains compatible with callbacks that omit the issuer.
 

@@ -1,8 +1,8 @@
 # Issue discussion and activity
 
-The issue detail currently has properties and a collaborative description, but no visible discussion
-or history. Add Comments and Activity below the description using the existing compact spacing,
-Bone & Cinnabar palette, Inter text, and visible keyboard focus.
+The issue detail includes Comments and Activity below the properties and collaborative description.
+These use the existing compact spacing, Bone & Cinnabar palette, Inter text, and visible keyboard
+focus. This document describes their interaction and persistence contract.
 
 Comments use plain text. People can post a top-level comment, reply one level deep, edit their own
 comments, and resolve or reopen a top-level thread. Keep existing comments visible while a draft is

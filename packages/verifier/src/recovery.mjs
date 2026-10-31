@@ -1,8 +1,21 @@
 import { spawn } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+async function exportEvidenceDirectory(source, destination) {
+  // Shared host mounts can reject chmod even when ordinary file creation works.
+  // Evidence requires file bytes and relative paths, not temporary-directory modes.
+  await mkdir(destination, { recursive: true });
+  for (const entry of await readdir(source, { withFileTypes: true })) {
+    const from = path.join(source, entry.name);
+    const to = path.join(destination, entry.name);
+    if (entry.isDirectory()) await exportEvidenceDirectory(from, to);
+    else if (entry.isFile()) await copyFile(from, to);
+    else throw new Error(`Unexpected nonregular browser evidence entry: ${from}`);
+  }
+}
 
 /** Playwright's live trace files must stay off shared host mounts. Export only after exit. */
 export async function runWithRecoveryEvidence({ command, args, cwd, destination }) {
@@ -38,8 +51,7 @@ export async function runWithRecoveryEvidence({ command, args, cwd, destination 
   } finally {
     try {
       await rm(destination, { recursive: true, force: true });
-      await mkdir(path.dirname(destination), { recursive: true });
-      await cp(temporary, destination, { recursive: true });
+      await exportEvidenceDirectory(temporary, destination);
       // JSON attachment paths must address the retained copy, not the temporary directory.
       const retainedPaths = (value) => {
         if (typeof value === "string" && (value === temporary || value.startsWith(temporary + path.sep)))

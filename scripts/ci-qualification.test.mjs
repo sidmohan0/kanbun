@@ -23,6 +23,7 @@ const names = [
   "smoke",
   "recovery",
   "docs",
+  "launch-registry",
 ];
 function fixture() {
   const metadata = {

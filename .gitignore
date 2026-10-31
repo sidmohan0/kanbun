@@ -3,6 +3,8 @@ node_modules/
 dist/
 .wrangler/
 .dev.vars
+.dev.vars.*
+!.dev.vars.example
 .env
 .env.*
 !.env.example
@@ -24,3 +26,9 @@ artifacts/recovery-preflight/
 artifacts/deployment/
 
 artifacts/preview-health/
+
+# Installer-owned resources and release-readiness evidence
+wrangler.install.json
+.wrangler-install-*.json
+installation.local.json
+artifacts/launch/

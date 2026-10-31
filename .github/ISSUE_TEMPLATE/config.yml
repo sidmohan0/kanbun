@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private security report
+    url: mailto:sid@datafog.ai
+    about: Send vulnerabilities privately. See SECURITY.md for reporting guidance.
+  - name: Paid implementation help
+    url: mailto:sid@datafog.ai
+    about: Discuss deployment, integration, backup verification, and operator handover.

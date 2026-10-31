@@ -10,13 +10,14 @@ try {
     options: {
       json: { type: "boolean" },
       output: { type: "string" },
+      evidence: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
   json = values.json ?? false;
   if (values.help) {
     const usage =
-      "kanbun-verify [all|doctor|check|build|smoke|preflight|recovery|docs] [--json] [--output <directory>]";
+      "kanbun-verify [all|doctor|check|build|smoke|preflight|recovery|docs|launch] [--json] [--output <directory>] [--evidence <launch-evidence.json>]";
     console.log(json ? JSON.stringify({ usage }) : usage);
   } else {
     if (positionals.length > 1) throw new Error("Choose one verification profile.");
@@ -24,6 +25,7 @@ try {
       root: fileURLToPath(new URL("../../../", import.meta.url)),
       command: positionals[0] ?? "all",
       outputDirectory: values.output,
+      evidenceFile: values.evidence,
       onProgress: ({ name, state, durationMs }) =>
         console.error(
           `[verify] ${state.toUpperCase()} ${name}${durationMs === undefined ? "" : ` (${(durationMs / 1000).toFixed(1)}s)`}`,
@@ -33,6 +35,21 @@ try {
     else {
       for (const step of report.steps) {
         console.log(`${step.executed ? (step.pass ? "PASS" : "FAIL") : "NOT RUN"} ${step.name}`);
+        if (step.launch) {
+          for (const requirement of step.launch.requirements) {
+            console.log(`${requirement.pass ? "PASS" : "OPEN"} ${requirement.id} ${requirement.title}`);
+            for (const criterion of requirement.criteria) {
+              const reason =
+                criterion.method === "documentation"
+                  ? "Mechanical documentation checks failed; inspect the receipt for individual findings."
+                  : criterion.details;
+              console.log(
+                `  ${criterion.status.toUpperCase()} ${criterion.id}${criterion.status === "passed" ? "" : `: ${reason}`}`,
+              );
+            }
+          }
+          for (const error of step.launch.errors) console.error(error);
+        }
       }
       console.log(
         `${report.pass ? "Verification passed" : "Verification failed"}: ${report.runDirectory ?? report.error}`,

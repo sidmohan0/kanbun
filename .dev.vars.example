@@ -1,0 +1,5 @@
+# The initial deployment is an inert setup shell and needs no runtime secrets.
+# Configure actual encrypted Worker secrets after setup; follow docs/cloudflare-deployment.md.
+# RESEND_API_KEY: use the real sending key for your verified email provider account.
+# TURNSTILE_SECRET_KEY: use the real server secret for the widget on your installation hostname.
+# Keep secret values out of this example, Git, logs and deployment evidence.

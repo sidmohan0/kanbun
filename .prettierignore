@@ -19,3 +19,4 @@ apps/web/src/brand/*.svg
 artifacts/deployment/
 
 artifacts/preview-health/
+artifacts/launch/

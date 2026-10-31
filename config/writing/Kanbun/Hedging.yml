@@ -1,0 +1,11 @@
+extends: existence
+message: "State the supported behavior directly; review '%s'."
+level: error
+ignorecase: true
+tokens:
+  - it is worth noting
+  - it's worth noting
+  - arguably
+  - might possibly
+  - could potentially
+  - we believe that

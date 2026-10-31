@@ -1,0 +1,42 @@
+name: Bug report
+description: Report a reproducible application, installation, or documentation problem.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report security vulnerabilities privately using SECURITY.md. Use synthetic data and redact credentials, sign-in links, invitations, backups, and private issue content.
+  - type: input
+    id: version
+    attributes:
+      label: Source commit or release
+      description: Include the exact commit or tag used by the installation.
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Deployment mode
+      options:
+        - Local devcontainer
+        - Independent Cloudflare installation
+        - Maintainer preview
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Include prerequisites, commands, browser, and operating system where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted logs or screenshots
+      description: Include the verifier receipt or failed check name when available. Inspect attachments for private information before submitting.

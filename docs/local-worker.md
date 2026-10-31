@@ -33,6 +33,47 @@ public `REC` team. Repeating it preserves existing data and identities. `{ "seed
 initializes an empty team instead. Wrangler's local state lives under `apps/worker/.wrangler/`,
 which is ignored by Git. Restarting the development server retains that state.
 
+## Persistence, reset, and installation proof
+
+This local profile supports evaluation and development on one computer. The host checkout is
+bind-mounted into the devcontainer. Worker SQL lives in `apps/worker/.wrangler/state`; replacing
+the container retains that host directory. Browser drafts and cached state live separately in
+the browser's IndexedDB and depend on the browser origin. Preserve the published localhost URL
+when testing browser outbox recovery; a changed port creates a different browser origin.
+
+To preserve a local workspace, stop the application and container, copy the entire
+`apps/worker/.wrangler/state` directory to private storage, and record the source commit. Restore
+it into a stopped checkout of the same source before starting. These local files include workspace
+data. The hosted coherent backup and isolated restore procedure is documented in
+[data recovery](data-recovery.md).
+
+For a deliberate local reset, stop the dev server and remove `apps/worker/.wrangler/state` from
+inside the container. Clear site data for the localhost origin in the browser as well; otherwise
+its old queued edits can target the discarded workspace. Restart and initialize a new workspace.
+Removing the container alone preserves the bind-mounted state. Removing the checkout removes it.
+
+The installation rehearsal clones a committed, clean candidate into a temporary directory and
+uses this same devcontainer. It initializes synthetic data, edits an issue through the HTTP API,
+checks repeated initialization, stops/restarts the container, replaces it, verifies stable issue
+identity and contents, and tests reset in that disposable checkout:
+
+```sh
+./scripts/check-local-install.sh
+```
+
+Evidence is retained in `artifacts/launch/local/`. The browser suite separately proves the actual
+issue UI. The rehearsal keeps its temporary checkout and stopped container for inspection; it prints
+the checkout path. Remove those disposable resources after inspecting a failure or retaining the
+evidence. It never resets this checkout's data. A successful run covers local evaluation only.
+
+If setup fails, confirm Docker is running with free memory and disk for dependencies and Chromium.
+Use `./scripts/devcontainer.sh status` to inspect this checkout. Port 5173 is
+published on a dynamic localhost port; obtain it with `./scripts/devcontainer.sh url`. Inside the
+container, another process occupying 5173 or 8787 must be stopped before `pnpm dev` can start.
+After branch or dependency changes, run the frozen install inside the container; rebuild after
+image or pinned-tool changes. Files created by root outside the standard setup can require host
+ownership correction before the `node` container user can write them.
+
 ## Local identity boundary
 
 The committed Wrangler configuration sets `LOCAL_DEV` to `"false"`; sync and local seed routes

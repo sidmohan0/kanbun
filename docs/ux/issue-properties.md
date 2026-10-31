@@ -1,8 +1,8 @@
 # Issue properties
 
-The issue detail currently shows a title and collaborative description. It has no visible way to
-set status, priority, assignee, or labels, and no archive action. The list remains compact while
-the detail view gains a labelled properties section above Description.
+The issue detail shows a title, status, priority, assignee, labels, archive action, and collaborative
+description. The list stays compact; a labelled properties section above Description provides the
+editing controls described here.
 
 Status lists active workflow states for the issue's team. A person's selection is a human status
 assertion; clearing the override returns to the stored baseline. This slice does not infer status

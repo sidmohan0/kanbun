@@ -1,6 +1,6 @@
 {
   "name": "kanbun",
-  "description": "An AI-native, local-first issue tracker for people and agents.",
+  "description": "A local-first issue tracker with collaborative editing and GitHub context.",
   "private": true,
   "version": "0.0.0",
   "license": "Apache-2.0",
@@ -12,6 +12,10 @@
     "dev": "pnpm -r --parallel --filter './apps/*' dev",
     "build": "pnpm -r build",
     "deploy:preview": "node scripts/deploy-preview.mjs",
+    "install:cloudflare": "node scripts/install-cloudflare.mjs",
+    "deploy": "node scripts/install-cloudflare.mjs deploy",
+    "build:cloudflare": "pnpm --filter @kanbun/web build",
+    "audit:public": "node scripts/public-audit.mjs",
     "test": "pnpm -r test",
     "test:changelog": "node --test scripts/check-changelog.test.mjs",
     "test:scripts": "node --test scripts/*.test.mjs",

@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "wrangler dev --local --ip 0.0.0.0 --port 8787 --var LOCAL_DEV:true",
-    "build": "wrangler deploy --dry-run --outdir dist && wrangler deploy --config wrangler.preview.json --dry-run --outdir dist/preview",
+    "build": "wrangler deploy --dry-run --outdir dist && wrangler deploy --config wrangler.preview.json --dry-run --outdir dist/preview && wrangler deploy --config ../../wrangler.json --dry-run --outdir apps/worker/dist/install",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p test/tsconfig.json"
   },

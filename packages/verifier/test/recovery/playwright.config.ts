@@ -4,6 +4,12 @@ import { fileURLToPath } from "node:url";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const artifacts = process.env["KANBUN_RECOVERY_ARTIFACTS"];
+const requestedWorkers = process.env["KANBUN_RECOVERY_WORKERS"];
+if (
+  requestedWorkers !== undefined &&
+  (!/^[1-9]\d*$/.test(requestedWorkers) || !Number.isSafeInteger(Number(requestedWorkers)))
+)
+  throw new Error("KANBUN_RECOVERY_WORKERS must be a positive safe integer.");
 if (!artifacts || !path.isAbsolute(artifacts))
   throw new Error("Run browser recovery tests with pnpm test:recovery to retain container-local artifacts.");
 
@@ -11,6 +17,7 @@ export default defineConfig({
   testDir: directory,
   testMatch: "*.spec.ts",
   fullyParallel: true,
+  ...(requestedWorkers === undefined ? {} : { workers: Number(requestedWorkers) }),
   outputDir: path.join(artifacts, "test-results"),
   reporter: [
     ["list"],

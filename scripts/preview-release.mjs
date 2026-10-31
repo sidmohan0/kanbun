@@ -48,7 +48,10 @@ async function deploy(expectedPrevious) {
   run("build");
   // Recheck after the build so an older workflow cannot publish over newer main.
   if (!process.env.GITHUB_TOKEN) throw new Error("GITHUB_TOKEN with repository read access is required");
-  const head = await fetch("https://api.github.com/repos/sidmohan0/kanbun/git/ref/heads/main", {
+  const repository = process.env.GITHUB_REPOSITORY;
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? ""))
+    throw new Error("GITHUB_REPOSITORY must identify this installation repository");
+  const head = await fetch(`https://api.github.com/repos/${repository}/git/ref/heads/main`, {
     headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: "application/vnd.github+json" },
     redirect: "error",
     signal: AbortSignal.timeout(30000),

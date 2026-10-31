@@ -1,9 +1,8 @@
 # Workspace inbox and explicit mentions
 
-Comments and assignments currently update the shared issue, but there is no personal destination for
-work that needs someone's attention. Add an Inbox navigation item for every admitted person, with an
-unread count that updates through the existing workspace synchronization. Keep All issues and the
-owner's Members destination unchanged.
+Inbox is each admitted person's destination for assignments, explicit mentions, replies, and
+followed-issue comments. Its unread count updates through workspace synchronization. All issues
+and the owner's Members destination remain available alongside it.
 
 The inbox shows newest updates first with the initiating person's name, a short notification kind,
 the current authorized issue title, and time. Opening an issue and marking an update read are

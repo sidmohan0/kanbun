@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Reviewed inert values: RFC 6455 sample nonce, public Access audience, and synthetic credential-parser fixture."
+regexTarget = "secret"
+regexes = [
+  '''^dGhlIHNhbXBsZSBub25jZQ==$''',
+  '''^b286feff64cecd9481469601c7fca8c2f5b04e168cf632110a0bde16fd20001d$''',
+  '''^test_token_012345678901234567890123456789$''',
+]

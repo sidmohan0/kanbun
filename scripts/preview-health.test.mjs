@@ -5,11 +5,14 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   githubReleaseState,
+  installationRepository,
   healthSummary,
   releaseHealth,
   runPreviewHealth,
   safeHealthFailure,
 } from "./preview-health.mjs";
+
+process.env.GITHUB_REPOSITORY = "independent/kanbun";
 
 const sha = "a".repeat(40);
 const latest = {
@@ -18,14 +21,14 @@ const latest = {
     status: "completed",
     conclusion: "success",
     sha,
-    url: "https://github.com/sidmohan0/kanbun/actions/runs/1",
+    url: "https://github.com/independent/kanbun/actions/runs/1",
   },
   deploy: {
     id: 2,
     status: "completed",
     conclusion: "success",
     sha,
-    url: "https://github.com/sidmohan0/kanbun/actions/runs/2",
+    url: "https://github.com/independent/kanbun/actions/runs/2",
   },
 };
 function receipt() {
@@ -119,7 +122,7 @@ test("Actions reads are scoped, sanitized and require valid workflow metadata", 
     });
   });
   assert(requests[0].url.includes("&event=push&status=success"));
-  assert.equal(value.deploy.url, "https://github.com/sidmohan0/kanbun/actions/runs/2");
+  assert.equal(value.deploy.url, "https://github.com/independent/kanbun/actions/runs/2");
   assert(!JSON.stringify(value).includes("private"));
   await assert.rejects(
     githubReleaseState("token", async () => Response.json({ message: "private" }, { status: 403 })),
@@ -159,4 +162,21 @@ test("malformed deployment credentials make the CLI fail and retain bounded rece
     readFileSync(new URL("../artifacts/preview-health/summary.md", import.meta.url), "utf8"),
     /Recovery runbook/,
   );
+});
+
+test("health checks use the installation repository and reject malformed scope before any request", async () => {
+  assert.equal(installationRepository("another-owner/project"), "another-owner/project");
+  assert.throws(() => installationRepository("../other/repository"), /GITHUB_REPOSITORY/);
+  let called = false;
+  await assert.rejects(
+    githubReleaseState(
+      "token",
+      async () => {
+        called = true;
+      },
+      "bad/path/extra",
+    ),
+    /GITHUB_REPOSITORY/,
+  );
+  assert.equal(called, false);
 });

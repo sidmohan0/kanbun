@@ -21,6 +21,7 @@ pnpm verify smoke
 pnpm verify preflight
 pnpm verify recovery
 pnpm verify docs
+pnpm verify launch
 pnpm test:verifier
 ```
 
@@ -51,6 +52,14 @@ Reports record the command, toolchain, source identity, executed checks, outcome
 per-command logs. An uncommitted repository has no commit SHA; the receipt reports that state rather
 than inventing one. A failed prerequisite, command, documentation check, or report write fails the run.
 Skipped or unexecuted checks do not count as successful verification.
+
+When the Docker runtime is shared with other active work, set `KANBUN_RECOVERY_WORKERS=1` to
+limit concurrent browser test cases. This preserves every scenario and its assertions; it does
+not raise timeouts or enable retries. The default retains Playwright's normal worker selection.
+
+```sh
+./scripts/devcontainer.sh exec --remote-env KANBUN_RECOVERY_WORKERS=1 pnpm --silent verify --json
+```
 
 ## PR and main checks
 
@@ -140,3 +149,71 @@ release, not necessarily the current implementation. Semantic auditing is deferr
 model calls, API-key prerequisites, or semantic findings in the CI path.
 
 Scheduled workflows begin running only after they are present on the default branch.
+
+## Public launch checks
+
+The launch profile evaluates the [launch criteria and evidence](launch-readiness.md) separately
+from code health. A successful complete verifier run does not claim that cloud installation,
+publication review or editorial approval has happened. The normal verifier validates the launch
+registry's structure; the launch profile reports missing, blocked and stale evidence explicitly.
+
+The devcontainer pins Gitleaks, Vale and OpenSSF Scorecard in
+[`config/audit-tools.json`](../config/audit-tools.json). Image construction verifies each Linux
+archive's SHA-256 before installing it. Rebuild the image when those pins change.
+
+```sh
+./scripts/devcontainer.sh exec pnpm audit:public secrets
+./scripts/devcontainer.sh exec pnpm audit:public prose
+```
+
+The secret audit scans full available Git history and a snapshot of current tracked/unignored
+files. A shallow checkout is rejected. Reports retain rule, path, line and commit references;
+credential values, matched source text and scanner logs are omitted. The exact-value allowances
+in `.gitleaks.toml` cover the RFC 6455 example nonce, a public historical Access audience and the
+synthetic credential-parser fixture. The scanner's negative test proves an unrelated credential
+still fails. A passing scan covers those rules; publication and ownership review remain required.
+
+Vale checks the public README, evaluation guide and case study against the maintained writing
+rules in `config/writing/Kanbun`. These rules enforce explicit phrases, with editorial review
+covering accuracy, tone and usefulness. No external writing service is used.
+
+CI runs both audits inside the shared devcontainer and retains their receipts under
+`artifacts/launch/`. The manual Launch rehearsal workflow can run an isolated local install and
+collect repository-security findings. Scorecard collection requires a read token and
+`GITHUB_REPOSITORY=owner/repository`, supplied as remote environment variables to the devcontainer;
+it records individual findings for review rather than granting launch approval from a score.
+Unavailable repository settings remain unverified. None of these workflows deploy a public Worker.
+
+Use [`scripts/check-local-install.sh`](../scripts/check-local-install.sh) for clean-checkout and
+container replacement evidence. See [local lifecycle details](local-worker.md#persistence-reset-and-installation-proof).
+
+## Dependency advisory review
+
+On October 31, 2026, the frozen dependency tree's production-only audit reported no known
+advisories. The full audit reported two moderate advisories in development tooling. These commands
+run through the devcontainer and query the advisory database at execution time:
+
+```sh
+./scripts/devcontainer.sh exec pnpm audit --prod
+./scripts/devcontainer.sh exec pnpm audit
+```
+
+- Drizzle Kit's legacy loader depends on `@esbuild-kit/core-utils@3.3.2`, which requires
+  `esbuild~0.18.20`. [GHSA-67mh-4wv8-2f99](https://github.com/evanw/esbuild/security/advisories/GHSA-67mh-4wv8-2f99)
+  affects esbuild's development server and is fixed in `0.25.0`. The installed loader uses
+  `transform`/`transformSync`; this repository uses Drizzle Kit for migration generation and does
+  not start the affected server through it. Drizzle Kit `0.31.11` and core-utils `3.3.2` were the
+  latest published versions at review, and the fixed esbuild version is outside the loader's range.
+- ESLint `10.13.0` depends on `minimatch@10.2.6`.
+  [GHSA-g3hv-75wg-m249](https://github.com/isaacs/minimatch/security/advisories/GHSA-g3hv-75wg-m249)
+  describes pattern amplification with `optimizationLevel >= 2`; the published fix starts at
+  `11.0.1`. ESLint's inspected glob calls and its installed configuration-array helper use
+  `dot: true` without that optimization setting; minimatch defaults to level 1. The latest
+  published ESLint `10.14.0` still requires `minimatch^10.2.6`, and there was no patched 10.x release
+  at review.
+
+The lockfile retains the supported dependency ranges. No advisory suppression or incompatible
+transitive override is configured. Review these findings when the parent tools publish compatible
+updates, or when commands, glob settings or loader usage change. A passing production audit does
+not resolve the development-tool findings, and the audit results can change as advisories are
+published.

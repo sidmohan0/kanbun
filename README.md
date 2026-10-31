@@ -5,27 +5,124 @@
 
 # kanbun
 
-**The issue tracker where agents pick up the work.**
+A local-first issue tracker with collaborative editing and GitHub context.
 
-An AI-native, local-first issue tracker for people and agents. Built around a real-time sync engine
-and designed to run entirely on Cloudflare (Workers, Durable Objects, D1, R2, Queues, Email Workers).
+Kanbun helps engineering teams organize issues, discuss work, and review linked pull requests.
+The application runs in your Cloudflare account. Developers can evaluate it locally with the
+repository's Docker-based devcontainer.
 
-Contributions must not include third-party assets (icon sets, illustrations, CSS) or code derived from any other product's source; pull requests that do are closed.
+[Run locally](#run-locally) · [Deploy to Cloudflare](docs/cloudflare-deployment.md) ·
+[Evaluate for your team](docs/evaluation.md) · [Implementation help](#implementation-help)
 
-## Layout
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fsidmohan0%2Fkanbun)
 
+The button provisions a setup shell. Complete owner, origin, email, and Turnstile configuration
+using the [installation guide](docs/cloudflare-deployment.md) before signing in. An isolated-installation
+rehearsal is tracked in launch readiness.
+
+![Kanbun issue list using synthetic local data](docs/images/issue-list.png)
+
+## What works today
+
+- Issues with status, priority, assignment, labels, archive and Undo, sub-issues, and dependencies.
+- List and board views, My Issues, search, filters, and sorting.
+- Collaborative descriptions, attributed discussion, and a personal notification inbox.
+- Optimistic edits, persisted browser queues, and automatic synchronization across sessions.
+- Email-link sign-in, targeted invitations, membership administration, teams, and workflow settings.
+- GitHub pull request, review, branch, and CI context from selected repositories.
+- Private workspace backup bundles and isolated restoration.
+
+Kanbun is in active development for an invited-team pilot. Review the
+[launch-readiness report](docs/launch-readiness.md) before choosing a release for team use.
+The [team-readiness record](docs/team-readiness.md) links existing product tests and historical
+qualification evidence. Each release candidate needs its own verification.
+
+## Current boundaries
+
+| Area               | Current scope                                                                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Offline work       | An already open, authorized page can queue edits. Hosted cold starts and reloads require connectivity and authentication before reopening cached work. |
+| Hosting            | Cloudflare Workers, SQLite Durable Objects, D1, and R2. Local workerd runs inside the devcontainer for development and evaluation.                     |
+| Access             | An owner initializes a workspace and invites eligible people within the configured email domain.                                                       |
+| GitHub             | Selected repositories supply read-only development context. People control issue status.                                                               |
+| Workspace branches | APIs support isolated issue creation, title changes, conflict choices, and durable merge receipts. A branch-review interface is planned.               |
+| Agents             | The engine includes agent scopes and branch ownership. A complete agent execution and review workflow is planned.                                      |
+| Events             | Supported issue and discussion commands record semantic events. Some mutations retain the legacy patch path.                                           |
+| Data portability   | Recovery bundles restore compatible Kanbun state. General-purpose backlog import and export are planned.                                               |
+
+External notification delivery, autonomous agent runs, derived status from provider evidence, and
+time-travel views are planned. The [specification](SPEC.md) describes the longer-term design;
+its implementation-status section identifies the current scope.
+
+## Run locally
+
+Install Docker, or Colima on macOS, and host Node.js to bootstrap the pinned devcontainer CLI.
+Run these commands from the checkout:
+
+```sh
+./scripts/devcontainer.sh up
+./scripts/devcontainer.sh dev
 ```
-apps/
-  web/        React issue views, discussion, inbox, and collaborative descriptions over the local sync client
-  worker/     HTTP sync, notifications, SQLite WorkspaceDO, and Yjs DocumentDO bodies
-packages/
-  events/     Typed semantic issue events and their validated envelopes
-  model/      Drizzle schema: one definition of every entity, for D1 and for DO SQLite
-  sync/       The sync engine: protocol, server push/pull/log, client object pool + mutation queue + rebase
-  mutators/   Every write in the system, defined once, run on the client (optimistic) and in the DO (authoritative)
-  seed/       Deterministic seed data (5k issues) used by tests and as the sync-performance fixture
-  verifier/   Deterministic repository checks and retained execution evidence
+
+In another terminal, print the published address:
+
+```sh
+./scripts/devcontainer.sh url
 ```
+
+Open that address and choose **Initialize local workspace**. Local mode uses synthetic Alice and
+Bob identities. Create an issue, change its properties, open its description, and try the board.
+Use this mode on localhost with synthetic data.
+
+Stop this checkout's containers with `./scripts/devcontainer.sh stop`. The
+[local guide](docs/local-worker.md) explains persistence, initialization, troubleshooting, and
+reset procedures. Docker provides the local development environment; ongoing team hosting uses
+the authenticated Cloudflare installation.
+
+## Deploy to Cloudflare
+
+Follow the [Cloudflare installation guide](docs/cloudflare-deployment.md) to configure a workspace
+in your account. Setup includes a custom origin, email delivery, Turnstile, storage, and owner
+identity. Configure an installer-owned GitHub App separately when your team needs repository
+context.
+
+Review [operating responsibilities](docs/operations-overview.md), required provider services, data
+recovery, and upgrade limits before putting a real backlog into the installation. The existing
+maintainer preview has its own [operations runbook](docs/operations.md).
+
+## Development
+
+The [devcontainer](.devcontainer/devcontainer.json) is the standard environment for local work and
+repository-owned CI. It pins the Linux image, Node.js, pnpm, and browser dependencies. VS Code
+Dev Containers and GitHub Codespaces use the same configuration.
+
+```sh
+./scripts/devcontainer.sh up
+./scripts/devcontainer.sh verify
+./scripts/devcontainer.sh exec pnpm install --frozen-lockfile
+```
+
+Run repository commands with `./scripts/devcontainer.sh exec <command...>`. After changing the
+container image or browser dependency, run `./scripts/devcontainer.sh rebuild`. Keep each
+workspace's dependencies in its own manifest and commit the root `pnpm-lock.yaml` with dependency
+changes.
+
+The complete verifier runs formatting, lint, typechecking, tests, builds, seed smoke checks,
+browser recovery scenarios, spec/archive checks, and mechanical documentation checks. Changelog
+and history-aware spec-lock checks are separate required checks. See
+[verification](docs/verification.md) and [contribution guidance](CONTRIBUTING.md).
+
+## Architecture
+
+A Worker serves the React application and routes authenticated requests. Each workspace has a
+SQLite-backed Durable Object that serializes writes, while separate Document Durable Objects
+merge collaborative descriptions with Yjs. D1 stores the account directory. R2 holds private
+backup bundles.
+
+The client applies optimistic commands, persists pending work in IndexedDB, and reconciles it with
+authoritative HTTP responses. WebSocket notifications prompt clients to pull committed changes.
+Read the [architecture overview](docs/architecture.md),
+[engineering case study](docs/case-study.md), and [event replay guide](docs/event-replay.md).
 
 Current workspace packages:
 
@@ -42,155 +139,22 @@ Current workspace packages:
 
 <!-- workspace-inventory:end -->
 
-The local Worker runs the existing engine in a SQLite-backed `WorkspaceDO`, with HTTP sync and
-branch APIs. Runtime tests and browser recovery checks use actual `workerd`; fast engine tests and
-the seed still use `node:sqlite`. The web app lists, creates, and renames issues, with
-[status, priority, assignee, labels, and reversible archive controls](docs/ux/issue-properties.md).
-[Sub-issues and dependencies](docs/ux/issue-relationships.md) connect accessible issues across teams,
-with parent selection, inverse blocking links, and cycle validation.
-IndexedDB-backed offline recovery, automatic cross-browser updates, and visible sync/rejection
-state apply to these issue changes. See the
-[local issue flow](docs/ux/issues.md). The [hosted workspace](docs/hosted-preview.md) supports native
-[email-link sign-in](docs/ux/email-sign-in.md), actual user/workspace context and a D1 directory.
-People use their invited email without a password or Cloudflare account. Owners manage
-[targeted invitations and membership](docs/ux/workspace-members.md); public self-service registration
-remains outside the pilot. The hosted Access-to-email cutover is a separately reviewed rollout;
-merging native support alone does not complete that infrastructure change.
-[Issue details](docs/ux/issue-details.md) add collaborative descriptions
-in a separate SQLite DocumentDO, with Yjs merging and durable browser recovery. See
-[local Worker development](docs/local-worker.md).
+## Implementation help
 
-[Daily views](docs/ux/issue-views.md) add My Issues, search, combined filters, and sorting.
-[Issue boards](docs/ux/issue-board.md) group the same filtered work by team and status, with drag
-and keyboard status changes.
-[GitHub context](docs/ux/github-context.md) puts linked PRs, branches, current-commit reviews and CI
-signals in issue rows, boards, details and activity. Owners explicitly connect selected repositories
-to teams; [App setup and recovery](docs/github-integration.md) keep provider authority separate from
-native email sign-in. This read-only integration does not automatically change human issue status.
-[Discussion](docs/ux/issue-discussion.md) adds attributed comments, replies, thread resolution,
-and activity grouped by intent. The personal [Inbox](docs/ux/workspace-inbox.md) shows assignments,
-explicit mentions, replies, and followed-issue comments, with durable read state. Private
-[workspace backups](docs/data-recovery.md) include the directory, SQL state, and collaborative
-bodies, with an isolated restoration procedure. The [operations runbook](docs/operations.md)
-describes scheduled health reports and failure recovery.
+I offer paid help deploying Kanbun in your Cloudflare account, configuring authentication and
+GitHub integration, verifying backups, and preparing your team to operate it.
 
-Issue creation, human property changes, labels, archive, document publication, and discussion record semantic
-events and apply shared reducers. Their recorded history can reproduce the supported projections
-in memory and SQLite. Other mutations retain a legacy path during the incremental migration. See
-[semantic event replay](docs/event-replay.md) for the supported scope and invariants.
+Email [sid@datafog.ai](mailto:sid@datafog.ai) with your team size, current tools, and setup
+requirements. The [implementation-help guide](SUPPORT.md#paid-implementation-help) explains the
+scope, customer prerequisites, and handover deliverables. Ongoing maintenance and custom work are
+scoped separately.
 
-The same create/rename flow also supports [durable workspace branches](docs/workspace-branches.md).
-Branch rows survive restarts without changing main, while untouched reads follow live main.
-Human owners can preview and merge the supported changes with explicit conflict choices and durable
-retry receipts. The branch review UI remains planned.
+Built by [Sid Mohan](https://github.com/sidmohan0). [Report a bug](https://github.com/sidmohan0/kanbun/issues/new/choose),
+read the [support policy](SUPPORT.md), or report vulnerabilities privately using the
+[security policy](SECURITY.md).
 
-Owners manage [workspace names, teams and workflow statuses](docs/ux/workspace-settings.md) in Settings. Workspace naming is an online directory-backed operation; team and status changes use durable offline synchronization.
-
-The [team readiness checklist](docs/team-readiness.md) links the verified product and operational
-capabilities and acceptance evidence for an invited team pilot.
-
-## How a write flows
-
-1. The client runs a command against its in-memory object pool and re-renders. For migrated commands, a read-only decision produces events that a shared reducer applies optimistically. The command is appended to a persisted queue.
-2. The queue is pushed to `/sync/push`; the Worker forwards it to the workspace's Durable Object.
-3. The authority runs the same command inside a SQLite transaction (one savepoint per mutation, so a rejected one leaves nothing behind). Migrated commands record finalized semantic events and apply their reducers, including server-owned issue numbers. Derived patches enter `sync_log` with provenance; main-branch commits send cursor-only WebSocket notifications.
-4. Clients pull `/sync/pull?since=<seq>` after notifications and socket reconnects, apply the log, drop confirmed mutations from their queue and re-apply any still pending. Socket messages never carry rows or replace HTTP synchronization.
-
-Personal inbox notifications are a durable consumer of committed main-workspace events, dispatched
-through the workspace's persisted alarm jobs after the write commits. Email, webhooks, and other
-external delivery remain planned Queue consumers.
-
-## Development
-
-The [devcontainer](.devcontainer/devcontainer.json) is the standard environment for local development
-and every repository-owned CI workflow. It pins the Linux image and Node version, installs pnpm from
-`package.json`, and runs a frozen workspace install, Chromium setup, and `pnpm verify doctor`.
-Docker and host Node.js are needed to bootstrap the pinned devcontainer CLI; repository commands
-then run inside the container. VS Code's **Dev Containers: Reopen in Container** and GitHub Codespaces
-use the same configuration.
-
-```sh
-# With Docker running:
-./scripts/devcontainer.sh up
-./scripts/devcontainer.sh verify
-./scripts/devcontainer.sh dev
-# In another terminal, print the published localhost URL:
-./scripts/devcontainer.sh url
-```
-
-For Colima, start a project runtime with `colima start --profile kanbun --cpu 4 --memory 6 --disk 40
---activate=false`. The wrapper uses `colima-kanbun` if the default Docker runtime is unavailable;
-it does not change the global Docker context. Explicit `DOCKER_CONTEXT` and `DOCKER_HOST` settings
-are respected. The web shell listens inside the container and is published to a dynamically chosen
-host port on `127.0.0.1`. Editors can also forward container port 5173.
-
-Use `./scripts/devcontainer.sh exec <command...>` for any repository command, `shell` for a container
-shell, and `stop` to stop this checkout's containers while preserving data. After changing the image
-or browser dependency, use `rebuild`. After changing branches or the lockfile, run a frozen install
-inside the container. Container and native dependencies must use separate checkouts; a native
-checkout is an optional troubleshooting environment, rather than CI proof. The devcontainer is a
-development environment; the separate [preview profile](docs/hosted-preview.md) builds and deploys
-the app to Cloudflare with authenticated workspace routing.
-
-pnpm remains the package manager for both environments: use one root lockfile and declare internal
-dependencies with `workspace:*`. Run installs from the repository root, use
-`pnpm --filter <package-name> add <dependency>` to update an individual package, and commit the
-manifest and lockfile together.
-
-The commands below run in the container shell, or through `./scripts/devcontainer.sh exec`.
-For optional native troubleshooting, use a separate checkout with the Node version in `.nvmrc` and
-pnpm `10.28.0`, as declared in `package.json`.
-
-```
-pnpm install --frozen-lockfile
-pnpm --filter @kanbun/verifier exec playwright install --only-shell chromium
-pnpm verify       # runs the complete verifier and retains reports and logs
-pnpm format:check
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm test:changelog
-pnpm build
-pnpm seed         # builds the 5k-issue workspace in memory and reports bootstrap size and timing
-pnpm dev          # web shell on :5173; local Worker on :8787
-```
-
-Run `pnpm format` to format maintained source and configuration. The formatter excludes the locked
-specification, its archives, generated migrations, the dependency lockfile, and exported brand assets.
-ESLint checks JavaScript and TypeScript correctness, with React Hooks rules for the web app.
-
-CI initializes the same devcontainer and runs the complete verifier on every pull request and push to `main`, retaining
-reports even after failures. The verifier checks the toolchain, formatting, lint, types, tests,
-production build, seed smoke run, browser recovery contracts, current spec archive, and mechanical documentation contracts.
-See [verification and drift reporting](docs/verification.md) for commands, evidence, and the daily
-mechanical documentation report. The separate spec-lock check also runs on every pull request and push to `main`.
-Changelog, spec-lock, and scheduled documentation commands also execute inside the devcontainer.
-Host runner steps only bootstrap the container and handle GitHub event files, summaries, and artifacts.
-Before the first commit, run `pnpm spec:check --initial`; once a base commit exists, use
-`pnpm spec:check <base-ref>` to validate changes against it.
-
-The `Changelog policy` PR check requires an added entry under `[Unreleased]` in
-[CHANGELOG.md](CHANGELOG.md), or an explicit exemption. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
-entry format, exemption requirements, and local checking commands.
-
-Review dependency advisories with `pnpm audit`, or `pnpm audit --prod` for runtime dependencies.
-The current Drizzle Kit loader pulls in esbuild `0.18.20`, which has a
-[development-server advisory](https://github.com/evanw/esbuild/security/advisories/GHSA-67mh-4wv8-2f99).
-The loader uses esbuild's transform API, and this repo uses Drizzle Kit only for migration generation;
-neither invokes the affected server API. No override or audit suppression is configured. Reassess this
-finding when updating Drizzle Kit or adding commands that use esbuild's server.
-
-## Brand
-
-The [logo kit and usage guidelines](brand/KIT.txt) cover the SVG masters, web icons, and social image.
-Use the supplied light and dark lockups with their existing clear space and proportions. The palette
-is Bone & Cinnabar, with Cinnabar Bright on Ink backgrounds; Shippori Mincho SemiBold is used for the
-wordmark and headlines, and Inter for the product UI.
-
-## Spec
-
-[`SPEC.md`](SPEC.md) is the locked, single source of truth (currently v1.0). Every version is archived in full under [`docs/spec/`](docs/spec/), and `pnpm spec:check` (also run in CI) refuses any change to the body that is not a version bump with an archived copy of the outgoing version. Its "Implementation status" section says which parts of the spec the code reflects.
-
-## License
+## License and assets
 
 Copyright 2026 Sid Mohan. Licensed under the [Apache License, Version 2.0](LICENSE).
+[Third-party notices](THIRD_PARTY_NOTICES.md) describe external components and font references.
+The [brand kit](brand/KIT.txt) documents the original logo assets and usage guidelines.
