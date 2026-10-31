@@ -1,6 +1,18 @@
 import { DurableObject } from "cloudflare:workers";
 import migrations from "@kanbun/model/migrations/workspace/migrations.js";
 import { uuidv7 } from "@kanbun/model";
+import type { GitHubRepositorySource, GitHubPullRequestSnapshot, GitHubWebhookDelivery } from "@kanbun/events";
+import { githubRepositoryVisible } from "@kanbun/sync";
+import { githubIssueLookupSchema, githubLinkSchema, githubRepositoryConfigureSchema } from "./github-rpc";
+import {
+  GITHUB_JOB,
+  githubSource,
+  reserveGitHubRevision,
+  requireReservedGitHubRevision,
+  queueGitHubDelivery,
+  consumeGitHubJob,
+} from "./github-observer";
+import { readGitHubPullRequest, type GithubEnvironment } from "./github";
 import { mutators, requireIssue } from "@kanbun/mutators";
 import { issueIncarnation, MutationError, type Actor, type Poke, type WorkspaceContext } from "@kanbun/sync";
 import { durableObjectDriver, SyncServer, type SqlDriver } from "@kanbun/sync/server";
@@ -67,7 +79,7 @@ import {
 
 export { localActors } from "./local";
 
-export interface Env extends AuthEnvironment, DirectoryEnvironment {
+export interface Env extends AuthEnvironment, DirectoryEnvironment, GithubEnvironment {
   WORKSPACES: DurableObjectNamespace<WorkspaceDO>;
   DOCUMENTS: DurableObjectNamespace<DocumentDO>;
   ASSETS?: Fetcher;
@@ -226,10 +238,154 @@ export class WorkspaceDO extends DurableObject<Env> {
     return mode(this.env) !== "disabled" && this.env.BACKUP_RESTORE_ISOLATED !== "true";
   }
 
+  private async githubPerson(input: HostedPrincipal) {
+    await this.ready;
+    const principal = hostedPrincipalSchema.parse(input);
+    return this.authorizePrincipal(this.server!, principal);
+  }
+
+  private githubIssue(
+    context: WorkspaceContext,
+    input: { issueId: string; issueIncarnation: string; repositoryBindingId: string },
+  ) {
+    const server = this.server!;
+    const issue = server.store.get("issue", input.issueId);
+    const binding = server.store.get("githubRepository", input.repositoryBindingId);
+    const teams = server.visibleTeamIds(context.actor);
+    if (
+      !issue ||
+      issue.archivedAt ||
+      issue.trashed ||
+      issueIncarnation(issue) !== input.issueIncarnation ||
+      !binding ||
+      binding.teamId !== issue.teamId ||
+      !githubRepositoryVisible(server.store, teams, binding)
+    )
+      throw new RequestError("Issue or repository connection is unavailable", 403);
+    return { issue, binding };
+  }
+
+  async githubRepositories(principal: HostedPrincipal) {
+    const context = await this.githubPerson(principal);
+    if (context.role !== "owner") throw new RequestError("Workspace owner access required", 403);
+    const server = this.server!;
+    const teams = server.visibleTeamIds(context.actor);
+    return server.store.list("githubRepository").filter((row) => githubRepositoryVisible(server.store, teams, row));
+  }
+
+  async configureGitHubRepository(
+    principal: HostedPrincipal,
+    input: { teamId: string; source: GitHubRepositorySource },
+  ) {
+    const context = await this.githubPerson(principal);
+    if (context.role !== "owner") throw new RequestError("Workspace owner access required", 403);
+    const args = githubRepositoryConfigureSchema.parse(input);
+    const server = this.server!;
+    const current = server.store.list("githubRepository", {
+      teamId: args.teamId,
+      repositoryId: args.source.repositoryId,
+    })[0];
+    const id = current?.installationId === args.source.installationId ? current.id : uuidv7();
+    server.github("githubRepositoryConfigure", { ...args, id }, context.actor);
+    return server.store.get("githubRepository", id)!;
+  }
+
+  async githubRepositoryForIssue(
+    principal: HostedPrincipal,
+    input: { issueId: string; issueIncarnation: string; repositoryBindingId: string },
+  ) {
+    const context = await this.githubPerson(principal);
+    const { binding } = this.githubIssue(context, githubIssueLookupSchema.parse(input));
+    return {
+      source: githubSource(binding),
+      revision: this.driver.transaction(() => reserveGitHubRevision(this.driver)),
+    };
+  }
+
+  async linkGitHubPullRequest(
+    principal: HostedPrincipal,
+    input: {
+      issueId: string;
+      issueIncarnation: string;
+      repositoryBindingId: string;
+      snapshot: GitHubPullRequestSnapshot;
+      revision: number;
+      expectedLinkId?: string;
+    },
+  ) {
+    const context = await this.githubPerson(principal);
+    const args = githubLinkSchema.parse(input);
+    const { issue, binding } = this.githubIssue(context, args);
+    requireReservedGitHubRevision(this.driver, args.revision);
+    const current = this.server!.store.list("issuePullRequest", {
+      issueId: issue.id,
+      repositoryBindingId: binding.id,
+      number: args.snapshot.number,
+    })[0];
+    if (args.expectedLinkId && (!current || current.id !== args.expectedLinkId))
+      throw new RequestError("This pull request link was removed. Link it again to resume tracking.", 409);
+    this.server!.github(
+      "githubPullRequestLink",
+      {
+        id: current?.id ?? uuidv7(),
+        issueId: issue.id,
+        issueIncarnation: args.issueIncarnation,
+        repositoryBindingId: binding.id,
+        revision: args.revision,
+        snapshot: args.snapshot,
+      },
+      context.actor,
+      args.snapshot.url,
+    );
+    return this.server!.store.list("issuePullRequest", {
+      issueId: issue.id,
+      repositoryBindingId: binding.id,
+      number: args.snapshot.number,
+    })[0]!;
+  }
+
+  async refreshGitHubPullRequest(principal: HostedPrincipal, linkId: string) {
+    const context = await this.githubPerson(principal);
+    const row = this.server!.store.get("issuePullRequest", linkId);
+    if (!row) throw new RequestError("Pull request link is unavailable", 404);
+    const { binding } = this.githubIssue(context, row);
+    return {
+      source: githubSource(binding),
+      number: row.number,
+      bindingId: binding.id,
+      issueId: row.issueId,
+      issueIncarnation: row.issueIncarnation,
+      linkId: row.id,
+      revision: this.driver.transaction(() => reserveGitHubRevision(this.driver)),
+    };
+  }
+
+  async disconnectGitHubRepository(principal: HostedPrincipal, bindingId: string) {
+    const context = await this.githubPerson(principal);
+    if (context.role !== "owner") throw new RequestError("Workspace owner access required", 403);
+    this.server!.github("githubRepositoryDisconnect", { id: bindingId }, context.actor);
+    return { ok: true };
+  }
+
+  async githubWebhook(workspaceId: string, delivery: GitHubWebhookDelivery) {
+    await this.ready;
+    this.requireWorkspace(workspaceId);
+    if (!this.maintenanceEnabled()) throw new RequestError("GitHub observations are unavailable", 503);
+    const result = queueGitHubDelivery(this.driver, this.server!, delivery);
+    await this.armNextJob(true);
+    return result;
+  }
+
   private async scheduleMaintenance() {
     if (!this.maintenanceEnabled()) return;
     await this.scheduleBackup();
-    if (!this.backupTask && !this.alarmRunning && this.server && scheduleNotificationJob(this.driver, this.server))
+    if (
+      !this.backupTask &&
+      !this.alarmRunning &&
+      this.server &&
+      (scheduleNotificationJob(this.driver, this.server) ||
+        this.driver.all("SELECT id FROM scheduled_job WHERE kind = ?", [GITHUB_JOB]).length)
+    )
       await this.armNextJob(true);
   }
 
@@ -360,6 +516,17 @@ export class WorkspaceDO extends DurableObject<Env> {
       ]);
       let failure: Error | null = null;
       for (const job of due) {
+        if (job["kind"] === GITHUB_JOB) {
+          try {
+            await consumeGitHubJob(this.driver, this.server!, job, (source, number) =>
+              readGitHubPullRequest(this.env, source, number),
+            );
+          } catch {
+            console.error("workspace_github_observer_failed");
+            failure ??= new Error("Workspace GitHub observer failed");
+          }
+          continue;
+        }
         if (job["kind"] === NOTIFICATION_JOB) {
           try {
             if (this.backupTask) await this.backupTask.catch(() => undefined);

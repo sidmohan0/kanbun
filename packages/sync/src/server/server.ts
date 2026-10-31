@@ -34,6 +34,7 @@ import type {
 } from "../protocol";
 import { DEFAULT_EVENT_PAGE_SIZE } from "../protocol";
 import { tableMeta } from "../rows";
+import { githubRepositoryVisible, issuePullRequestVisible, githubEvidenceVisible } from "../github";
 import { notificationSubscriptionVisible, notificationVisible } from "../notifications";
 import { applyMigrations, type SqlDriver, type SqlValue } from "./driver";
 import { SqliteStore, SYSTEM_TAG } from "./sqliteStore";
@@ -392,6 +393,14 @@ export class SyncServer {
       if (rows.issueRelation)
         rows.issueRelation = rows.issueRelation.filter((link) =>
           relationVisible(view, teams, link as Row<"issueRelation">),
+        );
+      if (rows.githubRepository)
+        rows.githubRepository = rows.githubRepository.filter((row) =>
+          githubRepositoryVisible(view, teams, row as Row<"githubRepository">),
+        );
+      if (rows.issuePullRequest)
+        rows.issuePullRequest = rows.issuePullRequest.filter((row) =>
+          issuePullRequestVisible(view, teams, row as Row<"issuePullRequest">),
         );
       this.touchClient(clientId, client.lastMutationId, teams.join(","));
       return { seq, lastMutationId: client.lastMutationId, rows, ...(branchId === "main" ? {} : { branchId }) };
@@ -800,6 +809,22 @@ export class SyncServer {
             (r["model"] !== "notificationSubscription" ||
               (!!subscription && notificationSubscriptionVisible(view, userId, teams, subscription)));
           const model = r["model"] as ModelName;
+          if (model === "githubRepository" || model === "issuePullRequest") {
+            const current = view.get(model, String(r["row_id"]));
+            const allowed =
+              visible &&
+              !!current &&
+              (model === "githubRepository"
+                ? githubRepositoryVisible(view, teams, current as Row<"githubRepository">)
+                : issuePullRequestVisible(view, teams, current as Row<"issuePullRequest">));
+            return {
+              seq: Number(r["seq"]),
+              model,
+              id: String(r["row_id"]),
+              op: allowed ? ("upsert" as const) : ("delete" as const),
+              patch: allowed ? (current as Record<string, unknown>) : null,
+            };
+          }
           if (model === "issue" || model === "issueRelation") {
             const current =
               model === "issue"
@@ -838,6 +863,17 @@ export class SyncServer {
       // Refresh those references so existing browser caches revoke and regain them on the same pull.
       const changedIssues = new Set(entries.filter((entry) => entry.model === "issue").map((entry) => entry.id));
       if (changedIssues.size) {
+        for (const row of view.list("issuePullRequest")) {
+          if (!changedIssues.has(row.issueId)) continue;
+          const allowed = issuePullRequestVisible(view, teams, row);
+          entries.push({
+            seq,
+            model: "issuePullRequest",
+            id: row.id,
+            op: allowed ? "upsert" : "delete",
+            patch: allowed ? (row as Record<string, unknown>) : null,
+          });
+        }
         for (const child of view.list("issue")) {
           if (!child.parentId || !changedIssues.has(child.parentId) || !teams.includes(child.teamId)) continue;
           entries.push({
@@ -943,6 +979,7 @@ export class SyncServer {
         )
         .map(decodeEvent);
       for (const event of page) {
+        if (!githubEvidenceVisible(view, teams, event)) continue;
         if (event.entityType === "issue") {
           const payload = event.payload as Record<string, unknown>;
           if (
@@ -1022,6 +1059,16 @@ export class SyncServer {
       );
       for (const row of page) {
         const model = row["model"] as ModelName;
+        if (model === "githubRepository" || model === "issuePullRequest") {
+          const current = view.get(model, String(row["row_id"]));
+          if (
+            !current ||
+            !(model === "githubRepository"
+              ? githubRepositoryVisible(view, teams, current as Row<"githubRepository">)
+              : issuePullRequestVisible(view, teams, current as Row<"issuePullRequest">))
+          )
+            continue;
+        }
         if (model === "notificationSubscription") {
           const subscription = view.get("notificationSubscription", String(row["row_id"]));
           if (!subscription || !notificationSubscriptionVisible(view, userId, teams, subscription)) continue;
@@ -1040,6 +1087,7 @@ export class SyncServer {
             "issue",
             "comment",
             "documentContent",
+            "issuePullRequest",
             "issueRelation",
             "issueSubscription",
             "issueLabelLink",
