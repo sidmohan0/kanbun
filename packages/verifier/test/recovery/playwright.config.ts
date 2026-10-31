@@ -17,7 +17,7 @@ export default defineConfig({
   testDir: directory,
   testMatch: "*.spec.ts",
   fullyParallel: true,
-  workers: requestedWorkers === undefined ? undefined : Number(requestedWorkers),
+  ...(requestedWorkers === undefined ? {} : { workers: Number(requestedWorkers) }),
   outputDir: path.join(artifacts, "test-results"),
   reporter: [
     ["list"],
