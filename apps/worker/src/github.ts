@@ -94,7 +94,7 @@ async function github<T = unknown>(
     env,
     new Request(API + path, {
       method: options.method ?? "GET",
-      redirect: "error",
+      redirect: "manual",
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/vnd.github+json",
@@ -351,7 +351,7 @@ async function callback(request: Request, env: Env, principal: HostedPrincipal) 
       env,
       new Request("https://github.com/login/oauth/access_token", {
         method: "POST",
-        redirect: "error",
+        redirect: "manual",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify({
           client_id: env.GITHUB_APP_CLIENT_ID,
@@ -466,7 +466,12 @@ export async function githubRoute(request: Request, env: Env, principal: HostedP
       }),
       request,
     );
-    const { source, revision } = await authority.githubRepositoryForIssue(principal, input);
+    const lookup = {
+      issueId: input.issueId,
+      issueIncarnation: input.issueIncarnation,
+      repositoryBindingId: input.repositoryBindingId,
+    };
+    const { source, revision } = await authority.githubRepositoryForIssue(principal, lookup);
     const parsed = new URL(input.url);
     const match = /^\/([^/]+)\/([^/]+)\/pull\/([1-9][0-9]*)\/?$/.exec(parsed.pathname);
     if (
@@ -479,7 +484,7 @@ export async function githubRoute(request: Request, env: Env, principal: HostedP
     )
       throw new RequestError("Use a pull request URL from the selected repository.");
     const snapshot = await readGitHubPullRequest(env, source, number.parse(Number(match[3])));
-    return response(await authority.linkGitHubPullRequest(principal, { ...input, snapshot, revision }));
+    return response(await authority.linkGitHubPullRequest(principal, { ...lookup, snapshot, revision }));
   }
   if (url.pathname === prefix + "/pull-requests/refresh") {
     const { linkId } = await body(z.strictObject({ linkId: z.uuidv7() }), request);
