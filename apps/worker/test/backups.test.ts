@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { uuidv7 } from "@kanbun/model";
-import { issueIncarnation } from "@kanbun/sync";
+import { issueIncarnation, type WorkspaceContext } from "@kanbun/sync";
 import * as Y from "yjs";
 import { createHash } from "node:crypto";
 import type { BodyBackup } from "../src/backup-format";
@@ -88,7 +88,66 @@ describe("private coherent workspace backups in workerd", () => {
         await source.token(memberIdentity),
       );
       expect(accepted.status).toBe(200);
-      const memberContext = await accepted.json();
+      const memberContext = (await accepted.json()) as WorkspaceContext;
+      const commentId = uuidv7(),
+        replyId = uuidv7();
+      const commentBody = "Keep this attributed recovery decision. 日本語";
+      const replyBody = "The invited member confirms the recovery plan.";
+      expect(
+        await (
+          await source.fetch(
+            "/sync/push",
+            post({
+              clientId: "backup-discussion-owner",
+              mutations: [
+                {
+                  id: 1,
+                  name: "commentCreate",
+                  args: { id: commentId, issueId, body: commentBody },
+                  ts: new Date().toISOString(),
+                },
+              ],
+            }),
+          )
+        ).json(),
+      ).toMatchObject({ ok: true, rejected: [] });
+      expect(
+        await (
+          await source.fetch(
+            "/sync/push",
+            post({
+              clientId: "backup-discussion-member",
+              mutations: [
+                {
+                  id: 1,
+                  name: "commentCreate",
+                  args: { id: replyId, issueId, parentId: commentId, body: replyBody },
+                  ts: new Date().toISOString(),
+                },
+              ],
+            }),
+            await source.token(memberIdentity),
+          )
+        ).json(),
+      ).toMatchObject({ ok: true, rejected: [] });
+      expect(
+        await (
+          await source.fetch(
+            "/sync/push",
+            post({
+              clientId: "backup-discussion-owner",
+              mutations: [
+                {
+                  id: 2,
+                  name: "commentResolve",
+                  args: { id: commentId, resolved: true, resolvingCommentId: replyId },
+                  ts: new Date().toISOString(),
+                },
+              ],
+            }),
+          )
+        ).json(),
+      ).toMatchObject({ ok: true, rejected: [] });
       const description = "Recover the shared Yjs body and its exact workspace mirror. 日本語";
       expect((await writeBody(source, issueId, incarnation, description)).status).toBe(200);
       const branchId = uuidv7();
@@ -128,6 +187,7 @@ describe("private coherent workspace backups in workerd", () => {
         ],
       };
       expect(await (await source.fetch("/sync/push", post(rename))).json()).toMatchObject({ ok: true, rejected: [] });
+      await expect.poll(async () => (await source.notificationProgress()).settled).toBe(true);
       const receipt = await source.backup();
       const objects = await source.exportBackup(receipt.key);
       const audit = (await source.inspect()).events.find(
@@ -208,6 +268,28 @@ describe("private coherent workspace backups in workerd", () => {
         incarnation,
         update: archivedBody.update,
         contentState: archivedBody.contentState,
+      });
+      const restoredDiscussion = await target.fetch(`/sync/load?model=comment&parentId=${issueId}`);
+      expect(restoredDiscussion.status).toBe(200);
+      expect(await restoredDiscussion.json()).toMatchObject({
+        rows: expect.arrayContaining([
+          expect.objectContaining({
+            id: commentId,
+            issueId,
+            body: commentBody,
+            userId: context.actor.id,
+            parentId: null,
+            resolvingUserId: context.actor.id,
+            resolvingCommentId: replyId,
+          }),
+          expect.objectContaining({
+            id: replyId,
+            issueId,
+            body: replyBody,
+            userId: memberContext.actor.id,
+            parentId: commentId,
+          }),
+        ]),
       });
       const branch = await target.fetch(
         `/sync/bootstrap?${new URLSearchParams({ clientId: "backup-branch-client", branchId })}`,

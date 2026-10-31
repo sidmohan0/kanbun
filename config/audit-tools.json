@@ -2,6 +2,7 @@
   "gitleaks": {
     "version": "8.30.1",
     "binary": "gitleaks",
+    "versionArgs": ["version"],
     "platforms": {
       "arm64": {
         "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_arm64.tar.gz",
@@ -16,6 +17,7 @@
   "vale": {
     "version": "3.25.1",
     "binary": "vale",
+    "versionArgs": ["--version"],
     "platforms": {
       "x64": {
         "url": "https://github.com/vale-cli/vale/releases/download/v3.25.1/vale_3.25.1_Linux_64-bit.tar.gz",
@@ -30,6 +32,7 @@
   "scorecard": {
     "version": "5.6.0",
     "binary": "scorecard",
+    "versionArgs": ["version"],
     "platforms": {
       "x64": {
         "url": "https://github.com/ossf/scorecard/releases/download/v5.6.0/scorecard_5.6.0_linux_amd64.tar.gz",

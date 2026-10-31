@@ -8,6 +8,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { repositoryName, summarizeLeaks } from "./public-audit.mjs";
 
+test("each pinned audit tool exposes its declared version interface", async () => {
+  const pins = JSON.parse(await readFile(new URL("../config/audit-tools.json", import.meta.url), "utf8"));
+  for (const [name, pin] of Object.entries(pins)) {
+    const binary = existsSync(`/usr/local/bin/${name}`) ? `/usr/local/bin/${name}` : `/home/node/.local/bin/${name}`;
+    const result = spawnSync(binary, pin.versionArgs, { encoding: "utf8" });
+    assert.equal(result.status, 0, `${name} version command failed`);
+    assert.ok(result.stdout.includes(pin.version), `${name} did not report the pinned version`);
+  }
+});
+
 test("public secret findings omit the match, credential, and source text", () => {
   const findings = summarizeLeaks([
     {

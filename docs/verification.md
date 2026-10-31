@@ -53,6 +53,14 @@ per-command logs. An uncommitted repository has no commit SHA; the receipt repor
 than inventing one. A failed prerequisite, command, documentation check, or report write fails the run.
 Skipped or unexecuted checks do not count as successful verification.
 
+When the Docker runtime is shared with other active work, set `KANBUN_RECOVERY_WORKERS=1` to
+limit concurrent browser test cases. This preserves every scenario and its assertions; it does
+not raise timeouts or enable retries. The default retains Playwright's normal worker selection.
+
+```sh
+./scripts/devcontainer.sh exec --remote-env KANBUN_RECOVERY_WORKERS=1 pnpm --silent verify --json
+```
+
 ## PR and main checks
 
 The complete verifier runs on every PR, including documentation-only changes. On pushes to `main`,

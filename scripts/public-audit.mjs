@@ -48,7 +48,7 @@ async function audit(kind) {
     if (pins[name]) {
       const installed = `/home/node/.local/bin/${name}`;
       if (!existsSync(`/usr/local/bin/${name}`) && existsSync(installed)) binary = installed;
-      const version = spawnSync(binary, [name === "gitleaks" ? "version" : "--version"], { encoding: "utf8" });
+      const version = spawnSync(binary, pins[name].versionArgs, { encoding: "utf8" });
       if (version.status !== 0 || !version.stdout.includes(pins[name].version))
         throw new Error(`Rebuild the devcontainer to install pinned ${name} ${pins[name].version}.`);
       report.tools[name] = pins[name].version;
