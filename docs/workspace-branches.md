@@ -2,7 +2,8 @@
 
 A workspace branch holds proposed issue changes without editing the live workspace. This slice
 supports issue creation and title-only updates, including human-reviewed merge and conflict
-handling. Branch review UI and Cloudflare deployment remain later work.
+handling. The branch review UI remains planned. Hosted authentication and deployment are described
+in the [hosted workspace guide](hosted-preview.md).
 
 ## Create and inspect
 
@@ -58,8 +59,9 @@ Sync requests select a branch using `branchId`; omitting it selects main. Bootst
 branch as its third server argument. Pull, push, and on-demand load carry it in their request;
 HTTP transport uses a query parameter for reads and the JSON body for push. Branch success
 responses identify their branch, and clients reject responses for another context before adopting
-state. The local Worker exercises this protocol against a real SQLite Durable Object; production
-authentication and deployment remain planned.
+state. The local Worker exercises this protocol against a real SQLite Durable Object. Hosted
+requests also require the authenticated workspace and membership context described in the
+[hosted workspace guide](hosted-preview.md).
 
 Every sync client ID is permanently bound to one actor and branch. A branch client cannot reuse a
 main client ID, even to retry an old mutation. A `SyncClient` selects `branchId` at construction and

@@ -39,6 +39,7 @@ function fixture(t) {
     }),
   );
   cpSync(path.join(packageRoot, "src"), path.join(root, "packages/verifier/src"), { recursive: true });
+  write("docs/launch/criteria.json", readFileSync(path.join(packageRoot, "../../docs/launch/criteria.json"), "utf8"));
   mkdirSync(path.join(root, "apps"));
   write(".nvmrc", process.version.slice(1) + "\n");
   write(".gitignore", "node_modules/\nartifacts/\n.pnpm-calls\n.pnpm-local-logs\n");
@@ -350,4 +351,32 @@ test("a failed browser preflight stops before bulk package tests, build and rema
       .every((step) => !step.executed && !step.pass),
   );
   assert.deepEqual(f.calls(), expectedCalls.slice(0, 7));
+});
+
+test("launch reports unmet public-release evidence without making ordinary verification fail", (t) => {
+  const f = fixture(t);
+  const ordinary = f.run(["all"]);
+  assert.equal(ordinary.status, 0);
+  assert.equal(ordinary.report.steps.find((step) => step.name === "launch-registry").pass, true);
+  const launch = f.run(["launch"]);
+  assert.equal(launch.status, 1);
+  const result = launch.report.steps.find((step) => step.name === "launch").launch;
+  assert.equal(result.pass, false);
+  assert.equal(result.requirements.length, 11);
+  assert.ok(
+    result.requirements
+      .flatMap((item) => item.criteria)
+      .some((item) => item.status === "pending-review" || item.status === "failed"),
+  );
+  const misplaced = f.run(["doctor", "--evidence", "missing.json"]);
+  assert.equal(misplaced.status, 1);
+  assert.match(misplaced.report.error, /only by the launch/);
+  const readable = spawnSync(process.execPath, [path.join(f.root, "packages/verifier/src/cli.mjs"), "launch"], {
+    cwd: f.root,
+    encoding: "utf8",
+    env: { ...process.env, PATH: f.bin },
+  });
+  assert.equal(readable.status, 1);
+  assert.match(readable.stdout, /OPEN PUB-01/);
+  assert.match(readable.stdout, /PUB-01\.01: Required audit evidence has not been supplied/);
 });

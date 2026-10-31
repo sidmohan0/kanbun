@@ -7,3 +7,7 @@
 !packages/verifier/package.json
 !.devcontainer/
 !.devcontainer/Dockerfile
+!config/
+!config/audit-tools.json
+!scripts/
+!scripts/install-audit-tools.mjs

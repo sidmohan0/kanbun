@@ -1,7 +1,7 @@
 {
   "name": "kanbun",
   "short_name": "kanbun",
-  "description": "An AI-native, local-first issue tracker for people and agents.",
+  "description": "A local-first issue tracker with collaborative editing and GitHub context.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#EFEBE2",

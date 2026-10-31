@@ -1,0 +1,333 @@
+{
+  "schemaVersion": 1,
+  "requirements": [
+    {
+      "id": "PUB-01",
+      "title": "Publication contents are safe to share",
+      "priority": 0,
+      "criteria": [
+        {
+          "id": "PUB-01.01",
+          "assertion": "The current publication tree and complete reachable Git history pass the pinned credential-pattern scanner with no unresolved scanner findings.",
+          "method": "audit",
+          "auditKind": "secrets",
+          "scope": ["."],
+          "owner": "Release maintainer",
+          "procedure": "Run the maintained current-tree and all-history secret audit; retain its current-source receipt, complete ref fingerprint, pinned scanner version and named check results. Finding resolution and any required credential rotation are reviewed under PUB-01.02."
+        },
+        {
+          "id": "PUB-01.02",
+          "assertion": "Publication files, historical findings, screenshots, fixtures, dependencies, fonts, and brand assets have been reviewed for private information and redistribution rights; findings are resolved, exposed credentials rotated, and required notices present.",
+          "method": "review",
+          "scope": ["."],
+          "owner": "Repository owner",
+          "procedure": "Record a publication and provenance review, including unresolved ownership or privacy findings and license/notice decisions. Do not put secrets, private backlog content, or raw scan findings in public artifacts."
+        }
+      ]
+    },
+    {
+      "id": "PUB-02",
+      "title": "Installer configuration is independent of the maintainer instance",
+      "priority": 0,
+      "criteria": [
+        {
+          "id": "PUB-02.01",
+          "assertion": "The public installation configuration, installation script, and configuration guide exist and are nonempty.",
+          "method": "files",
+          "files": ["wrangler.json", "scripts/install-cloudflare.mjs", "docs/cloudflare-deployment.md"],
+          "scope": [
+            "wrangler.json",
+            "installation.example.json",
+            "scripts/install-cloudflare.mjs",
+            "docs/cloudflare-deployment.md",
+            "docs/installation-settings.md"
+          ],
+          "owner": "Installation maintainer",
+          "procedure": "Check the existence of maintained installer files. Independence and safe defaults are exercised in PUB-02.02."
+        },
+        {
+          "id": "PUB-02.02",
+          "assertion": "A generated installation plan uses installer-owned identities and resources; secrets are separate from public values, and unconfigured forks skip deployment and health workflows clearly.",
+          "method": "rehearsal",
+          "scope": [
+            "wrangler.json",
+            "installation.example.json",
+            "scripts/",
+            ".github/",
+            "docs/cloudflare-deployment.md",
+            "docs/installation-settings.md",
+            "apps/worker/test/installation.test.ts"
+          ],
+          "owner": "Installation maintainer",
+          "procedure": "Retain plan-validation and workflow-safety results, including negative cases for maintainer-resource references, missing configuration, and accidentally enabled fixture authentication."
+        }
+      ]
+    },
+    {
+      "id": "PUB-03",
+      "title": "Public claims accurately describe the implemented release",
+      "priority": 0,
+      "criteria": [
+        {
+          "id": "PUB-03.01",
+          "assertion": "README, current specification, installation guides, and capability statements agree on implemented, experimental, and planned behavior; each advertised behavioral promise has applicable evidence.",
+          "method": "review",
+          "scope": ["README.md", "SPEC.md", "docs/", "apps/", "packages/"],
+          "owner": "Product and release maintainer",
+          "procedure": "Review claims against the product scenarios for this source. Confirm agent claims have working examples, local evaluation is distinguished from hosted operation, and specification changes follow versioning policy."
+        }
+      ]
+    },
+    {
+      "id": "RUN-01",
+      "title": "A clean local evaluation has a supported persistent lifecycle",
+      "priority": 1,
+      "criteria": [
+        {
+          "id": "RUN-01.01",
+          "assertion": "The local quickstart, pinned container configuration, and lifecycle rehearsal procedure exist and are nonempty.",
+          "method": "files",
+          "files": [
+            "docs/local-worker.md",
+            ".devcontainer/devcontainer.json",
+            "scripts/check-local-install.sh",
+            "scripts/local-install-probe.mjs"
+          ],
+          "scope": [
+            "docs/local-worker.md",
+            ".devcontainer/",
+            "scripts/devcontainer.sh",
+            "scripts/check-local-install.sh",
+            "scripts/local-install-probe.mjs"
+          ],
+          "owner": "Local installation maintainer",
+          "procedure": "Check the maintained installation and rehearsal files; execute RUN-01.02 for usability and persistence proof."
+        },
+        {
+          "id": "RUN-01.02",
+          "assertion": "A clean checkout starts using documented prerequisites, initializes repeatably, supports issue creation/editing, and retains issue identity and content through stop/restart and container replacement with documented storage preserved. Deliberate reset is verified separately.",
+          "method": "rehearsal",
+          "scope": [".devcontainer/", "scripts/", "apps/", "packages/", "pnpm-lock.yaml", "docs/local-worker.md"],
+          "owner": "Local installation maintainer",
+          "procedure": "Run scripts/check-local-install.sh against an isolated checkout. Retain setup and assertion receipts for initialization, issue operations, restart, replacement, and deliberate reset. Record host/container runtime identity and the exact source fingerprint."
+        },
+        {
+          "id": "RUN-01.03",
+          "assertion": "An unfamiliar evaluator can follow local setup, understand synthetic identity and localhost boundaries, find storage/reset instructions, and recover from documented common setup failures.",
+          "method": "review",
+          "scope": ["README.md", "docs/local-worker.md", ".devcontainer/", "scripts/devcontainer.sh"],
+          "owner": "Installation reviewer",
+          "procedure": "Record newcomer evaluation findings and their resolution. Automated execution does not establish instruction clarity."
+        }
+      ]
+    },
+    {
+      "id": "RUN-02",
+      "title": "Cloudflare installation succeeds in an independent account",
+      "priority": 1,
+      "criteria": [
+        {
+          "id": "RUN-02.01",
+          "assertion": "From a fork and independent Cloudflare account, the documented button/setup procedure provisions resources, migrations, assets and an owner; native sign-in, issue creation, member admission, and persistence succeed, and setup retries preserve data.",
+          "method": "rehearsal",
+          "scope": [
+            "wrangler.json",
+            "scripts/install-cloudflare.mjs",
+            "docs/cloudflare-deployment.md",
+            "README.md",
+            "apps/",
+            "packages/",
+            "pnpm-lock.yaml"
+          ],
+          "owner": "Cloudflare installation maintainer",
+          "procedure": "Run the published installation procedure in a separate account with installer-owned domain, email sender, Turnstile and resources. Retain sanitized deployment and authenticated browser evidence. Include anonymous denial, disabled fixture identities, retry, and restart checks; record manual provider steps."
+        },
+        {
+          "id": "RUN-02.02",
+          "assertion": "GitHub integration is optional for installation and can be configured separately with an installer-owned App; required permissions, callbacks, and recovery steps work as documented.",
+          "method": "rehearsal",
+          "scope": ["wrangler.json", "docs/github-integration.md", "apps/worker/", "apps/web/src/GitHubSettings.tsx"],
+          "owner": "Integration maintainer",
+          "procedure": "Verify core use with no GitHub credentials; connect a separate installer-owned App to selected disposable repositories, exercise linking and revocation/reconnection, and retain sanitized observations."
+        }
+      ]
+    },
+    {
+      "id": "OPS-01",
+      "title": "Operators can upgrade, recover, and remove their installation",
+      "priority": 1,
+      "criteria": [
+        {
+          "id": "OPS-01.01",
+          "assertion": "A supported prior-version installation containing representative directory, issue, discussion, collaborative-body and branch data can be upgraded and backed up, then restored into an isolated target with the documented access recovery behavior.",
+          "method": "rehearsal",
+          "scope": [
+            "apps/worker/",
+            "packages/model/",
+            "packages/mutators/",
+            "packages/sync/",
+            "docs/data-recovery.md",
+            "docs/operations.md"
+          ],
+          "tests": ["apps/worker/test/backups.test.ts"],
+          "owner": "Operations maintainer",
+          "procedure": "Record the supported source version, populated fixture, upgrade path, destination isolation and restored-data/access assertions. Preserve corruption and nonempty-target rejection proof. A fresh empty database does not establish upgrade compatibility."
+        },
+        {
+          "id": "OPS-01.02",
+          "assertion": "Operating guidance explains services/plans, dated cost assumptions, storage responsibilities, health checks, backup coverage/retention, upgrade and rollback limits, credential rotation, export limitations, and data-preserving teardown.",
+          "method": "review",
+          "scope": [
+            "docs/operations.md",
+            "docs/data-recovery.md",
+            "docs/cloudflare-deployment.md",
+            "docs/operations-overview.md"
+          ],
+          "owner": "Operations reviewer",
+          "procedure": "Review each operating responsibility against the implemented system and provider documentation. Validate teardown only on disposable resources; identify unsupported portability or export promises."
+        }
+      ]
+    },
+    {
+      "id": "DOC-01",
+      "title": "The README supports evaluation and adoption",
+      "priority": 2,
+      "criteria": [
+        {
+          "id": "DOC-01.01",
+          "assertion": "Supported documentation links, assets, package commands, workspace inventory, metadata, and changelog structure pass the maintained mechanical documentation checks.",
+          "method": "documentation",
+          "scope": [
+            "README.md",
+            "CONTRIBUTING.md",
+            "CHANGELOG.md",
+            "docs/",
+            "packages/verifier/src/docs.mjs",
+            "package.json",
+            "apps/web/public/",
+            "brand/"
+          ],
+          "owner": "Documentation maintainer",
+          "procedure": "Execute the existing documentation checker. This checks mechanical contracts and does not establish prose accuracy or tone."
+        },
+        {
+          "id": "DOC-01.02",
+          "assertion": "README writing rules pass; its product description, screenshot, maturity, limitations, setup choices, prerequisites and help are current, clear, friendly and business-like, without sales language, hedging or intentional contrastive framing.",
+          "method": "review",
+          "scope": ["README.md", "docs/evaluation.md", "docs/cloudflare-deployment.md", "docs/local-worker.md"],
+          "owner": "Editorial reviewer",
+          "procedure": "Review the resulting text and synthetic screenshot against the current app. Record editorial findings and resolutions; passing DOC-01.03 writing checks is only part of this review."
+        },
+        {
+          "id": "DOC-01.03",
+          "assertion": "README, evaluation guide and case-study prose pass the pinned project writing rules.",
+          "method": "audit",
+          "auditKind": "prose",
+          "scope": [
+            "README.md",
+            "docs/evaluation.md",
+            "docs/case-study.md",
+            ".vale.ini",
+            "config/audit-tools.json",
+            "scripts/public-audit.mjs"
+          ],
+          "owner": "Documentation maintainer",
+          "procedure": "Run the maintained prose audit and retain the current-source receipt showing the pinned Vale version and passing writing-rules check. Editorial judgment remains DOC-01.02."
+        }
+      ]
+    },
+    {
+      "id": "GOV-01",
+      "title": "Security, support, and contribution expectations are explicit",
+      "priority": 2,
+      "criteria": [
+        {
+          "id": "GOV-01.01",
+          "assertion": "Security, support and contribution policies and issue/PR templates exist and are nonempty.",
+          "method": "files",
+          "files": [
+            "SECURITY.md",
+            "SUPPORT.md",
+            "CONTRIBUTING.md",
+            ".github/pull_request_template.md",
+            ".github/ISSUE_TEMPLATE/bug_report.yml",
+            ".github/ISSUE_TEMPLATE/feature_request.yml"
+          ],
+          "scope": ["SECURITY.md", "SUPPORT.md", "CONTRIBUTING.md", ".github/"],
+          "owner": "Repository maintainer",
+          "procedure": "Check maintained policy/template files. Review actual commitments and settings under GOV-01.02."
+        },
+        {
+          "id": "GOV-01.02",
+          "assertion": "Private vulnerability reporting works, supported versions and maintenance expectations are realistic, contribution commands are accurate, and actual repository rules require the intended checks.",
+          "method": "review",
+          "scope": ["SECURITY.md", "SUPPORT.md", "CONTRIBUTING.md", ".github/", "AGENTS.md"],
+          "owner": "Repository owner",
+          "procedure": "Retain applicable individual Scorecard findings and read-only GitHub repository-setting evidence. Confirm private reporting and required verifier/changelog/spec-lock checks in actual rules. Missing settings permissions remain blocked; policy files alone do not prove enforcement."
+        }
+      ]
+    },
+    {
+      "id": "BIZ-01",
+      "title": "Paid implementation help has a concrete scope",
+      "priority": 2,
+      "criteria": [
+        {
+          "id": "BIZ-01.01",
+          "assertion": "A visible professional contact route describes deployment, authentication, optional integrations, backup verification and handover, with customer prerequisites and deliverables; initial setup and ongoing maintenance are separately described.",
+          "method": "review",
+          "scope": ["README.md", "SUPPORT.md"],
+          "owner": "Service provider",
+          "procedure": "Review the offer as a prospective engineering manager and confirm that all commitments can be delivered. Link checks establish route syntax; service suitability is an explicit human judgment."
+        }
+      ]
+    },
+    {
+      "id": "PORT-01",
+      "title": "Portfolio material represents the engineering accurately",
+      "priority": 2,
+      "criteria": [
+        {
+          "id": "PORT-01.01",
+          "assertion": "A maintained case study exists and is nonempty.",
+          "method": "files",
+          "files": ["docs/case-study.md"],
+          "scope": ["docs/case-study.md"],
+          "owner": "Portfolio maintainer",
+          "procedure": "Check the case-study artifact; evaluate attribution, walkthrough, and evidence under PORT-01.02."
+        },
+        {
+          "id": "PORT-01.02",
+          "assertion": "Case study and synthetic walkthrough explain the problem, author's role, decisions, tradeoffs and implemented scope; technical claims have evidence and performance measurements identify source, environment, and workload.",
+          "method": "review",
+          "scope": ["docs/case-study.md", "docs/evaluation.md", "README.md", "packages/verifier/test/recovery/"],
+          "owner": "Portfolio reviewer",
+          "procedure": "Review attribution and each technical claim against applicable evidence. Complete before portfolio promotion. Do not describe synthetic seed measurements as real-team production observations."
+        }
+      ]
+    },
+    {
+      "id": "REL-01",
+      "title": "The published release matches its qualified evidence",
+      "priority": 3,
+      "criteria": [
+        {
+          "id": "REL-01.01",
+          "assertion": "The complete devcontainer verifier passes for the exact current source, with every required step executed and retained logs bound to the supplied evidence.",
+          "method": "verifier",
+          "scope": ["apps/", "packages/", "scripts/", ".devcontainer/", ".github/", "pnpm-lock.yaml", "package.json"],
+          "owner": "Release maintainer",
+          "procedure": "Run ./scripts/devcontainer.sh verify, then supply the full all-profile receipt and SHA-256-bound command logs. Doctor, partial, failed, skipped, stale and incomplete receipts cannot satisfy this criterion."
+        },
+        {
+          "id": "REL-01.02",
+          "assertion": "History-aware changelog and spec-lock checks pass, independent installation evidence applies to the candidate, release notes state limitations, and the published tag resolves to the qualified source.",
+          "method": "review",
+          "scope": ["CHANGELOG.md", "SPEC.md", "docs/launch/criteria.json", ".github/", "scripts/"],
+          "owner": "Release maintainer",
+          "procedure": "Retain separate PR-base-aware check receipts, a candidate/tag identity record and release notes. Review applicability of all evidence before publication; creating a checklist or merging a PR does not establish a tagged release."
+        }
+      ]
+    }
+  ]
+}

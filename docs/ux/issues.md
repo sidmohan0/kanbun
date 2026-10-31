@@ -8,7 +8,7 @@ screen connects those existing capabilities without adding another mutation voca
 
 Use the Bone & Cinnabar palette, Inter for interface text, Shippori Mincho for the kanbun name and
 page heading, the existing theme-aware mark, and the compact row spacing from the brand kit.
-The sidebar has one working destination, All issues, with an explicit Local workspace label.
+The sidebar identifies the local workspace and provides All issues, My Issues, and Inbox.
 
 The Issues page shows a title field and team selector for creation, followed by a table of issue
 identifiers, titles, and save state. A new issue appears immediately with a pending identifier;
@@ -35,7 +35,8 @@ separate action when the Worker has no fixture members. The hosted preview inste
 verified user and workspace, hides local initialization, and opens an empty starter team after
 authorized setup. Authentication failures require signing in and reloading before cached work is
 opened again. [Issue details](issue-details.md) now provide a plain-text collaborative description.
-Native sign-in, workspace switching, branch review, filtering, and rich formatting remain later flows.
+[Native sign-in](email-sign-in.md) and [daily filters](issue-views.md) are implemented. Workspace
+switching, branch review, and broader rich formatting remain planned.
 
 ## Proof
 

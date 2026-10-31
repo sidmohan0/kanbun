@@ -1,0 +1,4 @@
+# Required for email sign-in; configure real Worker secrets through Cloudflare.
+# These are placeholder prompts, not working credentials.
+RESEND_API_KEY=replace-with-your-resend-api-key
+TURNSTILE_SECRET_KEY=replace-with-your-turnstile-secret

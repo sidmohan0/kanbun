@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   health:
+    if: github.repository == 'sidmohan0/kanbun' || vars.KANBUN_PREVIEW_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -31,14 +32,14 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: ./scripts/devcontainer.sh exec --remote-env CI=true --remote-env "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN" --remote-env "GITHUB_TOKEN=$GITHUB_TOKEN" node scripts/preview-health.mjs
+        run: ./scripts/devcontainer.sh exec --remote-env CI=true --remote-env "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN" --remote-env "GITHUB_TOKEN=$GITHUB_TOKEN" --remote-env "GITHUB_REPOSITORY=$GITHUB_REPOSITORY" node scripts/preview-health.mjs
       - name: Publish health summary
         if: always()
         run: |
           if [ -f artifacts/preview-health/summary.md ]; then
             cat artifacts/preview-health/summary.md >> "$GITHUB_STEP_SUMMARY"
           else
-            printf '# Preview health\n\nThe container or check produced no receipt. Inspect this workflow run and [the recovery runbook](https://github.com/sidmohan0/kanbun/blob/main/docs/operations.md).\n' >> "$GITHUB_STEP_SUMMARY"
+            printf '# Preview health\n\nThe container or check produced no receipt. Inspect this workflow run and [the recovery runbook](https://github.com/${{ github.repository }}/blob/main/docs/operations.md).\n' >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Preserve health evidence
         if: always()

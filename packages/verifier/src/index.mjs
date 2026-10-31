@@ -7,8 +7,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { checkDocumentation } from "./docs.mjs";
+import {
+  collectLaunchEvidence,
+  evaluateLaunchReadiness,
+  readLaunchRegistry,
+  validateLaunchRegistry,
+} from "./launch.mjs";
 
-const profiles = new Set(["all", "doctor", "check", "build", "smoke", "preflight", "recovery", "docs"]);
+const profiles = new Set(["all", "doctor", "check", "build", "smoke", "preflight", "recovery", "docs", "launch"]);
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const jsonFile = (file) => JSON.parse(readFileSync(file, "utf8"));
 
@@ -113,7 +119,7 @@ function sourceMetadata(root, outputDirectory) {
   };
 }
 
-function plan(command, root, metadata, outputDirectory) {
+function plan(command, root, metadata, outputDirectory, evidenceFile) {
   const pin = readFileSync(path.join(root, ".nvmrc"), "utf8").trim().replace(/^v/, "");
   const packageManager = jsonFile(path.join(root, "package.json")).packageManager;
   if (!/^\d+\.\d+\.\d+$/.test(pin)) throw new Error(".nvmrc must pin an exact Node version.");
@@ -147,7 +153,9 @@ function plan(command, root, metadata, outputDirectory) {
         return { pass: true, details: stdout.trim() };
       },
     },
-    ...(command === "docs" ? [] : [{ name: "doctor-dependencies", check: () => checkDependencies(root) }]),
+    ...(["docs", "launch"].includes(command)
+      ? []
+      : [{ name: "doctor-dependencies", check: () => checkDependencies(root) }]),
     {
       name: "source-metadata",
       check() {
@@ -169,9 +177,31 @@ function plan(command, root, metadata, outputDirectory) {
     ]) {
       steps.push({ name, command: ["pnpm", "--reporter=append-only", ...args] });
     }
+    steps.push({
+      name: "launch-registry",
+      check() {
+        const errors = validateLaunchRegistry(readLaunchRegistry(root));
+        return {
+          pass: errors.length === 0,
+          details: errors.length ? errors.join("\n") : "Launch requirements and verification contracts are valid.",
+        };
+      },
+    });
     if (command === "all")
       steps.push({ name: "preflight", command: ["pnpm", "--reporter=append-only", "test:recovery", "--preflight"] });
     steps.push({ name: "check-tests", command: ["pnpm", "--reporter=append-only", "test"] });
+  }
+  if (command === "launch") {
+    steps.push({
+      name: "launch",
+      async check() {
+        const evidence = evidenceFile
+          ? jsonFile(path.resolve(root, evidenceFile))
+          : collectLaunchEvidence({ root, source: metadata.source });
+        const launch = await evaluateLaunchReadiness({ root, source: metadata.source, evidence });
+        return { pass: launch.pass, details: JSON.stringify(launch, null, 2), launch };
+      },
+    });
   }
   if (command === "all" || command === "build")
     steps.push({ name: "build", command: ["pnpm", "--reporter=append-only", "build"] });
@@ -278,7 +308,13 @@ async function execute(step, root, runDirectory, index) {
   return result;
 }
 
-export async function runVerification({ root, command = "all", outputDirectory, onProgress = () => {} } = {}) {
+export async function runVerification({
+  root,
+  command = "all",
+  outputDirectory,
+  evidenceFile,
+  onProgress = () => {},
+} = {}) {
   const started = performance.now();
   let localDirectory;
   const report = {
@@ -295,9 +331,10 @@ export async function runVerification({ root, command = "all", outputDirectory, 
   };
   try {
     if (!profiles.has(command)) throw new Error(`Unknown verification profile: ${command}`);
+    if (evidenceFile && command !== "launch") throw new Error("--evidence is supported only by the launch profile.");
     root = path.resolve(root);
     outputDirectory = path.resolve(outputDirectory ?? path.join(root, "artifacts", "verification"));
-    const steps = plan(command, root, report.metadata, outputDirectory);
+    const steps = plan(command, root, report.metadata, outputDirectory, evidenceFile);
     await mkdir(outputDirectory, { recursive: true });
     report.runDirectory = await mkdtemp(path.join(outputDirectory, "run-"));
     localDirectory = await mkdtemp(path.join(tmpdir(), "kanbun-verification-"));

@@ -10,4 +10,9 @@ RUN node -e 'const fs = require("node:fs"); const expected = fs.readFileSync("/t
     && npx --yes "playwright@$(node -p 'require("/tmp/kanbun-toolchain/verifier.json").devDependencies["@playwright/test"]')" install-deps chromium \
     && rm -rf /var/lib/apt/lists/* /tmp/kanbun-toolchain
 
+COPY config/audit-tools.json /tmp/kanbun-tools/config/audit-tools.json
+COPY scripts/install-audit-tools.mjs /tmp/kanbun-tools/scripts/install-audit-tools.mjs
+RUN node /tmp/kanbun-tools/scripts/install-audit-tools.mjs /usr/local/bin \
+    && rm -rf /tmp/kanbun-tools
+
 USER node

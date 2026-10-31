@@ -1,0 +1,22 @@
+name: Feature request
+description: Propose a change to a user or operator workflow.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and affected workflow
+      description: Describe who encounters this problem and what they are trying to accomplish.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe observable behavior that would make the change useful.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Current workaround and relevant context
+      description: Include deployment mode or integration requirements. Keep private workspace information out of the report.

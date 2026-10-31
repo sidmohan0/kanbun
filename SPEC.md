@@ -1,22 +1,22 @@
 ---
 title: kanbun — data model & architecture spec
-version: 1.0
+version: 1.1
 status: locked
-date: 2026-10-29
+date: 2026-10-31
 author: sid
 ---
 
 # kanbun — data model & architecture spec
 
-**Version 1.0 · locked · 29 Oct 2026 · @sid**
+**Version 1.1 · locked · 31 Oct 2026 · @sid**
 
-This file is the single source of truth for what kanbun is and how it is built. It is *locked*: the body below changes only through a version bump, and every version is kept in full under [`docs/spec/`](docs/spec/). Code that disagrees with this file is wrong; a change of mind is a new version, not an edit.
+This file records kanbun's intended data model and architecture. The implementation boundary below identifies the current supported scope. It is *locked*: the body changes only through a version bump, and every version is kept under [`docs/spec/`](docs/spec/).
 
 ## How this file is versioned
 
 - The body of this file is always the **current** version; its number is in the front matter and in the line above.
 - Every version is archived in full as `docs/spec/SPEC-v<version>.md`. The archive is append-only.
-- A change to the body requires, in the same commit or PR: bump `version:`, add a row to the history below, and archive the new version. CI (`.github/workflows/spec-lock.yml`, `pnpm spec:check`) fails the build otherwise, and `CODEOWNERS` routes every change to this file through @sidmohan0.
+- A change to the body requires, in the same commit or PR: bump `version:`, add a row to the history below, and archive the new version. CI (`.github/workflows/spec-lock.yml`, `pnpm spec:check`) checks this policy. Repository rules and review assignments are configured separately.
 - Patch versions (1.0 → 1.1) are clarifications that change no commitment. Minor versions (1 → 2) change a commitment or a phase gate. The thesis and the five commitments are the contract; everything else is how.
 
 ## History
@@ -24,10 +24,21 @@ This file is the single source of truth for what kanbun is and how it is built. 
 | Version | Date | What changed | Archive |
 | --- | --- | --- | --- |
 | **1.0** | 29 Oct 2026 | First entry. | [`docs/spec/SPEC-v1.0.md`](docs/spec/SPEC-v1.0.md) |
+| **1.1** | 31 Oct 2026 | Clarify current implementation scope, public claims, and third-party attribution. | [`docs/spec/SPEC-v1.1.md`](docs/spec/SPEC-v1.1.md) |
 
-**Implementation status:** the repository implements the engine's first cut (patch-based log, mutators, overlays, agent gate, per-row team scope on every synced model, savepoint-per-mutation pushes; 28 passing tests, including regressions for the pre-commit engine review). Phase 0a as specified below (events with reducers, `event_log` with branches, `branch_row`, three status columns, golden-log tests) is the next work item; the Worker is written only after it.
+**Implementation status:** the repository includes the Cloudflare Worker, SQLite workspace and document Durable Objects, D1 directory and email authentication, issue controls, list/board views, discussion and inbox, selected GitHub context, coherent backup bundles, isolated restore, and container-based verification. Semantic replay and workspace branches have the bounded scope described below. Fresh verifier receipts establish a candidate's passing checks; historical test counts are not a release qualification.
 
 ---
+
+## Implementation boundary
+
+This specification includes design commitments that are still planned. The current application supports issue management, collaborative descriptions, discussion, invitations and membership, teams and workflow statuses, and read-only GitHub context. An open authorized page can retain offline edits; hosted cold starts require connectivity and fresh authentication before reopening cached work.
+
+Semantic events cover supported issue and discussion commands; other mutations retain a legacy patch path. The log does not yet reconstruct the entire workspace. Durable workspace branches support issue creation and title changes, human conflict choices, and retry-safe merge through APIs. The branch-review UI is planned.
+
+Agent scopes and ownership are enforced by the engine. Autonomous agent execution, earned autonomy, evidence-derived status, time-aware views, wider planning surfaces, general-purpose import/export, and external notifications remain planned. Workflows, Queues, and Email Workers in the architecture below describe intended components. The current sign-in implementation uses a provider HTTPS email API.
+
+The local devcontainer supplies workerd-based development and evaluation with synthetic identities. Team hosting requires authenticated Cloudflare deployment. A complete local test run establishes its documented runtime scope; account provisioning, DNS, email delivery, and production upgrades require separate installation evidence.
 
 ## Thesis
 
@@ -49,7 +60,7 @@ Deferred: onboarding polish, project-update schedules, sidebar customization, do
 
 | Rule | Detail |
 | --- | --- |
-| Original work only | No code, assets or captured traffic from any other product. Icon sets, illustrations, logos, wordmarks and CSS are kanbun's own. Layout, information architecture and interaction patterns are ours to choose and are chosen for familiarity. |
+| Original application work | Product-specific code, illustrations, icons, logos, wordmarks and styles are original. Licensed foundational dependencies, fonts and official provider assets require source and license attribution. Do not copy another product's source, proprietary assets, or captured traffic. |
 | Schema is a re-expression | Entity and field names are kept compatible with the public APIs of existing trackers so an import maps 1:1. The event vocabulary and derivation rules are kanbun's own. |
 | One name | Product name kanbun, repo [github.com/sidmohan0/kanbun](https://github.com/sidmohan0/kanbun), workspace URL `kanbun.<domain>/<workspace>`. |
 

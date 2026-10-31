@@ -21,6 +21,7 @@ pnpm verify smoke
 pnpm verify preflight
 pnpm verify recovery
 pnpm verify docs
+pnpm verify launch
 pnpm test:verifier
 ```
 
@@ -140,3 +141,40 @@ release, not necessarily the current implementation. Semantic auditing is deferr
 model calls, API-key prerequisites, or semantic findings in the CI path.
 
 Scheduled workflows begin running only after they are present on the default branch.
+
+## Public launch checks
+
+The launch profile evaluates the [launch criteria and evidence](launch-readiness.md) separately
+from code health. A successful complete verifier run does not claim that cloud installation,
+publication review or editorial approval has happened. The normal verifier validates the launch
+registry's structure; the launch profile reports missing, blocked and stale evidence explicitly.
+
+The devcontainer pins Gitleaks, Vale and OpenSSF Scorecard in
+[`config/audit-tools.json`](../config/audit-tools.json). Image construction verifies each Linux
+archive's SHA-256 before installing it. Rebuild the image when those pins change.
+
+```sh
+./scripts/devcontainer.sh exec pnpm audit:public secrets
+./scripts/devcontainer.sh exec pnpm audit:public prose
+```
+
+The secret audit scans full available Git history and a snapshot of current tracked/unignored
+files. A shallow checkout is rejected. Reports retain rule, path, line and commit references;
+credential values, matched source text and scanner logs are omitted. The exact-value allowances
+in `.gitleaks.toml` cover the RFC 6455 example nonce, a public historical Access audience and the
+synthetic credential-parser fixture. The scanner's negative test proves an unrelated credential
+still fails. A passing scan covers those rules; publication and ownership review remain required.
+
+Vale checks the public README, evaluation guide and case study against the maintained writing
+rules in `config/writing/Kanbun`. These rules enforce explicit phrases, with editorial review
+covering accuracy, tone and usefulness. No external writing service is used.
+
+CI runs both audits inside the shared devcontainer and retains their receipts under
+`artifacts/launch/`. The manual Launch rehearsal workflow can run an isolated local install and
+collect repository-security findings. Scorecard collection requires a read token and
+`GITHUB_REPOSITORY=owner/repository`, supplied as remote environment variables to the devcontainer;
+it records individual findings for review rather than granting launch approval from a score.
+Unavailable repository settings remain unverified. None of these workflows deploy a public Worker.
+
+Use [`scripts/check-local-install.sh`](../scripts/check-local-install.sh) for clean-checkout and
+container replacement evidence. See [local lifecycle details](local-worker.md#persistence-reset-and-installation-proof).

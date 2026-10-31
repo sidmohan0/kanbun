@@ -1,0 +1,41 @@
+name: Launch rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      local:
+        description: Run the disposable clean-install and container replacement rehearsal
+        type: boolean
+        default: true
+      repository:
+        description: Collect repository security findings for review
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/devcontainer
+      - name: Collect repository findings
+        if: inputs.repository
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./scripts/devcontainer.sh exec --remote-env "GITHUB_TOKEN=$GITHUB_TOKEN" --remote-env "GITHUB_REPOSITORY=$GITHUB_REPOSITORY" pnpm audit:public repository
+      - name: Rehearse local installation in an isolated clone
+        if: inputs.local
+        run: ./scripts/check-local-install.sh
+      - name: Retain rehearsal evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: launch-rehearsal-${{ github.run_id }}
+          path: artifacts/launch/
+          if-no-files-found: warn

@@ -159,6 +159,11 @@ compatibility review and a corrective release rather than an unsafe automatic ro
 
 ## Automatic releases
 
+Preview deployment and scheduled/manual health workflows require the repository variable
+`KANBUN_PREVIEW_ENABLED=true`. Leave it unset on a fresh fork. Enabling these workflows also
+requires a reviewed installer-owned preview configuration and the appropriate scoped secrets.
+The [portable installation](cloudflare-deployment.md) uses its own root configuration and commands.
+
 After successful push CI on current main, Deploy preview checks out that exact SHA and builds and
 deploys in the same devcontainer. Superseded runs do not publish. The scoped
 `CLOUDFLARE_API_TOKEN` Actions secret remains outside Git and receipts. It expires January 28, 2027;

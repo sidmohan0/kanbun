@@ -5,9 +5,11 @@ import { fileURLToPath } from "node:url";
 import { cloudflareToken } from "./preview-credentials.mjs";
 import { createPreviewChecks, PreviewCheckError } from "./preview-checks.mjs";
 
-const repository = "sidmohan0/kanbun";
-const actionsUrl = `https://github.com/${repository}/actions`;
-const recoveryUrl = `https://github.com/${repository}/blob/main/docs/operations.md`;
+export function installationRepository(value = process.env.GITHUB_REPOSITORY) {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value ?? ""))
+    throw new PreviewCheckError("github-repository", "Set GITHUB_REPOSITORY to this installation's owner/repository");
+  return value;
+}
 const statuses = new Set(["queued", "in_progress", "completed", "waiting", "requested", "pending"]);
 const conclusions = new Set([
   "success",
@@ -30,7 +32,9 @@ export function safeHealthFailure(error) {
   };
 }
 
-export async function githubReleaseState(token, fetchImpl = fetch) {
+export async function githubReleaseState(token, fetchImpl = fetch, repository = installationRepository()) {
+  repository = installationRepository(repository);
+  const actionsUrl = `https://github.com/${repository}/actions`;
   if (!token) throw new PreviewCheckError("github-releases", "GitHub repository Actions read access is required");
   async function runs(workflow, filters = "") {
     let response;
@@ -135,6 +139,11 @@ export async function runPreviewHealth({ checks, releases, sourceAllowed }, rece
 }
 
 export function healthSummary(receipt) {
+  const validRepository = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(receipt.repository ?? "");
+  const actionsUrl = validRepository ? `https://github.com/${receipt.repository}/actions` : "../../actions";
+  const recoveryUrl = validRepository
+    ? `https://github.com/${receipt.repository}/blob/main/docs/operations.md`
+    : "../../docs/operations.md";
   const lines = [
     "# Preview health",
     "",
@@ -194,6 +203,7 @@ async function main() {
         "Deployment credential is missing or malformed; update the existing Actions secret",
       );
     }
+    receipt.repository = installationRepository();
     await runPreviewHealth(
       {
         checks: createPreviewChecks(config, token),

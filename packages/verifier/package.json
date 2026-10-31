@@ -14,7 +14,7 @@
     "verify": "node src/cli.mjs",
     "test": "node --test test/*.test.mjs",
     "test:recovery": "node src/recovery.mjs",
-    "typecheck": "node --check src/cli.mjs && node --check src/index.mjs && node --check src/docs.mjs && node --check src/recovery.mjs && tsc --noEmit -p test/recovery/tsconfig.json",
+    "typecheck": "node --check src/cli.mjs && node --check src/index.mjs && node --check src/docs.mjs && node --check src/launch.mjs && node --check src/recovery.mjs && tsc --noEmit -p test/recovery/tsconfig.json",
     "build": "echo 'source package'"
   },
   "devDependencies": {

@@ -1,0 +1,13 @@
+{
+  "name": "kanbun-team",
+  "account_id": "replace-with-your-cloudflare-account-id",
+  "origin": "https://kanbun-team.your-subdomain.workers.dev",
+  "owner_email": "owner@your-company.com",
+  "email_domain": "your-company.com",
+  "from_email": "Kanbun <signin@auth.your-company.com>",
+  "turnstile_site_key": "replace-with-your-turnstile-site-key",
+  "workspace_name": "Your team",
+  "database_id": "replace-with-your-d1-database-id",
+  "database_name": "kanbun-team-accounts",
+  "backup_bucket": "kanbun-team-backups"
+}

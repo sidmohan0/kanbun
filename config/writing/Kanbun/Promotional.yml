@@ -1,0 +1,11 @@
+extends: existence
+message: "Replace promotional wording '%s' with a concrete description."
+level: error
+ignorecase: true
+tokens:
+  - game[- ]changing
+  - revolutionary
+  - best[- ]in[- ]class
+  - seamlessly
+  - cutting[- ]edge
+  - unlock the power

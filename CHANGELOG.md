@@ -7,6 +7,11 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Add installer-owned Cloudflare setup, an official deployment button, and documented local persistence and recovery workflows.
+- Add public launch criteria with source-bound evidence, publication and writing audits, security/support policies, and adoption documentation.
+
+### Added
+
 - Team settings now support editing the issue identifier key, preserving issue links and numbering while enforcing unique uppercase keys.
 
 - Added team-scoped GitHub repository connections and issue-linked PR, branch, review and CI context across lists, boards, details and activity, with signed canonical observations, owner-only setup and current-scope privacy checks.

@@ -24,6 +24,7 @@ const required = [
   "smoke",
   "recovery",
   "docs",
+  "launch-registry",
 ];
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
