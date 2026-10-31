@@ -99,7 +99,7 @@ export function applyGitHubEvent(ctx: MutatorContext, event: DomainEvent): void 
 const snapshotArgs = z.strictObject({
   id,
   issueId: id,
-  issueIncarnation: id,
+  issueIncarnation: z.string().min(1),
   repositoryBindingId: id,
   revision: z.number().int().positive().safe(),
   snapshot: githubPullRequestSnapshotSchema,
