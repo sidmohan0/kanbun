@@ -313,6 +313,7 @@ async function callback(request: Request, env: Env, principal: HostedPrincipal) 
     z.strictObject({
       code: z.string().min(1).optional(),
       state: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+      iss: z.literal("https://github.com/login/oauth").optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
       error_uri: z.string().optional(),
