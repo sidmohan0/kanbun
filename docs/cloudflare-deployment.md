@@ -78,8 +78,16 @@ root profile and keeps the generated configuration separate from the maintainer 
 ```sh
 ./scripts/devcontainer.sh up
 ./scripts/devcontainer.sh exec pnpm install --frozen-lockfile
-./scripts/devcontainer.sh exec pnpm --filter @kanbun/worker exec wrangler login
+./scripts/devcontainer.sh exec pnpm --filter @kanbun/worker exec wrangler login --device --browser=false
 ```
+
+Open the device verification URL printed by Wrangler in your host browser and authorize the
+intended Cloudflare account. The [device flow](https://developers.cloudflare.com/workers/wrangler/commands/general/#login)
+needs no localhost callback forwarding, so it works when the browser runs outside the container.
+A container rebuild discards credentials stored only in its home directory; sign in again as
+needed. For unattended runs, supply a scoped `CLOUDFLARE_API_TOKEN` through the devcontainer
+wrapper's `--remote-env` option instead of starting interactive login. Keep the token out of
+source, shell transcripts and launch evidence.
 
 Create a dedicated database and private bucket, substituting your own resource names:
 
@@ -96,10 +104,16 @@ returned D1 database ID into `database_id`. Keep the bucket private in the Cloud
 ./scripts/devcontainer.sh exec pnpm install:cloudflare configure
 ./scripts/devcontainer.sh exec pnpm install:cloudflare check --config wrangler.install.json
 ./scripts/devcontainer.sh exec pnpm build
+./scripts/devcontainer.sh exec pnpm install:cloudflare deploy --config wrangler.install.json
 ./scripts/devcontainer.sh exec pnpm --filter @kanbun/worker exec wrangler secret put RESEND_API_KEY --config ../../wrangler.install.json
 ./scripts/devcontainer.sh exec pnpm --filter @kanbun/worker exec wrangler secret put TURNSTILE_SECRET_KEY --config ../../wrangler.install.json
 ./scripts/devcontainer.sh exec pnpm install:cloudflare deploy --config wrangler.install.json
 ```
+
+The first deploy creates the Worker before the secret commands run. Email requests fail closed
+until both provider secrets are present. Supply each secret at Wrangler's prompt, or set it in
+that Worker's Cloudflare dashboard if your terminal cannot provide interactive input. The final
+deploy and acceptance exercise check the completed configuration.
 
 Configuration generation creates a UUIDv7 workspace identity. Repeating it with identical settings
 preserves that identity and does not overwrite the profile. Changed settings require explicit review

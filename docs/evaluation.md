@@ -1,6 +1,6 @@
 # Evaluate Kanbun for your team
 
-Kanbun currently serves an invited engineering team that wants to own its Cloudflare deployment.
+Kanbun is intended for an invited engineering team that wants to own its Cloudflare deployment.
 Evaluate it with synthetic data before loading a real backlog. Use the
 [local guide](local-worker.md) for product exploration and the
 [Cloudflare guide](cloudflare-deployment.md) for authenticated deployment.

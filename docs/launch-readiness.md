@@ -20,7 +20,7 @@ Existing IDs retain their meaning; a materially different promise needs its own 
 The first command evaluates mechanical checks and collects retained receipts from the maintained
 secret/prose audits, local lifecycle rehearsal, and the latest matching full-verifier run. It does
 not execute those producers. Missing receipts remain explicit. The `--evidence` command evaluates an explicit
-evidence manifest, which can include collected records and human/live-account records. The command
+evidence manifest, which can include collected records and reviewer/live-account records. The command
 without `--json` prints criterion IDs, statuses, and missing-evidence reasons for direct review.
 All commands retain a normal verifier receipt and a nested
 `launch` result in the launch step. A report with unmet requirements exits nonzero. Commands do
@@ -28,7 +28,7 @@ not deploy, send mail, change repository settings, create releases, or mark revi
 
 Ordinary `./scripts/devcontainer.sh verify` validates the registry structure and runs the code
 checks. Its passing result establishes code qualification. Public launch readiness is a separate
-profile because live-account rehearsals and human judgments remain required. A green ordinary
+profile because live-account rehearsals and accountable review judgments remain required. A green ordinary
 CI run does not claim that the repository is ready for public promotion.
 
 ## Implementation and verification order
@@ -135,7 +135,7 @@ the full current-tree verifier does not replace them.
 - `failed`: an assertion failed, evidence was invalid/stale, or required scoped source was missing.
 - `blocked`: a live rehearsal lacks evidence or records an unmet prerequisite.
 - `not-run`: required full-verifier evidence has not been supplied.
-- `pending-review`: a required human review has not been supplied.
+- `pending-review`: an applicable reviewer attestation has not been supplied.
 
 Readiness requires every criterion to pass. Required criteria cannot disappear silently, and
 missing or incompatible evidence never counts as success. Applicability changes need a reviewed
@@ -146,6 +146,17 @@ source and artifacts; they do not authenticate a producer or establish the corre
 conclusion. The release maintainer reviews evidence provenance before publication. A script cannot
 decide redistribution rights, editorial quality, service suitability, or prove a real mailbox flow
 from mocked authentication alone.
+
+Technical, newcomer and editorial reviews can be delegated to an AI reviewer. Identify that
+reviewer explicitly in `performedBy`, label its retained assessment `reviewerType: "ai"`, and
+record the inspected source, findings, resolutions and limits. This records the review actually
+performed; it does not claim a human approval. Account ownership, redistribution rights, consent to
+publish private organizational material, provider commitments and publication authorization still
+need the responsible owner's decision. A delegated review must leave those unknown facts open.
+
+The [review follow-up](launch/review-follow-up.md) separates those remaining decisions from
+account prerequisites and final release actions. Some provider checks require a public source URL:
+complete the controlled publication steps before describing the deployment button as rehearsed.
 
 ## Reused approaches
 

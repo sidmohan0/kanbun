@@ -89,10 +89,11 @@ then verify the affected authenticated flow in the application.
 
 Use the devcontainer with the existing deployment credential and a repository token with
 `contents:read` and `actions:read`, supplied through the environment rather than a committed file.
-From a checkout with complete main history, run:
+Set `GITHUB_REPOSITORY` to `sidmohan0/kanbun` for this maintainer preview; an independently configured
+preview uses its own repository name. From a checkout with complete main history, run:
 
 ```sh
-./scripts/devcontainer.sh exec --remote-env "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN" --remote-env "GITHUB_TOKEN=$GITHUB_TOKEN" node scripts/preview-health.mjs
+./scripts/devcontainer.sh exec --remote-env "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN" --remote-env "GITHUB_TOKEN=$GITHUB_TOKEN" --remote-env "GITHUB_REPOSITORY=$GITHUB_REPOSITORY" node scripts/preview-health.mjs
 ```
 
 Inspect `artifacts/preview-health/receipt.json` and `summary.md`. The files contain check names,

@@ -26,6 +26,13 @@ or regulatory-compliance claim.
 
 ## Costs and capacity
 
+Cost review scope, October 31, 2026: this project has no measured total monthly estimate for a
+real team. [SQLite Durable Objects](https://developers.cloudflare.com/durable-objects/platform/pricing/)
+are available on Workers Free and Paid; exceeding a free-tier limit causes further operations of
+that type to fail until its daily reset. Storage, retained backups, email, and observability can
+have separate usage and plan constraints. Recheck provider prices and account eligibility before
+provisioning an installation.
+
 Review provider plans and prices before provisioning. Costs depend on Worker requests and CPU,
 Durable Object operations and storage, D1 queries and storage, R2 retained bundles and operations,
 email volume, and any paid GitHub or Cloudflare features you select. Backup bundles are retained

@@ -8,14 +8,16 @@ GitHub login button.
 
 ## App and Worker configuration
 
-Register the GitHub App with these hosted destinations:
+Register an installer-owned GitHub App with the destinations below, replacing `<APP_ORIGIN>`
+with the exact HTTPS origin in your installation configuration, without a trailing slash. The
+maintainer preview uses `https://kanbun.ai`; independent installations use their own origin.
 
-| Setting                     | Destination                                          |
-| --------------------------- | ---------------------------------------------------- |
-| Homepage                    | `https://kanbun.ai`                                  |
-| User authorization callback | `https://kanbun.ai/api/integrations/github/callback` |
-| Setup after installation    | `https://kanbun.ai/#settings`                        |
-| Active webhook              | `https://kanbun.ai/api/integrations/github/webhook`  |
+| Setting                     | Destination                                     |
+| --------------------------- | ----------------------------------------------- |
+| Homepage                    | `<APP_ORIGIN>`                                  |
+| User authorization callback | `<APP_ORIGIN>/api/integrations/github/callback` |
+| Setup after installation    | `<APP_ORIGIN>/#settings`                        |
+| Active webhook              | `<APP_ORIGIN>/api/integrations/github/webhook`  |
 
 Use selected-repository installation and read-only repository permissions for **Metadata**,
 **Pull requests**, **Checks** and **Commit statuses**. The implementation requests no source-code
