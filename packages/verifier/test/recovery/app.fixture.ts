@@ -53,6 +53,12 @@ export async function startProductServer(
         "/api": {
           target: origin,
           configure(proxy) {
+            proxy.on("proxyRes", (response) => {
+              const location = response.headers.location;
+              // Keep canonical OAuth redirects on the same genuine local browser/cookie origin.
+              if (authenticated && location?.startsWith(authenticated.appOrigin + "/"))
+                response.headers.location = browserOrigin + location.slice(authenticated.appOrigin.length);
+            });
             if (authenticated)
               proxy.on("proxyReq", (request, incoming) => {
                 if (authenticated.token) request.setHeader("Cf-Access-Jwt-Assertion", authenticated.token(incoming));

@@ -4,6 +4,7 @@ import { createRuntimeHarness, localWorkerConfig } from "./harness";
 import type { D1Database, R2Bucket, DurableObjectNamespace } from "@cloudflare/workers-types";
 import type { BootstrapResponse, WorkspaceContext } from "@kanbun/sync";
 import type { BodyBackup, StoredDocumentBackup } from "../src/backup-format";
+import type { GithubFixtureRequest, GithubFixtureResponse } from "./github-provider-worker";
 
 export type PreviewConnection = {
   messages: unknown[];
@@ -32,6 +33,7 @@ export async function startPreviewRuntime({
   emailAuth = false,
   initialAuthMode,
   resendApiKey = "fixture-resend-secret",
+  githubConfig,
 }: {
   ownerEmail?: string;
   subject?: string;
@@ -43,12 +45,14 @@ export async function startPreviewRuntime({
   emailAuth?: boolean;
   initialAuthMode?: "preview" | "email";
   resendApiKey?: string;
+  githubConfig?: Record<string, string>;
 } = {}) {
   const instance = randomUUID().slice(0, 8);
   const certWorker = `preview-test-certs-${instance}`;
   const assetWorker = `preview-test-assets-${instance}`;
   const backupWorker = `preview-test-backup-control-${instance}`;
   const authProviderWorker = `preview-test-auth-provider-${instance}`;
+  const githubProviderWorker = `preview-test-github-provider-${instance}`;
   const local = await localWorkerConfig();
   const issuer = "https://test-access.cloudflareaccess.com";
   const audience = "protected-preview-test-audience";
@@ -93,6 +97,7 @@ export async function startPreviewRuntime({
             PREVIEW_WORKSPACE_ID: workspaceId,
             PREVIEW_WORKSPACE_NAME: "Private preview",
             APP_ORIGIN: appOrigin,
+            ...githubConfig,
             ...(isolatedRestore ? { BACKUP_RESTORE_ISOLATED: "true" } : {}),
           },
           ...(backups ? { r2_buckets: [{ binding: "BACKUPS", bucket_name: `preview-test-backups-${instance}` }] } : {}),
@@ -107,6 +112,7 @@ export async function startPreviewRuntime({
           services: [
             { binding: "ACCESS_JWKS", service: certWorker },
             { binding: "ASSETS", service: assetWorker },
+            ...(githubConfig ? [{ binding: "GITHUB_TRANSPORT", service: githubProviderWorker }] : []),
             ...(emailAuth
               ? [
                   { binding: "AUTH_EMAIL_TRANSPORT", service: authProviderWorker },
@@ -127,6 +133,17 @@ export async function startPreviewRuntime({
         },
       },
       { config: { name: assetWorker, main: "test/assets-worker.ts", compatibility_date: "2026-10-29" } },
+      ...(githubConfig
+        ? [
+            {
+              config: {
+                name: githubProviderWorker,
+                main: "test/github-provider-worker.ts",
+                compatibility_date: "2026-10-29",
+              },
+            },
+          ]
+        : []),
       ...(emailAuth
         ? [
             {
@@ -205,6 +222,25 @@ export async function startPreviewRuntime({
       workspaceId,
       token,
       fetch: request,
+      async setGithubResponses(responses: GithubFixtureResponse[]) {
+        if (!githubConfig) throw new Error("GitHub provider was not configured");
+        await harness.getWorker(githubProviderWorker).fetch("http://fixture/responses", {
+          method: "POST",
+          body: JSON.stringify(responses),
+        });
+      },
+      async githubRequests() {
+        if (!githubConfig) throw new Error("GitHub provider was not configured");
+        return (await (
+          await harness.getWorker(githubProviderWorker).fetch("http://fixture/requests")
+        ).json()) as GithubFixtureRequest[];
+      },
+      async releaseGithubResponse(gate: string) {
+        if (!githubConfig) throw new Error("GitHub provider was not configured");
+        await harness
+          .getWorker(githubProviderWorker)
+          .fetch(`http://fixture/release/${encodeURIComponent(gate)}`, { method: "POST" });
+      },
       async capturedEmails() {
         if (!emailAuth) throw new Error("Native authentication providers were not configured");
         return (await (await harness.getWorker(authProviderWorker).fetch("http://fixture/captured")).json()) as {
