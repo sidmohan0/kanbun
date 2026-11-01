@@ -54,7 +54,8 @@ Removing the container alone preserves the bind-mounted state. Removing the chec
 
 The installation rehearsal clones a committed, clean candidate into a temporary directory and
 uses this same devcontainer. It initializes synthetic data, edits an issue through the HTTP API,
-checks repeated initialization, stops/restarts the container, replaces it, verifies stable issue
+checks that Vite serves the web shell and Wrangler serves the workspace API directly, checks repeated
+initialization, stops/restarts the container, replaces it, verifies stable issue
 identity and contents, and tests reset in that disposable checkout:
 
 ```sh
