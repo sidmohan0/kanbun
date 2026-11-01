@@ -213,6 +213,15 @@ function createWindow(destination = pendingSignIn ?? application.href) {
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
+} else if (process.platform === "darwin" && process.argv.includes("--remove-startup")) {
+  // A running instance can exit after handling this command before the new
+  // process checks the lock. Electron may never reach ready in that race.
+  try {
+    if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: false, args: ["--background"], name: "kanbun" });
+    app.exit(0);
+  } catch {
+    app.exit(1);
+  }
 } else {
   app.on("second-instance", (_event, commandLine) => {
     if (commandLine.includes("--remove-startup")) {

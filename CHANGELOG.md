@@ -91,6 +91,8 @@ preparation moves them to a dated version heading.
 
 ### Fixed
 
+- Prevented the macOS startup-removal command from hanging when another Kanbun instance exits during handoff.
+
 - Normalize the installer's repository path so command-line configuration and deployment accept root profiles while rejecting profiles in other directories.
 
 - Cloudflare's deploy wizard can submit the inert setup profile without blank required identity fields or prefilled sample credentials; installer deployments retain their committed source tag for recovery provenance.

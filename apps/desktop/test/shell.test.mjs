@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -119,6 +120,40 @@ test("desktop shell isolates hosted content, restricts navigation and restores i
   } finally {
     if (desktop) await desktop.close();
     await new Promise((resolve) => server.close(resolve));
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("a second process can disable startup and both instances exit", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "kanbun-desktop-remove-"));
+  const executable = process.env.KANBUN_DESKTOP_EXECUTABLE ?? executablePath;
+  const args = process.env.KANBUN_DESKTOP_EXECUTABLE
+    ? ["--no-sandbox"]
+    : ["--no-sandbox", fileURLToPath(new URL("../dist/main.js", import.meta.url))];
+  const env = { ...process.env, KANBUN_DESKTOP_URL: "http://127.0.0.1:1", XDG_CONFIG_HOME: directory };
+  let desktop;
+  try {
+    desktop = await electron.launch({ executablePath: executable, args: [...args, "--background"], env });
+    const firstExited = new Promise((resolve) => desktop.process().once("exit", resolve));
+    const child = spawn(executable, [...args, "--remove-startup"], { env, stdio: "ignore" });
+    const status = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        child.kill();
+        reject(new Error("Removal process did not exit"));
+      }, 10000);
+      child.on("error", reject);
+      child.on("exit", (code) => {
+        clearTimeout(timeout);
+        resolve(code);
+      });
+    });
+    assert.equal(status, 0);
+    await Promise.race([
+      firstExited,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Running app did not exit")), 10000)),
+    ]);
+  } finally {
+    await desktop?.close().catch(() => {});
     await rm(directory, { recursive: true, force: true });
   }
 });
