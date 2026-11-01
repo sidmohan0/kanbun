@@ -4,7 +4,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findQualification, qualifies, readQualificationArchive } from "./ci-qualification.mjs";
+import { findQualification, qualifies, readQualificationArchive, runReusedChecks } from "./ci-qualification.mjs";
 
 const names = [
   "doctor-node",
@@ -17,14 +17,28 @@ const names = [
   "check-types",
   "check-script-tests",
   "check-spec-lock",
+  "launch-registry",
   "preflight",
   "check-tests",
   "build",
   "smoke",
   "recovery",
   "docs",
-  "launch-registry",
 ];
+
+test("reused qualification requires an executed, passing fresh scale test and build", async () => {
+  const build = { pass: true };
+  const scale = { pass: true, steps: [{ name: "scale", executed: true, pass: true }] };
+  const check = (b, s) => runReusedChecks({ root: ".", verify: async ({ command }) => (command === "build" ? b : s) });
+  assert.equal((await check(build, scale)).pass, true);
+  assert.equal((await check({ pass: false }, scale)).pass, false);
+  assert.equal((await check(build, { pass: false, steps: scale.steps })).pass, false);
+  assert.equal((await check(build, { pass: true, steps: [] })).pass, false);
+  assert.equal(
+    (await check(build, { pass: true, steps: [{ name: "scale", executed: false, pass: true }] })).pass,
+    false,
+  );
+});
 function fixture() {
   const metadata = {
     source: {
@@ -52,6 +66,7 @@ function fixture() {
     metadata: structuredClone(metadata),
     steps: names.map((name) => ({ name, executed: true, pass: true, command: ["pnpm"], exitCode: 0, signal: null })),
   };
+  report.metadata.scaleExcluded = true;
   const current = { command: "doctor", pass: true, reportWritten: true, metadata: structuredClone(metadata) };
   const run = {
     id: 12,
@@ -109,6 +124,9 @@ test("only a complete full qualification of the identical clean source and runti
   const f = fixture();
   assert.equal(qualifies(f.report, f.current, f.run, 34, "owner/repo"), true);
   const mutations = [
+    (f) => {
+      delete f.report.metadata.scaleExcluded;
+    },
     (f) => {
       f.report.command = "check";
     },

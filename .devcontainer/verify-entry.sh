@@ -17,7 +17,7 @@ done
 # Full and browser-heavy profiles share a daemon-wide lock. Fast profiles remain
 # available while another worktree runs the full verifier.
 case "$profile" in
-  all|preflight|recovery)
+  all|preflight|recovery|scale)
     if [ -f /.dockerenv ]; then
       if ! mountpoint -q /var/lock/kanbun; then
         printf 'Verifier lock volume is unavailable; rebuild this devcontainer.\n' >&2

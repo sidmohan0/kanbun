@@ -16,8 +16,17 @@ if (!artifacts || !path.isAbsolute(artifacts))
 export default defineConfig({
   testDir: directory,
   testMatch: "*.spec.ts",
+  // PRs retain functional recovery cases; the 5,000-issue benchmark runs on main.
+  ...(process.env["KANBUN_SKIP_SCALE"] === "1" ||
+  (process.env["CI"] === "true" && process.env["GITHUB_EVENT_NAME"] === "pull_request")
+    ? { testIgnore: "**/app-scale.spec.ts" }
+    : {}),
   fullyParallel: true,
-  ...(requestedWorkers === undefined ? {} : { workers: Number(requestedWorkers) }),
+  ...(requestedWorkers === undefined
+    ? process.env["CI"] === "true"
+      ? { workers: 3 }
+      : {}
+    : { workers: Number(requestedWorkers) }),
   outputDir: path.join(artifacts, "test-results"),
   reporter: [
     ["list"],

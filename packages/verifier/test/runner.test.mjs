@@ -17,9 +17,10 @@ const expectedCalls = [
   ["spec:check", "--initial"],
   ["test:recovery", "--preflight"],
   ["test"],
-  ["build"],
+  ["build:verified"],
   ["seed"],
   ["test:recovery", "--remaining"],
+  ["test:recovery", "app-scale.spec.ts"],
 ].map((args) => (args[0] === "--version" ? args : ["--reporter=append-only", ...args]));
 
 function fixture(t) {
@@ -42,7 +43,7 @@ function fixture(t) {
   write("docs/launch/criteria.json", readFileSync(path.join(packageRoot, "../../docs/launch/criteria.json"), "utf8"));
   mkdirSync(path.join(root, "apps"));
   write(".nvmrc", process.version.slice(1) + "\n");
-  write(".gitignore", "node_modules/\nartifacts/\n.pnpm-calls\n.pnpm-local-logs\n");
+  write(".gitignore", "node_modules/\nartifacts/\n.pnpm-calls\n.pnpm-local-logs\n.pnpm-events\n");
   write("pnpm-lock.yaml", "lockfileVersion: '9.0'\n");
   write("pnpm-workspace.yaml", "packages:\n  - apps/*\n  - packages/*\n");
   write(
@@ -79,6 +80,11 @@ fs.appendFileSync(".pnpm-local-logs",fs.readlinkSync("/proc/self/fd/1")+"\\n");
 const args=invocation.filter(argument=>argument!=="--reporter=append-only");
 if(args[0]==="--version")console.log(process.env.FIXTURE_PNPM_VERSION || "10.28.0");
 else {
+  if(process.env.FIXTURE_OVERLAP) {
+    fs.appendFileSync('.pnpm-events',JSON.stringify({name:args[0],event:'start',time:Date.now()})+'\\n');
+    await new Promise(resolve=>setTimeout(resolve,150));
+    fs.appendFileSync('.pnpm-events',JSON.stringify({name:args[0],event:'end',time:Date.now()})+'\\n');
+  }
   console.log("stdout from "+args.join(" "));
   console.error("stderr from "+args.join(" "));
   if(args[0]==="build" && (process.env.FIXTURE_REMOVE_LOG || process.env.FIXTURE_BLOCK_REPORT)) {
@@ -99,7 +105,7 @@ else {
     const result = spawnSync(process.execPath, [path.join(root, "packages/verifier/src/cli.mjs"), ...args, "--json"], {
       cwd: root,
       encoding: "utf8",
-      env: { ...process.env, PATH: bin, ...env },
+      env: { ...process.env, CI: "false", GITHUB_EVENT_NAME: "", PATH: bin, ...env },
     });
     assert.ok(
       result.stderr
@@ -124,7 +130,7 @@ test("all executes the required gates and emits one JSON receipt with retained l
   assert.equal(report.reportWritten, true);
   assert.ok(report.steps.length > 0);
   assert.ok(report.steps.every((step) => step.executed && step.pass));
-  assert.deepEqual(f.calls(), expectedCalls);
+  assert.deepEqual(f.calls().map(JSON.stringify).sort(), expectedCalls.map(JSON.stringify).sort());
   assert.deepEqual(JSON.parse(readFileSync(path.join(report.runDirectory, "report.json"), "utf8")), report);
   const build = report.steps.find((step) => step.name === "build");
   assert.equal(build.exitCode, 0);
@@ -151,6 +157,23 @@ test("all executes the required gates and emits one JSON receipt with retained l
     createHash("sha256")
       .update(readFileSync(path.join(f.root, "pnpm-lock.yaml")))
       .digest("hex"),
+  );
+});
+
+test("independent groups overlap while the receipt retains its planned order", (t) => {
+  const f = fixture(t);
+  const { report, status } = f.run(["all"], { FIXTURE_OVERLAP: "1" });
+  assert.equal(status, 0);
+  const events = readFileSync(path.join(f.root, ".pnpm-events"), "utf8").trim().split("\n").map(JSON.parse);
+  const when = (name, event) => events.find((item) => item.name === name && item.event === event).time;
+  assert.ok(when("lint", "start") < when("format:check", "end"));
+  assert.ok(when("build:verified", "start") < when("test", "end"));
+  assert.ok(when("seed", "start") < when("test", "end"));
+  assert.deepEqual(
+    report.steps
+      .filter((step) => ["check-tests", "build", "smoke", "recovery"].includes(step.name))
+      .map((step) => step.name),
+    ["check-tests", "build", "smoke", "recovery"],
   );
 });
 
@@ -211,7 +234,21 @@ test("failed commands preserve their real exit code and prevent subsequent execu
       .filter((step) => ["build", "smoke", "docs"].includes(step.name))
       .every((step) => !step.executed && !step.pass),
   );
-  assert.deepEqual(f.calls(), expectedCalls.slice(0, 3));
+  assert.deepEqual(f.calls().map(JSON.stringify).sort(), expectedCalls.slice(0, 6).map(JSON.stringify).sort());
+  assert.ok(
+    report.steps
+      .filter((step) =>
+        [
+          "check-format",
+          "check-lint",
+          "check-types",
+          "check-script-tests",
+          "check-spec-lock",
+          "launch-registry",
+        ].includes(step.name),
+      )
+      .every((step) => step.executed),
+  );
 });
 
 test("doctor enforces exact Node and pnpm pins and does not install tools", (t) => {
@@ -339,6 +376,32 @@ test("preflight is independently runnable and missing dependencies do not block 
   );
 });
 
+test("scale profile selects the benchmark and records execution and failure", (t) => {
+  const f = fixture(t);
+  const passing = f.run(["scale"]);
+  assert.equal(passing.status, 0);
+  assert.deepEqual(f.calls(), [["--version"], ["--reporter=append-only", "test:recovery", "app-scale.spec.ts"]]);
+  assert.equal(passing.report.steps.find((step) => step.name === "scale").pass, true);
+  const failing = f.run(["scale"], { FIXTURE_FAIL: "test:recovery" });
+  assert.equal(failing.status, 1);
+  assert.equal(failing.report.steps.find((step) => step.name === "scale").pass, false);
+});
+
+test("PR full receipt omits scale while a main full receipt requires it", (t) => {
+  const f = fixture(t);
+  const pr = f.run(["all"], { CI: "true", GITHUB_EVENT_NAME: "pull_request" });
+  assert.equal(pr.status, 0);
+  assert.equal(pr.report.metadata.scaleExcluded, true);
+  assert.equal(
+    pr.report.steps.some((step) => step.name === "scale"),
+    false,
+  );
+  const main = f.run(["all"], { CI: "true", GITHUB_EVENT_NAME: "push" });
+  assert.equal(main.status, 0);
+  assert.equal(main.report.metadata.scaleExcluded, false);
+  assert.equal(main.report.steps.find((step) => step.name === "scale").pass, true);
+});
+
 test("a failed browser preflight stops before bulk package tests, build and remaining recovery", (t) => {
   const f = fixture(t);
   const { status, report, stderr } = f.run(["all"], { FIXTURE_FAIL: "test:recovery" });
@@ -350,7 +413,7 @@ test("a failed browser preflight stops before bulk package tests, build and rema
       .filter((step) => ["check-tests", "build", "smoke", "recovery"].includes(step.name))
       .every((step) => !step.executed && !step.pass),
   );
-  assert.deepEqual(f.calls(), expectedCalls.slice(0, 7));
+  assert.deepEqual(f.calls().map(JSON.stringify).sort(), expectedCalls.slice(0, 7).map(JSON.stringify).sort());
 });
 
 test("launch reports unmet public-release evidence without making ordinary verification fail", (t) => {

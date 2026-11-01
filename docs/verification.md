@@ -20,6 +20,7 @@ pnpm verify build
 pnpm verify smoke
 pnpm verify preflight
 pnpm verify recovery
+pnpm verify scale
 pnpm verify docs
 pnpm verify launch
 pnpm test:verifier
@@ -34,6 +35,12 @@ preflight cases before package tests, builds, seed checks, and the remaining bro
 covers startup and two-browser convergence, durable offline edits and comments, and revoked-access
 mention validation. Each browser case executes once; `recovery` alone still runs the entire browser
 suite. `check` retains the non-browser checks.
+Independent formatting, lint, types, script, spec and registry checks run as a bounded group and
+all report their results even if one fails. After preflight succeeds, package tests, build, seed and
+remaining recovery run concurrently; the scale benchmark runs separately after that group so it is
+not measured under their load. Receipt steps remain in their planned order. A failing group
+prevents later groups from running. The complete run uses `build:verified` only after typechecking
+passes; standalone `pnpm build` and `pnpm verify build` still typecheck.
 
 For machine-readable stdout, suppress pnpm's lifecycle banner:
 
@@ -55,9 +62,10 @@ Skipped or unexecuted checks do not count as successful verification.
 
 When the Docker runtime is shared with other active work, set `KANBUN_RECOVERY_WORKERS=1` to
 limit concurrent browser test cases. This preserves every scenario and its assertions; it does
-not raise timeouts or enable retries. The default retains Playwright's normal worker selection.
+not raise timeouts or enable retries. CI defaults to three workers; local runs retain Playwright's
+normal worker selection. An explicit `KANBUN_RECOVERY_WORKERS` overrides either default.
 
-Full, preflight, and recovery verifier profiles acquire a shared Docker volume lock across Kanbun
+Full, preflight, recovery, and scale verifier profiles acquire a shared Docker volume lock across Kanbun
 containers on the same Docker daemon, including containers for separate clones. Other profiles and
 focused commands may run concurrently. Waiting defaults to 900 seconds; set
 `KANBUN_VERIFY_LOCK_TIMEOUT` inside the container to change it. A timeout fails the run without
@@ -71,7 +79,11 @@ share the lock. Direct `pnpm test:recovery` does not acquire it and must be coor
 
 ## PR and main checks
 
-The complete verifier runs on every PR, including documentation-only changes. On pushes to `main`,
+The verifier runs on every PR, including documentation-only changes. PR browser recovery omits the
+5,000-issue scale benchmark; changes to its performance target are therefore checked on main, not
+before merge. Local full runs and fresh main full runs include it. When main reuses PR qualification,
+it runs a fresh scale profile as well as a fresh build and fails if either fails or scale did not run.
+On pushes to `main`,
 CI first runs fresh environment diagnosis. It may reuse a successful same-repository PR's full test
 qualification only when the clean Git tree, all source fingerprints, lockfile, tool versions, Linux
 architecture, OS identity, installed system-package inventory, and complete required suite match.
@@ -90,7 +102,9 @@ and browser downloads, still performing frozen installation and environment diag
 Superseded PR and main verification runs are canceled; deployments retain their separate serialized,
 non-canceling lock. The spec-lock summary flags schema/configuration rollout needs without secrets;
 the trusted release continues checking the actual deployed version and migration state.
-GitHub Actions uploads its reports and logs after both successful and failed runs. The separate
+GitHub Actions uploads its reports and logs after both successful and failed runs, and summarizes
+per-step durations in the job summary. PR and main use the same ARM runner architecture so a
+matching runtime can qualify for reuse. The separate
 spec-lock workflow compares changes against their base; the separate changelog workflow checks the
 full committed PR and its exemption metadata. A current-tree verifier receipt does not replace those
 history-aware checks.

@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "pnpm -r --parallel --filter './apps/*' dev",
     "build": "pnpm -r build",
+    "build:verified": "pnpm --filter @kanbun/web build:verified && pnpm -r --filter '!@kanbun/web' build",
     "deploy:preview": "node scripts/deploy-preview.mjs",
     "install:cloudflare": "node scripts/install-cloudflare.mjs",
     "deploy": "node scripts/install-cloudflare.mjs deploy",

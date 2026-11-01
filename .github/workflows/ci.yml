@@ -13,7 +13,8 @@ permissions:
   packages: read
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # Keep PR and main on the same architecture so qualification reuse remains valid.
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -22,7 +23,7 @@ jobs:
       - uses: ./.github/actions/devcontainer
       - name: Verify pull request
         if: github.event_name == 'pull_request'
-        run: ./scripts/devcontainer.sh exec env CI=true node scripts/ci-qualification.mjs
+        run: ./scripts/devcontainer.sh exec env CI=true GITHUB_EVENT_NAME=pull_request node scripts/ci-qualification.mjs
       - name: Qualify main and build fresh artifacts
         if: github.event_name == 'push'
         env:
@@ -39,6 +40,9 @@ jobs:
           name: verification-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/verification/
           if-no-files-found: error
+      - name: Summarize verification durations
+        if: always()
+        run: ./scripts/devcontainer.sh exec node scripts/verification-summary.mjs >> "$GITHUB_STEP_SUMMARY" || echo 'Verifier summary unavailable.' >> "$GITHUB_STEP_SUMMARY"
       - name: Scan publication history and current files
         run: ./scripts/devcontainer.sh exec pnpm audit:public secrets
       - name: Check public writing rules

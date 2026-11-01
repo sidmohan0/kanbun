@@ -14,7 +14,18 @@ import {
   validateLaunchRegistry,
 } from "./launch.mjs";
 
-const profiles = new Set(["all", "doctor", "check", "build", "smoke", "preflight", "recovery", "docs", "launch"]);
+const profiles = new Set([
+  "all",
+  "doctor",
+  "check",
+  "build",
+  "smoke",
+  "preflight",
+  "recovery",
+  "scale",
+  "docs",
+  "launch",
+]);
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const jsonFile = (file) => JSON.parse(readFileSync(file, "utf8"));
 
@@ -204,14 +215,23 @@ function plan(command, root, metadata, outputDirectory, evidenceFile) {
     });
   }
   if (command === "all" || command === "build")
-    steps.push({ name: "build", command: ["pnpm", "--reporter=append-only", "build"] });
+    steps.push({
+      name: "build",
+      command: ["pnpm", "--reporter=append-only", command === "all" ? "build:verified" : "build"],
+    });
   if (command === "all" || command === "smoke")
     steps.push({ name: "smoke", command: ["pnpm", "--reporter=append-only", "seed"] });
   if (command === "all" || command === "recovery")
     steps.push({
       name: "recovery",
       command: ["pnpm", "--reporter=append-only", "test:recovery", ...(command === "all" ? ["--remaining"] : [])],
+      ...(command === "all" ? { env: { KANBUN_SKIP_SCALE: "1" } } : {}),
     });
+  if (
+    command === "scale" ||
+    (command === "all" && !(process.env.CI === "true" && process.env.GITHUB_EVENT_NAME === "pull_request"))
+  )
+    steps.push({ name: "scale", command: ["pnpm", "--reporter=append-only", "test:recovery", "app-scale.spec.ts"] });
   if (command === "all" || command === "docs") {
     steps.push({
       name: "docs",
@@ -259,6 +279,7 @@ async function execute(step, root, runDirectory, index) {
         stdio: ["ignore", stdout.fd, stderr.fd],
         env: {
           ...process.env,
+          ...step.env,
           npm_config_manage_package_manager_versions: "false",
           COREPACK_ENABLE_NETWORK: "0",
           COREPACK_ENABLE_AUTO_PIN: "0",
@@ -335,26 +356,61 @@ export async function runVerification({
     root = path.resolve(root);
     outputDirectory = path.resolve(outputDirectory ?? path.join(root, "artifacts", "verification"));
     const steps = plan(command, root, report.metadata, outputDirectory, evidenceFile);
+    report.metadata.scaleExcluded = process.env.CI === "true" && process.env.GITHUB_EVENT_NAME === "pull_request";
     await mkdir(outputDirectory, { recursive: true });
     report.runDirectory = await mkdtemp(path.join(outputDirectory, "run-"));
     localDirectory = await mkdtemp(path.join(tmpdir(), "kanbun-verification-"));
-    for (const [index, step] of steps.entries()) {
-      if (report.steps.some((result) => !result.pass)) {
-        report.steps.push({
-          name: step.name,
-          command: step.command ?? null,
-          executed: false,
-          pass: false,
-          exitCode: null,
-          durationMs: 0,
-          reason: "A prerequisite or earlier step failed.",
-        });
-      } else {
-        onProgress({ name: step.name, state: "start" });
-        const result = await execute(step, root, localDirectory, index);
-        report.steps.push(result);
-        onProgress({ name: step.name, state: result.pass ? "pass" : "fail", durationMs: result.durationMs });
+    const cheap = new Set([
+      "check-format",
+      "check-lint",
+      "check-types",
+      "check-script-tests",
+      "check-spec-lock",
+      "launch-registry",
+    ]);
+    const heavy = new Set(["check-tests", "build", "smoke", "recovery"]);
+    const perform = async (index) => {
+      const step = steps[index];
+      onProgress({ name: step.name, state: "start" });
+      const result = await execute(step, root, localDirectory, index);
+      onProgress({ name: step.name, state: result.pass ? "pass" : "fail", durationMs: result.durationMs });
+      return result;
+    };
+    const skipped = (step) => ({
+      name: step.name,
+      command: step.command ?? null,
+      executed: false,
+      pass: false,
+      exitCode: null,
+      durationMs: 0,
+      reason: "A prerequisite or earlier step failed.",
+    });
+    let failed = false;
+    for (let index = 0; index < steps.length;) {
+      const group = cheap.has(steps[index].name)
+        ? cheap
+        : command === "all" && heavy.has(steps[index].name)
+          ? heavy
+          : null;
+      let end = index + 1;
+      while (group && end < steps.length && group.has(steps[end].name)) end++;
+      if (failed) report.steps.push(...steps.slice(index, end).map(skipped));
+      else {
+        // Execute each group with bounded concurrency, but retain the planned receipt order.
+        const results = new Array(end - index);
+        let next = index;
+        await Promise.all(
+          Array.from({ length: Math.min(4, end - index) }, async () => {
+            while (next < end) {
+              const current = next++;
+              results[current - index] = await perform(current);
+            }
+          }),
+        );
+        report.steps.push(...results);
+        failed = results.some((result) => !result.pass);
       }
+      index = end;
     }
     report.executed = report.steps.some((step) => step.executed);
     report.pass = report.steps.length > 0 && report.steps.every((step) => step.executed && step.pass);
