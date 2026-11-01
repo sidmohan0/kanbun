@@ -13,7 +13,11 @@ export function sheetsExport(store: Store, projectsEnabled: boolean): SheetsExpo
   const projects = new Map(
     store
       .list("project")
-      .filter((p) => !p.trashed && store.list("projectTeam", { projectId: p.id }).some((t) => teams.has(t.teamId)))
+      .filter(
+        (p) =>
+          !p.trashed &&
+          store.list("projectTeam", { projectId: p.id }).some((t) => !t.archivedAt && teams.has(t.teamId)),
+      )
       .map((p) => [p.id, p]),
   );
   const issues = store.list("issue").filter((i) => teams.has(i.teamId) && !i.trashed);
@@ -56,13 +60,16 @@ export function sheetsExport(store: Store, projectsEnabled: boolean): SheetsExpo
     const cycle = i.cycleId ? store.get("cycle", i.cycleId) : undefined;
     const safeCycle = cycle?.teamId === team.id ? cycle : undefined;
     const milestone = project && i.projectMilestoneId ? store.get("projectMilestone", i.projectMilestoneId) : undefined;
-    const safeMilestone = milestone?.projectId === project?.id ? milestone : undefined;
+    const safeMilestone = milestone?.projectId === project?.id && !milestone?.archivedAt ? milestone : undefined;
+    const state = store.get("workflowState", i.stateId);
     const parent = i.parentId && publicIssues.has(i.parentId) ? store.get("issue", i.parentId) : undefined;
     const labels = store
       .list("issueLabelLink", { issueId: i.id })
       .flatMap((l) => {
         const label = store.get("issueLabel", l.labelId);
-        return label && (!label.teamId || label.teamId === team.id) ? [label.name] : [];
+        return !l.archivedAt && label && !label.archivedAt && (!label.teamId || label.teamId === team.id)
+          ? [label.name]
+          : [];
       })
       .sort()
       .join(", ");
@@ -71,7 +78,7 @@ export function sheetsExport(store: Store, projectsEnabled: boolean): SheetsExpo
       team.name,
       i.title,
       i.description ?? "",
-      store.get("workflowState", i.stateId)?.name ?? "",
+      state?.teamId === team.id ? state.name : "",
       i.estimate ?? "",
       i.priority,
       project?.id ?? "",
@@ -120,11 +127,12 @@ export function sheetsExport(store: Store, projectsEnabled: boolean): SheetsExpo
   ];
   if (projectsEnabled)
     for (const p of [...projects.values()].sort((a, b) => a.id.localeCompare(b.id))) {
+      const status = store.get("projectStatus", p.statusId);
       projectValues.push([
         p.id,
         p.name,
         p.description ?? "",
-        store.get("projectStatus", p.statusId)?.name ?? "",
+        status && (!status.teamId || teams.has(status.teamId)) ? status.name : "",
         p.priority,
         store
           .list("projectMilestone", { projectId: p.id })
@@ -143,7 +151,7 @@ export function sheetsExport(store: Store, projectsEnabled: boolean): SheetsExpo
         p.archivedAt ?? "",
         store
           .list("projectTeam", { projectId: p.id })
-          .flatMap((t) => (teams.has(t.teamId) ? [teams.get(t.teamId)!.name] : []))
+          .flatMap((t) => (!t.archivedAt && teams.has(t.teamId) ? [teams.get(t.teamId)!.name] : []))
           .sort()
           .join(", "),
         p.health ?? "",

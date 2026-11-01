@@ -16,21 +16,31 @@ it("exports public projects without disclosing private relationships or disabled
   store.table("projectTeam").set("two", { projectId: "shared", teamId: "secret" });
   store.table("projectTeam").set("three", { projectId: "secret", teamId: "secret" });
   store
-    .table("issue")
-    .set("public", {
-      id: "public",
-      teamId: "public",
-      number: 1,
-      title: "Public issue",
-      projectId: "secret",
-      parentId: "secret",
-      priority: 1,
-    });
+    .table("projectTeam")
+    .set("retired-link", { projectId: "secret", teamId: "public", archivedAt: "2026-11-01T00:00:00Z" });
+  store.table("projectStatus").set("private-status", { id: "private-status", teamId: "secret", name: "Secret status" });
+  store.table("project").get("shared")!.statusId = "private-status";
+  store.table("issue").set("public", {
+    id: "public",
+    teamId: "public",
+    number: 1,
+    title: "Public issue",
+    projectId: "secret",
+    parentId: "secret",
+    priority: 1,
+  });
   store.table("issue").set("secret", { id: "secret", teamId: "secret", number: 1, title: "Secret issue" });
   const exported = JSON.stringify(sheetsExport(store, true));
   expect(exported).toContain("Shared project");
   expect(exported).toContain("Public issue");
-  for (const privateValue of ["Secret team", "Secret project", "Secret description", "Secret issue", "SECRET-1"])
+  for (const privateValue of [
+    "Secret team",
+    "Secret project",
+    "Secret description",
+    "Secret issue",
+    "Secret status",
+    "SECRET-1",
+  ])
     expect(exported).not.toContain(privateValue);
   expect(sheetsExport(store, false)[1]!.values).toHaveLength(1);
 });
