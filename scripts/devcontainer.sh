@@ -10,6 +10,7 @@ case "$command_name" in
     cat <<'HELP'
 Usage: ./scripts/devcontainer.sh <command> [arguments...]
   up        Build/start the container and run workspace setup
+  doctor    Diagnose runtime, checkout and running-container access
   rebuild   Recreate this workspace's container after configuration changes
   exec      Run a command inside the container
   verify    Run the verifier inside the container (optional profile)
@@ -21,18 +22,23 @@ Usage: ./scripts/devcontainer.sh <command> [arguments...]
 HELP
     exit 0
     ;;
-  up|rebuild|exec|verify|dev|shell|status|url|stop) ;;
+  up|rebuild|exec|verify|dev|shell|status|url|stop|doctor) ;;
   *) printf 'Unknown container command: %s\n' "$command_name" >&2; exit 2 ;;
 esac
 
-command -v docker >/dev/null || { printf 'Install Docker or Colima first.\n' >&2; exit 1; }
+command -v docker >/dev/null || { printf 'Docker CLI not found. Install Docker or Colima first.\n' >&2; exit 1; }
 # Use the project runtime when the default is unavailable, without changing global context.
 if ! docker info >/dev/null 2>&1; then
   if [ -z "${DOCKER_CONTEXT:-}" ] && [ -z "${DOCKER_HOST:-}" ] &&
     docker --context colima-kanbun info >/dev/null 2>&1; then
     export DOCKER_CONTEXT=colima-kanbun
   else
-    printf 'Start your Docker runtime. For Colima: colima start --profile kanbun --activate=false\n' >&2
+    if [ -n "${DOCKER_CONTEXT:-}" ] || [ -n "${DOCKER_HOST:-}" ]; then
+      printf 'The explicitly selected Docker context or host is unavailable; check DOCKER_CONTEXT/DOCKER_HOST.\n' >&2
+    else
+      printf 'Docker is unavailable. For the Kanbun Colima profile: colima start --profile kanbun --activate=false\n' >&2
+      printf 'If Colima reports a running VM without a host agent, check other users of the profile before stopping and restarting it.\n' >&2
+    fi
     exit 1
   fi
 fi
@@ -74,6 +80,25 @@ if [ -f "$repo_root/.git" ]; then
     exit 1
   fi
   worktree_mount=(--mount "type=bind,source=$common_dir,target=$common_dir")
+fi
+if [ "$command_name" = doctor ]; then
+  printf 'Docker context: %s\n' "${DOCKER_CONTEXT:-$(docker context show 2>/dev/null || printf 'unknown')}"
+  printf 'Workspace: %s\n' "$repo_root"
+  printf 'Filesystem capacity (workspace):\n'
+  df -h "$repo_root"
+  if [ -n "${common_dir:-}" ]; then printf 'Git common directory: %s\n' "$common_dir"; fi
+  container_id="$(container_ids | head -n 1)"
+  if [ -z "$container_id" ]; then
+    printf 'No running container for this workspace. Run ./scripts/devcontainer.sh up.\n'
+    exit 0
+  fi
+  printf 'Running container: %s\n' "$container_id"
+  if ! "${container_cli[@]}" exec --workspace-folder "$repo_root" git rev-parse --verify HEAD >/dev/null; then
+    printf 'Container cannot resolve this checkout Git metadata. For a linked worktree, rebuild to mount its common Git directory.\n' >&2
+    exit 1
+  fi
+  printf 'Container Git metadata: accessible\n'
+  exit 0
 fi
 case "$command_name" in
   up)
