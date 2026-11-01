@@ -1,5 +1,31 @@
 import { test, expect, loginEmail, nativeBrowser } from "./app-sheets.fixture";
 
+test("directs desktop Google setup to browser settings before starting authorization", async ({
+  browser,
+  emailApp: app,
+}) => {
+  const context = await browser.newContext({ userAgent: "KanbunDesktop/1.0" });
+  await nativeBrowser(context);
+  const page = await context.newPage();
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/integrations/google-sheets")) requests.push(request.url());
+  });
+  try {
+    await loginEmail(page, app, app.runtime.ownerEmail, "#settings/integrations");
+    const settings = page.getByRole("region", { name: "Google Sheets connection", exact: true });
+    await expect(settings.getByRole("link", { name: "Manage Google Sheets in browser", exact: true })).toHaveAttribute(
+      "href",
+      `${app.origin}/?kanbun-browser=integrations#settings/integrations`,
+    );
+    await expect(settings.getByRole("button", { name: "Connect Google Sheets", exact: true })).toHaveCount(0);
+    expect(requests).toEqual([]);
+    expect(await app.runtime.googleRequests()).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
+
 test("connects Google Sheets, refreshes exports and disconnects through owner settings", async ({
   browser,
   emailApp: app,

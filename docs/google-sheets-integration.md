@@ -5,6 +5,11 @@ Kanbun creates a spreadsheet named **Kanbun Issues** with owned **Issues** and *
 Issues are exported by default; enable **Include projects** to populate Projects. An empty Projects
 header remains when projects are disabled. Other tabs are left alone.
 
+In the desktop app, choose **Manage Google Sheets in browser** to open the integration settings in
+your system browser. Sign in there and complete authorization in that browser, then reload the
+desktop app. OAuth state is never started in one cookie session and completed in another, and
+desktop and browser sessions remain separate.
+
 **Update now** overwrites edits to the owned tabs. Automatic refresh checks hourly and writes only
 when workspace data changed. Removed, deleted, and newly private records disappear on the next
 successful refresh. Previously exported data can remain in Google until that refresh succeeds;

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { WorkspaceSnapshot } from "./workspace";
 import { membershipRequest } from "./membership";
 import { Button } from "./components/ui/button";
+import { DesktopIntegrationSettings, isDesktopApplication } from "./DesktopIntegrationSettings";
 
 type Connection = {
   configured: boolean;
@@ -25,13 +26,11 @@ function connection(value: unknown): Connection {
     throw new Error("Google Sheets connection could not be read.");
   return v;
 }
-export function GoogleSheetsSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
+function OwnerGoogleSheetsSettings() {
   const [state, setState] = useState<Connection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const owner = snapshot.context?.mode === "hosted" && snapshot.context.role === "owner";
   useEffect(() => {
-    if (!owner) return;
     let active = true;
     void membershipRequest("/api/integrations/google-sheets")
       .then(connection)
@@ -44,7 +43,7 @@ export function GoogleSheetsSettings({ snapshot }: { snapshot: WorkspaceSnapshot
     return () => {
       active = false;
     };
-  }, [owner]);
+  }, []);
   async function action(name: "connect" | "sync" | "configure" | "disconnect", input: object = {}) {
     const previous = state;
     if (name === "configure" && state && "projectsEnabled" in input && typeof input.projectsEnabled === "boolean")
@@ -73,7 +72,6 @@ export function GoogleSheetsSettings({ snapshot }: { snapshot: WorkspaceSnapshot
       setBusy(false);
     }
   }
-  if (!owner) return null;
   return (
     <section className="github-settings" aria-label="Google Sheets connection">
       <h2>Google Sheets</h2>
@@ -139,4 +137,9 @@ export function GoogleSheetsSettings({ snapshot }: { snapshot: WorkspaceSnapshot
       )}
     </section>
   );
+}
+
+export function GoogleSheetsSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
+  if (snapshot.context?.mode !== "hosted" || snapshot.context.role !== "owner") return null;
+  return isDesktopApplication() ? <DesktopIntegrationSettings name="Google Sheets" /> : <OwnerGoogleSheetsSettings />;
 }
