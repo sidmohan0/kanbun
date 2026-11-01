@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
-const root = fileURLToPath(new URL("..", import.meta.url));
+const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 export const publicSettings = [
   "APP_ORIGIN",
   "AUTH_EMAIL_DOMAIN",

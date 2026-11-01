@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -41,6 +41,43 @@ const settings = {
   backup_bucket: "acme-backups",
 };
 const configured = () => installationConfig(template, settings);
+
+test("the installer CLI configures and checks a fresh checkout while keeping profiles in its root", (t) => {
+  const directory = mkdtempSync(path.join(tmpdir(), "kanbun install cli-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  mkdirSync(path.join(directory, "scripts"));
+  const script = path.join(directory, "scripts/install-cloudflare.mjs");
+  writeFileSync(script, readFileSync(new URL("./install-cloudflare.mjs", import.meta.url)));
+  writeFileSync(path.join(directory, "wrangler.json"), JSON.stringify(template));
+  writeFileSync(path.join(directory, "settings.json"), JSON.stringify(settings));
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !publicSettings.includes(key)));
+  const cli = (...args) => spawnSync(process.execPath, [script, ...args], { cwd: directory, encoding: "utf8", env });
+  const setup = cli("check");
+  assert.equal(setup.status, 0, setup.stderr);
+  assert.equal(JSON.parse(setup.stdout).stage, "setup");
+  const args = ["configure", "--settings", "settings.json", "--output", "wrangler.install.json"];
+  const first = cli(...args);
+  assert.equal(first.status, 0, first.stderr);
+  const profile = path.join(directory, "wrangler.install.json");
+  const original = readFileSync(profile, "utf8");
+  const second = cli(...args);
+  assert.equal(second.status, 0, second.stderr);
+  assert.equal(readFileSync(profile, "utf8"), original, "Rerunning configure must retain the workspace identity");
+  const check = cli("check", "--config", "wrangler.install.json");
+  assert.equal(check.status, 0, check.stderr);
+  const plan = JSON.parse(check.stdout);
+  assert.equal(plan.ready, true);
+  assert.equal(plan.worker, settings.name);
+  assert.equal(plan.database, settings.database_name);
+  const outside = path.join(directory, "nested", "outside.json");
+  const rejectedConfig = cli("check", "--config", "nested/outside.json");
+  assert.equal(rejectedConfig.status, 1);
+  assert.match(rejectedConfig.stderr, /configuration must be in the repository root/);
+  const rejectedOutput = cli("configure", "--settings", "settings.json", "--output", "nested/outside.json");
+  assert.equal(rejectedOutput.status, 1);
+  assert.match(rejectedOutput.stderr, /separate installation profile in the repository root/);
+  assert.equal(existsSync(outside), false);
+});
 
 test("the root profile omits unset setup inputs or passes full configured-installation safety", () => {
   if (rootProfile.vars?.INSTALLATION_STAGE === "setup") {
