@@ -2,6 +2,8 @@ import { app, BrowserWindow, clipboard, dialog, Menu, nativeImage, shell, Tray }
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectSessions, type Collection } from "./collector.js";
+import { configureHooks } from "./hook-setup.js";
+import { readHookStatuses } from "./hook-store.js";
 import { linuxAutostart } from "./autostart.js";
 import type { MenuItemConstructorOptions } from "electron";
 import { appUrl, linkAction, signInDestination } from "./policy.js";
@@ -13,6 +15,9 @@ let tray: Tray | null = null;
 let quitting = false;
 let collection: Collection | null = null;
 let collecting = false;
+let hookStatuses = new Map<string, string>();
+let hooksLoading = false;
+let hookTimer: ReturnType<typeof setInterval> | undefined;
 let timer: ReturnType<typeof setInterval> | undefined;
 let loginEnabled = false;
 
@@ -44,14 +49,69 @@ async function refreshSessions() {
   }
 }
 
-function showSessions() {
+async function changeHooks(provider: "codex" | "claude", enabled: boolean) {
+  try {
+    const directory = path.join(app.getPath("userData"), "kanbun-session-observer");
+    await configureHooks(
+      provider,
+      enabled,
+      process.execPath,
+      path.join(path.dirname(fileURLToPath(import.meta.url)), "hook.js"),
+      directory,
+    );
+    await dialog.showMessageBox({
+      message: enabled ? `${provider} hooks configured` : `${provider} hooks removed`,
+      detail:
+        enabled && provider === "codex"
+          ? "Review and trust the new hooks using /hooks in Codex. Existing sessions may need to be restarted."
+          : "Existing sessions may need to be restarted. Session data stays on this computer.",
+    });
+  } catch (error) {
+    dialog.showErrorBox(
+      "Unable to update hooks",
+      error instanceof Error ? error.message : "Check provider settings permissions.",
+    );
+  }
+}
+
+async function refreshHooks() {
+  if (hooksLoading) return;
+  hooksLoading = true;
+  try {
+    hookStatuses = await readHookStatuses(path.join(app.getPath("userData"), "kanbun-session-observer"));
+  } catch {
+    hookStatuses = new Map();
+  }
+  hooksLoading = false;
+  updateTray();
+}
+
+async function showSessions() {
+  await refreshHooks();
+  const statuses = hookStatuses;
+  const known = new Set(collection?.sessions.map((item) => `${item.provider}:${item.id}`) ?? []);
+  const discovered = [...statuses.keys()]
+    .filter((key) => !known.has(key))
+    .map((key) => {
+      const [provider, id] = key.split(":");
+      return {
+        provider: provider as "codex" | "claude",
+        id: id!,
+        title: `Session ${id}`,
+        updatedAt: Date.now(),
+        status: "unknown",
+      };
+    });
   const rows =
-    collection?.sessions
+    [...(collection?.sessions ?? []), ...discovered]
       .slice()
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, 30) ?? [];
   const detail = rows
-    .map((item) => `${item.provider}: ${item.title} (${item.status}; ${new Date(item.updatedAt).toLocaleString()})`)
+    .map(
+      (item) =>
+        `${item.provider}: ${item.title} (${statuses.get(`${item.provider}:${item.id}`) ?? "unknown"}; ${new Date(item.updatedAt).toLocaleString()})`,
+    )
     .join("\n");
   void dialog.showMessageBox({
     title: "Agent sessions",
@@ -71,8 +131,21 @@ function updateTray() {
   tray.setToolTip("Kanbun — agent session collector");
   tray.setContextMenu(
     Menu.buildFromTemplate([
+      {
+        label: `Agent activity: ${[...hookStatuses.values()].filter((v) => v === "running").length} running, ${[...hookStatuses.values()].filter((v) => v === "waiting").length} waiting`,
+        enabled: false,
+      },
       { label: "Open Kanbun", click: showWindow },
-      { label: "Agent sessions…", click: showSessions },
+      { label: "Agent sessions…", click: () => void showSessions() },
+      {
+        label: "Live status hooks",
+        submenu: [
+          { label: "Enable Codex hooks", click: () => void changeHooks("codex", true) },
+          { label: "Disable Codex hooks", click: () => void changeHooks("codex", false) },
+          { label: "Enable Claude Code hooks", click: () => void changeHooks("claude", true) },
+          { label: "Disable Claude Code hooks", click: () => void changeHooks("claude", false) },
+        ],
+      },
       {
         label: collecting ? "Refreshing…" : "Refresh sessions",
         enabled: !collecting,
@@ -239,6 +312,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on("before-quit", () => {
     quitting = true;
     if (timer) clearInterval(timer);
+    if (hookTimer) clearInterval(hookTimer);
   });
   void app.whenReady().then(async () => {
     if (process.argv.includes("--remove-startup")) {
@@ -278,6 +352,8 @@ if (!app.requestSingleInstanceLock()) {
     updateTray();
     void refreshSessions();
     timer = setInterval(() => void refreshSessions(), 30000);
+    void refreshHooks();
+    hookTimer = setInterval(() => void refreshHooks(), 3000);
     const menu: MenuItemConstructorOptions[] = [
       ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
       {

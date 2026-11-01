@@ -115,14 +115,24 @@ and refreshes immediately. The collector also refreshes every 30 seconds while K
 uses the Claude Agent SDK to list local Claude Code history and a separate `codex app-server` to
 list local Codex threads. Codex must be available on the desktop process PATH (the collector also
 checks common local, Homebrew, nvm, and installed ChatGPT app locations). The tray shows provider errors
-when collection fails. Session titles may contain sensitive text; results stay in process memory,
-are not written to Kanbun's hosted service, and disappear when the app exits. This prototype does
-not add a web dashboard, remote sync, history persistence, hooks, or agent control.
+when collection fails. Session titles may contain sensitive text; they stay in process memory and
+are not uploaded. This prototype does not add a web dashboard, remote sync, or agent control.
 
-A separate Codex app-server can return `notLoaded` even while a thread runs elsewhere; Claude's
-history listing also does not report whether a session is running. Therefore both providers show
-`unknown` for status. Recent modification is not proof of a running agent. A sleeping, logged-out,
-or powered-off computer cannot collect. Cloud-only sessions may not be visible.
+Choose **Live status hooks** from the tray to enable or disable each provider. Kanbun merges its
+handlers into `~/.codex/hooks.json` and `~/.claude/settings.json` without removing existing hooks.
+Codex requires reviewing and trusting the added hooks with `/hooks`; provider sessions may need to
+restart before changes apply. Removing or moving the app requires disabling and re-enabling hooks.
+Malformed settings are left untouched and reported as an error.
+
+Hooks store only provider, session identifier, event name, optional notification type, and local
+observation time in a user-private `kanbun-session-observer` directory under the desktop app's user
+data. They do not store prompts or tool inputs. The tray updates every three seconds. Status is
+`unknown` without evidence, becomes `stale` five minutes after the last event, and returns to
+`unknown` after events expire at 24 hours. A quiet but still-running agent can be stale; a crash,
+disabled or untrusted hook, or a missing event cannot prove that work ended. Stopping a turn does
+not assert task success. Cloud-orchestrated sessions may not emit local hooks. A sleeping, logged-out,
+or powered-off computer cannot collect. Hook files may accumulate while the desktop app is stopped;
+they are pruned when the app resumes.
 
 Packaged builds enable start-at-login on first launch, launching hidden with the tray available.
 The tray checkbox allows opting out; explicit Quit stops collection until the next login or launch.
@@ -131,11 +141,11 @@ macOS and Windows use Electron's login-item API. Linux creates a user-owned XDG 
 so a removed executable is not launched. Linux requires a desktop environment with a system tray.
 A moved AppImage requires toggling Start at login to update its path.
 
-Before uninstalling, choose **Disable startup and quit** from the tray. This removes the Linux
+Before uninstalling, disable both provider hooks in **Live status hooks**, then choose **Disable startup and quit** from the tray. This removes the Linux
 autostart file or unregisters the macOS/Windows login item. Alternatively, run the installed
 executable with `--remove-startup` as the same user. The Windows NSIS uninstaller additionally
 removes the per-user login registry entry. Deleting a macOS app or Linux AppImage cannot run an
 uninstaller: if removed without disabling startup first, remove the Kanbun entry in system login
 settings or delete the Linux autostart file. Debian package removal cannot safely edit every user's
 home directory; each user should disable startup before removal. The shell's normal browser data is
-retained according to the platform installer; collected session metadata is never persisted.
+retained according to the platform installer; hook event metadata remains locally until expiry.

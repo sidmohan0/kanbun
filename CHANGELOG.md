@@ -22,6 +22,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added opt-in Codex and Claude Code hooks for local agent status with stale and unknown states.
+
 - Added a local read-only Codex and Claude Code session collector with a Kanbun-logo tray, background window lifecycle, and configurable start-at-login.
 
 - Add installer-owned Cloudflare setup, an official deployment button, and documented local persistence and recovery workflows.

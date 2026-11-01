@@ -16,7 +16,7 @@
     "dist:mac": "pnpm build && electron-builder --config electron-builder.json --mac --publish never",
     "dist:windows": "pnpm build && electron-builder --config electron-builder.json --win --publish never",
     "dist:linux": "pnpm build && electron-builder --config electron-builder.json --linux --publish never",
-    "test": "pnpm build && node --test test/policy.test.mjs test/collector.test.mjs && xvfb-run -a node --test test/shell.test.mjs"
+    "test": "pnpm build && node --test test/policy.test.mjs test/collector.test.mjs test/session-status.test.mjs test/hooks.test.mjs && xvfb-run -a node --test test/shell.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
