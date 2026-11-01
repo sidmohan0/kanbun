@@ -5,6 +5,7 @@ import {
   type GitHubPullRequestSnapshot,
   type GitHubRepositorySource,
 } from "@kanbun/events";
+import { githubIssueIdentifiers } from "@kanbun/mutators";
 import { issueIncarnation } from "@kanbun/sync";
 import type { SyncServer, SqlDriver } from "@kanbun/sync/server";
 import { z } from "zod";
@@ -14,11 +15,14 @@ const targetSchema = z.strictObject({
   bindingId: z.string(),
   number: z.number().int().positive().safe(),
   linkIds: z.array(z.string()),
+  /** Absent on pre-discovery jobs, which retain their observation-only behavior. */
+  teamId: z.string().optional(),
 });
 const jobSchema = z.strictObject({
   deliveryKey: z.string(),
   targets: z.array(targetSchema),
   completed: z.array(z.string()),
+  admittedEventSeq: z.number().int().nonnegative().safe().optional(),
 });
 export function githubSource(binding: Row<"githubRepository">): GitHubRepositorySource {
   return {
@@ -46,7 +50,37 @@ export function requireReservedGitHubRevision(driver: SqlDriver, revision: numbe
   if (!Number.isSafeInteger(revision) || revision <= 0 || revision > current)
     throw new Error("GitHub observation has no reserved revision");
 }
-/** A delivery owns only bindings and associations that existed when it was admitted. */
+/** Unlink remains a human intent, even if canonical references changed before we observed them. */
+function manuallyUnlinked(driver: SqlDriver, issue: Row<"issue">, bindingId: string, number: number): boolean {
+  return (
+    driver.all(
+      `SELECT 1 FROM event_log u JOIN event_log s ON s.seq = (
+      SELECT MAX(e.seq) FROM event_log e
+      WHERE e.branch_id = 'main' AND e.entity_type = 'issue' AND e.entity_id = u.entity_id
+        AND e.type IN ('GitHubPullRequestLinked','ObservedGitHubPullRequest')
+        AND json_extract(e.payload,'$.id') = json_extract(u.payload,'$.id') AND e.seq < u.seq
+    ) WHERE u.branch_id = 'main' AND u.entity_type = 'issue' AND u.entity_id = ?
+      AND u.type = 'GitHubPullRequestUnlinked'
+      AND json_extract(u.payload,'$.repositoryBindingId') = ?
+      AND json_extract(u.payload,'$.issueIncarnation') = ?
+      AND json_extract(s.payload,'$.snapshot.number') = ?
+    ORDER BY u.seq DESC LIMIT 1`,
+      [issue.id, bindingId, issueIncarnation(issue), number],
+    ).length > 0
+  );
+}
+
+function sameBinding(before: Row<"githubRepository">, after: Row<"githubRepository"> | undefined): boolean {
+  return (
+    !!after &&
+    !after.archivedAt &&
+    (["teamId", "installationId", "repositoryId", "owner", "name", "url", "private"] as const).every(
+      (key) => before[key] === after[key],
+    )
+  );
+}
+
+/** A delivery owns its admitted bindings, links and issue-creation cutoff. */
 export function queueGitHubDelivery(
   driver: SqlDriver,
   server: SyncServer,
@@ -82,15 +116,20 @@ export function queueGitHubDelivery(
       return { queued: true };
     }
     const targets: z.infer<typeof targetSchema>[] = [];
+    const admittedEventSeq = Number(
+      driver.all("SELECT COALESCE(MAX(seq),0) AS seq FROM event_log WHERE branch_id='main'")[0]?.["seq"] ?? 0,
+    );
     for (const binding of bindings) {
       const links = server.store
         .list("issuePullRequest", { repositoryBindingId: binding.id })
         .filter((row) =>
           delivery.kind === "pull_request" ? row.number === delivery.number : row.headSha === delivery.headSha,
         );
-      for (const number of new Set(links.map((row) => row.number)))
+      const numbers = delivery.kind === "pull_request" ? [delivery.number] : new Set(links.map((row) => row.number));
+      for (const number of numbers)
         targets.push({
           bindingId: binding.id,
+          teamId: binding.teamId,
           number,
           linkIds: links.filter((row) => row.number === number).map((row) => row.id),
         });
@@ -103,7 +142,7 @@ export function queueGitHubDelivery(
       uuidv7(),
       now,
       GITHUB_JOB,
-      JSON.stringify({ deliveryKey: key, targets, completed: [] }),
+      JSON.stringify({ deliveryKey: key, admittedEventSeq, targets, completed: [] }),
       `github:${key}`,
       now,
     ]);
@@ -122,6 +161,15 @@ export async function consumeGitHubJob(
     const key = `${target.bindingId}:${target.number}`;
     if (payload.completed.includes(key)) continue;
     const binding = server.store.get("githubRepository", target.bindingId);
+    const team = binding ? server.store.get("team", binding.teamId) : undefined;
+    const discover =
+      payload.admittedEventSeq !== undefined &&
+      binding &&
+      !binding.archivedAt &&
+      target.teamId === binding.teamId &&
+      team &&
+      !team.archivedAt &&
+      !team.retiredAt;
     const links = target.linkIds.flatMap((id) => {
       const row = server.store.get("issuePullRequest", id);
       const issue = row ? server.store.get("issue", row.issueId) : null;
@@ -136,10 +184,13 @@ export async function consumeGitHubJob(
         ? [row]
         : [];
     });
-    const revision = binding && links.length ? driver.transaction(() => reserveGitHubRevision(driver)) : null;
+    const revision =
+      binding && (links.length || discover) ? driver.transaction(() => reserveGitHubRevision(driver)) : null;
     const snapshot = binding && revision ? await fetchSnapshot(githubSource(binding), target.number) : null;
+    if (snapshot && snapshot.number !== target.number)
+      throw new Error("GitHub observation belongs to a different pull request");
     driver.transaction(() => {
-      if (snapshot && revision)
+      if (snapshot && revision && binding && sameBinding(binding, server.store.get("githubRepository", binding.id))) {
         for (const row of links)
           server.github(
             "githubPullRequestObserve",
@@ -154,6 +205,35 @@ export async function consumeGitHubJob(
             { id: `github:${row.repositoryBindingId}`, type: "integration" },
             snapshot.url,
           );
+        if (discover && payload.admittedEventSeq !== undefined) {
+          const identifiers = githubIssueIdentifiers(snapshot);
+          const currentTeam = server.store.get("team", binding.teamId);
+          if (currentTeam && !currentTeam.archivedAt && !currentTeam.retiredAt)
+            for (const issue of server.store.list("issue", { teamId: binding.teamId })) {
+              if (
+                issue.createdSeq > payload.admittedEventSeq ||
+                issue.archivedAt ||
+                issue.trashed ||
+                !identifiers.has(`${currentTeam.key.toUpperCase()}-${issue.number}`)
+              )
+                continue;
+              if (manuallyUnlinked(driver, issue, binding.id, snapshot.number)) continue;
+              server.github(
+                "githubPullRequestAutoLink",
+                {
+                  id: uuidv7(),
+                  issueId: issue.id,
+                  issueIncarnation: issueIncarnation(issue),
+                  repositoryBindingId: binding.id,
+                  revision,
+                  snapshot,
+                },
+                { id: `github:${binding.id}`, type: "integration" },
+                snapshot.url,
+              );
+            }
+        }
+      }
       payload.completed.push(key);
       driver.run("UPDATE scheduled_job SET payload = ? WHERE id = ?", [JSON.stringify(payload), String(job["id"])]);
     });

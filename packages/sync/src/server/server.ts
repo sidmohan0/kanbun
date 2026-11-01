@@ -706,6 +706,7 @@ export class SyncServer {
         "githubRepositoryDisconnect",
         "githubPullRequestLink",
         "githubPullRequestObserve",
+        "githubPullRequestAutoLink",
       ].includes(name)
     )
       throw new MutationError("Not a GitHub integration command", "forbidden");

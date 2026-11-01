@@ -214,6 +214,11 @@ export async function readGitHubPullRequest(
   // A push while the independent review/check requests ran must not label a new commit with old evidence.
   const after = pullSchema.parse(await github(env, token, pullPath));
   if (
+    after.title !== pull.title ||
+    after.head.ref !== pull.head.ref ||
+    after.base.ref !== pull.base.ref ||
+    after.number !== pull.number ||
+    after.base.repo.id !== pull.base.repo.id ||
     after.head.sha !== pull.head.sha ||
     after.updated_at !== pull.updated_at ||
     after.merged !== pull.merged ||

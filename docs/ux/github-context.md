@@ -21,7 +21,14 @@ titles become lowercase ASCII slugs; names without ASCII characters fall back to
 `{username}/{issueIdentifier}-{issueTitle}`. Formats accept letters, numbers, hyphens, underscores
 and slashes and must produce valid Git branch names. Format changes use normal durable sync,
 including offline persistence and rejection feedback. Copying a name does not create a GitHub
-branch, assign the issue or change its status. Automatic PR linking is a separate capability.
+branch, assign the issue or change its status.
+
+Once a repository is connected to a team, PR and review deliveries automatically link its pull
+requests to existing issues identified in the canonical branch name or PR title. References are
+case-insensitive whole identifiers such as `ENG-123`; underscores, slashes and punctuation can
+separate a reference, while `ENG-123abc` cannot match `ENG-123`. One PR can reference multiple
+issues. References only link issues in teams explicitly mapped to that repository. The integration
+does not create missing issues or change their assignee or status.
 
 Issue details include a **Development** section. Each linked PR shows its repository and number,
 title, head and base branches, Draft/Open/Closed/Merged state, current-commit review/check signals,
@@ -34,6 +41,12 @@ its current incarnation, that binding and the canonical provider response. Linki
 require connectivity. **Refresh** fetches current provider facts. **Unlink** uses the normal durable
 mutation queue, so its intent can survive offline reload without trusting client-supplied GitHub
 state. Existing sync and rejection feedback applies.
+
+Unlink suppresses automatic creation of that association for the same issue incarnation and
+repository binding, including later title/branch edits, check/review deliveries or commits. Use
+**Link pull request** explicitly to resume tracking. A job already queued before unlink cannot
+recreate it. Automatic re-linking after a later edit remains separate work. Removing a reference
+does not automatically remove an existing association; use **Unlink** when tracking should stop.
 
 Linking, unlinking and confirmed GitHub observations appear in the existing attributed Activity
 feed. Provider observations are labelled **GitHub** and link to their source PR. Facts group by the

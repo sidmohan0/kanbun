@@ -22,6 +22,17 @@ function authority(ctx: DecideContext) {
   if (!ctx.githubAuthority || (ctx.branchId ?? "main") !== "main")
     throw new MutationError("Verified GitHub App authority required", "forbidden");
 }
+
+/** Identifier separators include underscores used by configurable git branch formats. */
+export function githubIssueIdentifiers(snapshot: Pick<GitHubPullRequestSnapshot, "title" | "headRef">): Set<string> {
+  const identifiers = new Set<string>();
+  for (const text of [snapshot.headRef, snapshot.title])
+    for (const match of text.matchAll(/(?<![\p{L}\p{N}])([A-Za-z][A-Za-z0-9]*)-([1-9]\d*)(?![\p{L}\p{N}])/gu)) {
+      const number = Number(match[2]);
+      if (Number.isSafeInteger(number)) identifiers.add(`${match[1]!.toUpperCase()}-${number}`);
+    }
+  return identifiers;
+}
 function owner(ctx: DecideContext) {
   if (ctx.actor.type !== "user" || ctx.store.get("user", ctx.actorId)?.role !== "owner")
     throw new MutationError("Workspace owner required", "forbidden");
@@ -112,6 +123,55 @@ const subject = (issue: Row<"issue">) => ({
 });
 
 export const mutators = {
+  githubPullRequestAutoLink: defineEventMutator({
+    args: snapshotArgs,
+    description: "Link canonical GitHub branch/title references within the repository's mapped team.",
+    decide(ctx, args) {
+      authority(ctx);
+      if (ctx.actor.type !== "integration" || ctx.actor.id !== `github:${args.repositoryBindingId}`)
+        throw new MutationError("GitHub observer required", "forbidden");
+      const issue = ctx.store.get("issue", args.issueId);
+      const binding = ctx.store.get("githubRepository", args.repositoryBindingId);
+      const team = issue ? ctx.store.get("team", issue.teamId) : undefined;
+      if (
+        !issue ||
+        issue.archivedAt ||
+        issue.trashed ||
+        issueIncarnation(issue) !== args.issueIncarnation ||
+        !binding ||
+        binding.archivedAt ||
+        !team ||
+        team.archivedAt ||
+        team.retiredAt ||
+        binding.teamId !== team.id
+      )
+        return [];
+      const snapshot = canonicalGitHubSnapshot(binding, args.snapshot);
+      if (!githubIssueIdentifiers(snapshot).has(`${team.key.toUpperCase()}-${issue.number}`)) return [];
+      // Captured observations update existing links separately. Discovery never replaces a
+      // link established by a newer job or by a person while this fetch was in flight.
+      if (
+        ctx.store.list("issuePullRequest", {
+          issueId: issue.id,
+          repositoryBindingId: binding.id,
+          number: snapshot.number,
+        }).length
+      )
+        return [];
+      const payload = {
+        id: args.id,
+        repositoryBindingId: binding.id,
+        issueIncarnation: args.issueIncarnation,
+        revision: args.revision,
+        snapshot,
+      };
+      return [
+        { ...subject(issue), type: "GitHubPullRequestLinked" as const, payload },
+        { ...subject(issue), type: "ObservedGitHubPullRequest" as const, payload },
+      ];
+    },
+    apply: applyGitHubEvent,
+  }),
   githubRepositoryConfigure: defineEventMutator({
     args: z.strictObject({ id, teamId: id, source: githubRepositorySourceSchema }),
     description: "Connect a GitHub repository to one team's disclosure scope.",

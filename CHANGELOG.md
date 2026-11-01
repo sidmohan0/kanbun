@@ -27,6 +27,7 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Automatically link GitHub pull requests from canonical branch names and titles within mapped teams, while preserving manual unlink intent and late-job recovery guarantees.
 - Added opt-in Codex and Claude Code hooks for local agent status with stale and unknown states.
 
 - Added a local read-only Codex and Claude Code session collector with a Kanbun-logo tray, background window lifecycle, and configurable start-at-login.

@@ -4,7 +4,7 @@ import type { GitHubPullRequestSnapshot } from "@kanbun/events";
 import { MemoryStore, issueIncarnation, type Store } from "@kanbun/sync";
 import { SyncServer } from "@kanbun/sync/server";
 import { openWorkspaceDb } from "@kanbun/sync/server/node";
-import { applyGitHubEvent, mutators, tools } from "../src";
+import { applyGitHubEvent, githubIssueIdentifiers, mutators, tools } from "../src";
 
 const id = (n: number) => `019a0000-0000-7000-8000-${n.toString(16).padStart(12, "0")}`;
 const person = { id: "owner", type: "user" } as const;
@@ -145,6 +145,81 @@ it("rejects forged provider mutations through the normal user sync path", () => 
     expect(result).toMatchObject({ ok: true, rejected: [{ id: 1, error: "Verified GitHub App authority required" }] });
     expect(server.store.list("githubRepository")).toHaveLength(0);
     expect(tools().map((tool) => tool.name)).not.toContain("githubRepositoryConfigure");
+  } finally {
+    db.close();
+  }
+});
+
+it("finds identifier tokens across configurable branch separators without partial word/number matches", () => {
+  expect([...githubIssueIdentifiers({ headRef: "sid/eng-1_fix_ENG-2", title: "[ENG-2] and ENG-3." })].sort()).toEqual([
+    "ENG-1",
+    "ENG-2",
+    "ENG-3",
+  ]);
+  const found = githubIssueIdentifiers({
+    headRef: "feature/xENG-1/ENG-2abc/ENG-03",
+    title: "éENG-4 ENG-5修 ENG-9007199254740993 OTHER-6",
+  });
+  expect([...found]).toEqual(["XENG-1", "OTHER-6"]);
+});
+
+it("permits automatic links only through the mapped integration authority, including private teams", () => {
+  const { db, server } = fixture();
+  try {
+    expect(
+      server.push(person, {
+        clientId: "private-team",
+        mutations: [{ id: 1, name: "teamUpdate", ts: time, args: { id: id(2), patch: { visibility: "private" } } }],
+      }),
+    ).toMatchObject({ rejected: [] });
+    server.github("githubRepositoryConfigure", { id: id(11), teamId: id(2), source }, person);
+    const issue = server.store.get("issue", id(9))!;
+    const args = {
+      id: id(12),
+      issueId: issue.id,
+      issueIncarnation: issueIncarnation(issue),
+      repositoryBindingId: id(11),
+      revision: 1,
+      snapshot: { ...snapshot, headRef: "owner/eng-1_fix", title: "Ship ENG-1" },
+    };
+    expect(
+      server.push(person, {
+        clientId: "forged-auto-link",
+        mutations: [{ id: 1, name: "githubPullRequestAutoLink", args, ts: time }],
+      }),
+    ).toMatchObject({ rejected: [{ error: "Verified GitHub App authority required" }] });
+    expect(() => server.github("githubPullRequestAutoLink", args, person)).toThrow("GitHub observer required");
+    expect(() => server.github("githubPullRequestAutoLink", args, { id: "github:other", type: "integration" })).toThrow(
+      "GitHub observer required",
+    );
+    const integration = { id: `github:${id(11)}`, type: "integration" } as const;
+    server.github(
+      "githubPullRequestAutoLink",
+      { ...args, snapshot: { ...args.snapshot, headRef: "ENG-12_fix", title: "OTHER-1" } },
+      integration,
+    );
+    expect(server.store.list("issuePullRequest")).toHaveLength(0);
+    server.github("githubPullRequestAutoLink", args, integration, args.snapshot.url);
+    expect(server.store.get("issuePullRequest", id(12))).toMatchObject({
+      issueId: issue.id,
+      teamId: id(2),
+      title: "Ship ENG-1",
+    });
+    expect(server.store.get("issue", issue.id)).toEqual(issue);
+    const after = server.currentSeq();
+    server.github(
+      "githubPullRequestAutoLink",
+      { ...args, id: id(13), revision: 2, snapshot: { ...args.snapshot, title: "New ENG-1" } },
+      integration,
+    );
+    expect(server.currentSeq()).toBe(after);
+    expect(
+      server
+        .events(person)
+        .filter((e) => e.type === "GitHubPullRequestLinked")
+        .at(-1),
+    ).toMatchObject({ actor: integration });
+    expect(tools().map((tool) => tool.name)).not.toContain("githubPullRequestAutoLink");
   } finally {
     db.close();
   }
