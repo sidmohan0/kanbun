@@ -40,6 +40,9 @@ Update Slack authorization reconnects the same workspace.
 In the desktop app, choose **Manage Slack in browser** and sign in there before connecting.
 The handoff opens only integration settings; authorization starts in the browser so its session
 and OAuth state remain together. Reload the desktop app after updating the connection.
+If an older installed build does not open the browser, copy the settings address shown in the panel
+into your browser's address bar. One-click handoff requires a desktop build with the browser-settings
+handler; the selectable address also works with earlier builds.
 
 OAuth state is one-use and bound to the browser cookie, native owner session and workspace. Bot
 credentials are encrypted with AES-GCM and workspace-bound associated data in accounts D1; the
