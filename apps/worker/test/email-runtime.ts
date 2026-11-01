@@ -60,6 +60,7 @@ export function startEmailRuntime(
     backups?: boolean;
     isolatedRestore?: boolean;
     githubConfig?: Record<string, string>;
+    slackConfig?: Record<string, string>;
   } = {},
 ) {
   return startPreviewRuntime({ ownerEmail: "owner@example.com", emailAuth: true, ...options });

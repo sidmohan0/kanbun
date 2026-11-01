@@ -35,6 +35,7 @@ export async function startPreviewRuntime({
   initialAuthMode,
   resendApiKey = "fixture-resend-secret",
   githubConfig,
+  slackConfig,
 }: {
   ownerEmail?: string;
   subject?: string;
@@ -47,6 +48,7 @@ export async function startPreviewRuntime({
   initialAuthMode?: "preview" | "email";
   resendApiKey?: string;
   githubConfig?: Record<string, string>;
+  slackConfig?: Record<string, string>;
 } = {}) {
   const instance = randomUUID().slice(0, 8);
   const certWorker = `preview-test-certs-${instance}`;
@@ -99,6 +101,7 @@ export async function startPreviewRuntime({
             PREVIEW_WORKSPACE_NAME: "Private preview",
             APP_ORIGIN: appOrigin,
             ...githubConfig,
+            ...slackConfig,
             ...(isolatedRestore ? { BACKUP_RESTORE_ISOLATED: "true" } : {}),
           },
           ...(backups ? { r2_buckets: [{ binding: "BACKUPS", bucket_name: `preview-test-backups-${instance}` }] } : {}),
@@ -114,6 +117,7 @@ export async function startPreviewRuntime({
             { binding: "ACCESS_JWKS", service: certWorker },
             { binding: "ASSETS", service: assetWorker },
             ...(githubConfig ? [{ binding: "GITHUB_TRANSPORT", service: githubProviderWorker }] : []),
+            ...(slackConfig ? [{ binding: "SLACK_TRANSPORT", service: githubProviderWorker }] : []),
             ...(emailAuth
               ? [
                   { binding: "AUTH_EMAIL_TRANSPORT", service: authProviderWorker },
@@ -134,7 +138,7 @@ export async function startPreviewRuntime({
         },
       },
       { config: { name: assetWorker, main: "test/assets-worker.ts", compatibility_date: "2026-10-29" } },
-      ...(githubConfig
+      ...(githubConfig || slackConfig
         ? [
             {
               config: {
@@ -224,20 +228,20 @@ export async function startPreviewRuntime({
       token,
       fetch: request,
       async setGithubResponses(responses: GithubFixtureResponse[]) {
-        if (!githubConfig) throw new Error("GitHub provider was not configured");
+        if (!githubConfig && !slackConfig) throw new Error("GitHub provider was not configured");
         await harness.getWorker(githubProviderWorker).fetch("http://fixture/responses", {
           method: "POST",
           body: JSON.stringify(responses),
         });
       },
       async githubRequests() {
-        if (!githubConfig) throw new Error("GitHub provider was not configured");
+        if (!githubConfig && !slackConfig) throw new Error("GitHub provider was not configured");
         return (await (
           await harness.getWorker(githubProviderWorker).fetch("http://fixture/requests")
         ).json()) as GithubFixtureRequest[];
       },
       async releaseGithubResponse(gate: string) {
-        if (!githubConfig) throw new Error("GitHub provider was not configured");
+        if (!githubConfig && !slackConfig) throw new Error("GitHub provider was not configured");
         await harness
           .getWorker(githubProviderWorker)
           .fetch(`http://fixture/release/${encodeURIComponent(gate)}`, { method: "POST" });
@@ -269,6 +273,9 @@ export async function startPreviewRuntime({
         }));
         url = (await harness.listen()).url;
         environment = await harness.getWorker<typeof environment>().getEnv();
+      },
+      async slackCredentials() {
+        return (await environment.ACCOUNTS.prepare("SELECT * FROM slack_connections").all()).results;
       },
       async authRows() {
         return {

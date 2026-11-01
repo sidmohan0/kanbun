@@ -47,7 +47,9 @@ export function validateInstallation(config, { allowSetup = false, provisioned =
   if (config.vars?.LOCAL_DEV !== "false" || config.vars?.AUTH_MODE !== "email" || config.preview_urls !== false)
     fail("Installation must use email authentication, disabled local identity and disabled version preview URLs.");
   if (
-    Object.keys(config.vars).some((name) => /SECRET|PRIVATE_KEY|API_KEY|TRANSPORT|BACKUP_RESTORE|^ACCESS_/.test(name))
+    Object.keys(config.vars).some((name) =>
+      /SECRET|PRIVATE_KEY|API_KEY|TOKEN(?:_ENCRYPTION)?_KEY|TRANSPORT|BACKUP_RESTORE|^ACCESS_/.test(name),
+    )
   )
     fail("Secrets, test transports and recovery/legacy authentication settings cannot be public install variables.");
   if (

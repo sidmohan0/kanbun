@@ -3,3 +3,5 @@
 # RESEND_API_KEY: use the real sending key for your verified email provider account.
 # TURNSTILE_SECRET_KEY: use the real server secret for the widget on your installation hostname.
 # Keep secret values out of this example, Git, logs and deployment evidence.
+# Optional Slack: configure SLACK_CLIENT_SECRET, SLACK_SIGNING_SECRET, and SLACK_TOKEN_ENCRYPTION_KEY.
+# The Slack encryption key is an independent random 32-byte key encoded as base64; see docs/slack-integration.md.

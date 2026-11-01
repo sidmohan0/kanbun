@@ -294,3 +294,18 @@ test("deployment tags identify committed code while generated resource configura
   writeFileSync(path.join(directory, "apps/untracked.ts"), "export {};\n");
   assert.throws(() => deploymentSourceCommit(directory), /Commit application/);
 });
+
+test("integration token encryption keys stay private while app identifiers remain public", () => {
+  for (const name of ["SLACK_TOKEN_ENCRYPTION_KEY", "GOOGLE_SHEETS_TOKEN_KEY"]) {
+    const config = configured();
+    config.vars[name] = "private-encryption-material";
+    assert.throws(() => validateInstallation(config), /cannot be public install variables/);
+  }
+  const config = configured();
+  Object.assign(config.vars, {
+    SLACK_APP_ID: "A123",
+    SLACK_CLIENT_ID: "123.456",
+    GOOGLE_SHEETS_CLIENT_ID: "public-client-id.apps.googleusercontent.com",
+  });
+  assert.deepEqual(validateInstallation(config), { stage: "ready", ready: true });
+});

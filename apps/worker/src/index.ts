@@ -1,3 +1,4 @@
+import { slackRoute, slackEventRoute, type SlackEnvironment } from "./slack";
 import { DurableObject } from "cloudflare:workers";
 import migrations from "@kanbun/model/migrations/workspace/migrations.js";
 import { uuidv7 } from "@kanbun/model";
@@ -85,7 +86,7 @@ import {
 
 export { localActors } from "./local";
 
-export interface Env extends AuthEnvironment, DirectoryEnvironment, GithubEnvironment {
+export interface Env extends AuthEnvironment, DirectoryEnvironment, GithubEnvironment, SlackEnvironment {
   WORKSPACES: DurableObjectNamespace<WorkspaceDO>;
   DOCUMENTS: DurableObjectNamespace<DocumentDO>;
   ASSETS?: Fetcher;
@@ -1001,6 +1002,8 @@ export default {
         return env.WORKSPACES.getByName("local").fetch(request);
       }
       if (localRoute(url.pathname)) return json({ error: "Not found" }, 404);
+      const slackEvent = await slackEventRoute(request, env);
+      if (slackEvent) return slackEvent;
       const webhook = await githubWebhookRoute(request, env);
       if (webhook) return webhook;
       if (env.AUTH_MODE === "email" && !(url.pathname.startsWith("/api/") || syncRoute(url.pathname)))
@@ -1029,6 +1032,8 @@ export default {
         const expected = request.headers.get("X-Kanbun-Admission");
         if (expected !== null && expected !== principal.admissionId)
           throw new RequestError("Workspace admission has changed; reload this page", 403);
+        const slack = await slackRoute(request, env, principal);
+        if (slack) return slack;
         const integration = await githubRoute(request, env, principal);
         if (integration) return integration;
         return env.WORKSPACES.getByName(principal.workspaceId).fetch(forwardedRequest(request, principal));
