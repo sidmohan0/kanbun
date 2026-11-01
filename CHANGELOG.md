@@ -7,7 +7,7 @@ preparation moves them to a dated version heading.
 
 ### Changed
 
-- Improve devcontainer diagnostics, isolate package caches and verification evidence, and verify both local development services during installation rehearsal.
+- Improve devcontainer diagnostics, isolate caches and verification evidence, coordinate heavy verifier runs, and check both local development services during installation rehearsal.
 - Move workspace member management into Settings.
 - Keep workspace navigation in view, improve board contrast and drag feedback, and make issue rows open on clicks outside their titles.
 - Exclude generated browser preflight reports from lint so verification can be rerun after a failure.
