@@ -129,6 +129,7 @@ async function acceptDirect(app: MembershipHarness, grant: Grant): Promise<Works
   return response.json() as Promise<WorkspaceContext>;
 }
 async function inviteThroughUi(page: Page, app: MembershipHarness): Promise<Grant> {
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("link", { name: "Members", exact: true }).click();
   await expect(page.getByRole("heading", { name: "People with access", exact: true })).toBeVisible();
   await page.getByText("Invite member", { exact: true }).click();
@@ -357,6 +358,7 @@ test("removal hides idle browser caches and a fresh admission preserves but neve
     const oldKey = stateKey(firstAdmission);
     await expect.poll(async () => (await readWorkspaceState(member, oldKey))?.pending.length).toBe(1);
     const oldPending = (await readWorkspaceState(member, oldKey))!.pending;
+    await owner.getByRole("link", { name: "Settings", exact: true }).click();
     await owner.getByRole("link", { name: "Members", exact: true }).click();
     await owner.getByRole("button", { name: `Remove member ${membership.memberEmail}`, exact: true }).click();
     // No focus or Refresh action on the removed member: the server's policy close hides its cache.

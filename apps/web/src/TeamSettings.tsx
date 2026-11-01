@@ -321,6 +321,11 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
   return (
     <section className="teams-settings" aria-label="Team and workflow settings">
       <nav className="settings-nav" aria-label="Settings sections">
+        {snapshot.context?.mode === "hosted" && snapshot.context.role === "owner" && (
+          <a className="button quiet compact" href="#members">
+            Members
+          </a>
+        )}
         {snapshot.context?.mode === "hosted" && (
           <Button
             variant="ghost"
