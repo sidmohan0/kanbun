@@ -61,6 +61,8 @@ public test route or production provider bypass.
 
 Sign in normally as the Kanbun owner, then open Settings. Install the App for the repositories to
 share, choose **Connect GitHub**, approve the intended provider access and return to Settings.
+In the desktop app, choose **Manage GitHub in browser** first, sign in in that browser, and complete
+setup there. The browser and desktop sessions are separate; reload the desktop app afterward.
 The browser follows only the configured GitHub authorization destination. OAuth uses S256 PKCE,
 one-use state and a Secure/HttpOnly/SameSite=Lax host cookie tied to the current owner account,
 workspace and native session. The callback rechecks ownership and returns to `/#settings` without

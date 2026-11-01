@@ -18,20 +18,6 @@ export function issueIdentifier(team: Pick<Row<"team">, "key">, issue: Pick<Row<
   return issue.number > 0 ? `${team.key}-${issue.number}` : "";
 }
 
-/** Git branch name per the organization's format; derived at read time. */
-export function branchName(format: string, username: string, identifier: string, title: string): string {
-  const slug = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 50)
-    .replace(/-+$/g, "");
-  return format
-    .replace("{username}", username.toLowerCase())
-    .replace("{issueIdentifier}", identifier.toLowerCase())
-    .replace("{issueTitle}", slug);
-}
-
 export function requireIssue(ctx: DecideContext, issueId: string): Row<"issue"> {
   const issue = ctx.store.get("issue", issueId);
   if (!issue) throw new MutationError("issue not found", "not_found");

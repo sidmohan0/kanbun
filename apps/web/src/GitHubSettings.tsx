@@ -11,6 +11,7 @@ import {
   type GitHubConnection,
 } from "./github";
 import "./styles/github.css";
+import { DesktopIntegrationSettings, isDesktopApplication } from "./DesktopIntegrationSettings";
 
 function OwnerGitHubSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
   const [connection, setConnection] = useState<GitHubConnection | null>(null);
@@ -216,6 +217,10 @@ function OwnerGitHubSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
 /** Members never request the owner's private repository catalog. */
 export function GitHubSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
   return snapshot.context?.mode === "hosted" && snapshot.context.role === "owner" ? (
-    <OwnerGitHubSettings snapshot={snapshot} />
+    isDesktopApplication() ? (
+      <DesktopIntegrationSettings name="GitHub" />
+    ) : (
+      <OwnerGitHubSettings snapshot={snapshot} />
+    )
   ) : null;
 }

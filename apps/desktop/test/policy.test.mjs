@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { appUrl, linkAction, signInDestination } from "../dist/policy.js";
+import { appUrl, browserSettingsDestination, linkAction, signInDestination } from "../dist/policy.js";
 
 test("sign-in handoff only accepts valid callbacks and known return destinations", () => {
   const application = appUrl();
   const token = "a".repeat(43);
-  for (const returnTo of ["#issues", "#issues/one-1", "#members", `#invite/${token}`]) {
+  for (const returnTo of ["#issues", "#issues/one-1", "#members", "#settings/integrations", `#invite/${token}`]) {
     const route = `signin/${token}/${encodeURIComponent(returnTo)}`;
     const target = `https://kanbun.ai/#${route}`;
     assert.equal(signInDestination(`kanbun://${route}`, application), target);
@@ -27,6 +27,25 @@ test("sign-in handoff only accepts valid callbacks and known return destinations
     "javascript:alert(1)",
   ])
     assert.equal(signInDestination(value, application), null);
+});
+
+test("only the explicit same-origin integrations handoff opens settings in a browser", () => {
+  const application = appUrl();
+  assert.equal(
+    browserSettingsDestination("https://kanbun.ai/?kanbun-browser=integrations#settings/integrations", application),
+    "https://kanbun.ai/#settings/integrations",
+  );
+  for (const value of [
+    "https://evil.example/?kanbun-browser=integrations#settings/integrations",
+    "https://user:password@kanbun.ai/?kanbun-browser=integrations#settings/integrations",
+    "https://kanbun.ai/api/integrations/github/callback?kanbun-browser=integrations#settings/integrations",
+    "https://kanbun.ai/?kanbun-browser=integrations&code=secret#settings/integrations",
+    "https://kanbun.ai/?kanbun-browser=integrations#signin/token",
+    "https://kanbun.ai/#settings/integrations",
+    "file:///etc/passwd?kanbun-browser=integrations#settings/integrations",
+    "bad",
+  ])
+    assert.equal(browserSettingsDestination(value, application), null);
 });
 
 test("application URL allows HTTPS and loopback development only", () => {

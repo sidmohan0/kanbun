@@ -18,6 +18,25 @@ export function linkAction(value: string, application: URL): "internal" | "exter
   }
 }
 
+/** Only an explicit integrations-settings link may open our origin in the system browser. */
+export function browserSettingsDestination(value: string, application: URL): string | null {
+  try {
+    const url = new URL(value);
+    if (
+      url.username ||
+      url.password ||
+      url.origin !== application.origin ||
+      url.pathname !== "/" ||
+      url.search !== "?kanbun-browser=integrations" ||
+      url.hash !== "#settings/integrations"
+    )
+      return null;
+    return new URL("/#settings/integrations", application).href;
+  } catch {
+    return null;
+  }
+}
+
 /** Callback URLs only select a route; the server still checks the requesting session's cookie. */
 export function signInDestination(value: string, application: URL): string | null {
   try {
@@ -35,7 +54,7 @@ export function signInDestination(value: string, application: URL): string | nul
     if (!match) return null;
     const returnTo = decodeURIComponent(match[2]!);
     if (
-      !["#issues", "#my-issues", "#inbox", "#settings", "#members"].includes(returnTo) &&
+      !["#issues", "#my-issues", "#inbox", "#settings", "#settings/integrations", "#members"].includes(returnTo) &&
       !/^#issues\/[A-Za-z0-9_-]+$/u.test(returnTo) &&
       !/^#invite\/[A-Za-z0-9_-]{43}$/u.test(returnTo)
     )

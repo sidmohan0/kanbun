@@ -32,6 +32,7 @@ export type WorkspaceSnapshot = {
   pending: number;
   pendingIssueIds: string[];
   issues: Row<"issue">[];
+  organization: Row<"organization"> | null;
   comments: Row<"comment">[];
   notifications: Row<"notification">[];
   unreadNotificationCount: number;
@@ -81,6 +82,7 @@ let snapshot: WorkspaceSnapshot = {
   pending: 0,
   pendingIssueIds: [],
   issues: [],
+  organization: null,
   comments: [],
   notifications: [],
   unreadNotificationCount: 0,
@@ -165,6 +167,7 @@ function publish() {
               compare(right.id, left.id),
           );
   snapshot = {
+    organization: authenticationRequired ? null : (organization ?? null),
     phase,
     status,
     context: authenticationRequired ? null : context,
@@ -569,6 +572,12 @@ export const workspace = {
   start,
   refresh,
   requireAuthentication: blockAuthentication,
+  setGitBranchFormat(format: string): void {
+    const active = editableClient();
+    active.mutate("organizationGitBranchFormatUpdate", { format });
+    publish();
+    flush(active);
+  },
   unlinkPullRequest(id: string): void {
     const active = editableClient();
     active.mutate("issuePullRequestUnlink", { id });

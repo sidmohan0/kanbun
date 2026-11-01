@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { _electron as electron } from "@playwright/test";
+import { _electron as electron, expect } from "@playwright/test";
 import executablePath from "electron";
 
 test("an email callback delivered by the OS returns to the requesting desktop session", async () => {
@@ -18,8 +18,8 @@ test("an email callback delivered by the OS returns to the requesting desktop se
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
   const token = "a".repeat(43);
-  const hash = `#signin/${token}/%23issues`;
-  const callback = `kanbun://signin/${token}/%23issues`;
+  const hash = `#signin/${token}/%23settings%2Fintegrations`;
+  const callback = `kanbun://signin/${token}/%23settings%2Fintegrations`;
   const launch = (extra = []) =>
     electron.launch({
       executablePath: process.env.KANBUN_DESKTOP_EXECUTABLE ?? executablePath,
@@ -69,7 +69,9 @@ test("desktop shell isolates hosted content, restricts navigation and restores i
   const directory = await mkdtemp(path.join(tmpdir(), "kanbun-desktop-"));
   const server = createServer((_request, response) => {
     response.setHeader("Content-Type", "text/html");
-    response.end('<title>kanbun fixture</title><h1>Workspace</h1><a href="file:///etc/passwd">Unsafe</a>');
+    response.end(
+      '<title>kanbun fixture</title><h1>Workspace</h1><a href="file:///etc/passwd">Unsafe</a><a href="/?kanbun-browser=integrations#settings/integrations" target="_blank">Manage integrations in browser</a>',
+    );
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const url = `http://127.0.0.1:${server.address().port}`;
@@ -107,6 +109,20 @@ test("desktop shell isolates hosted content, restricts navigation and restores i
       localStorage.setItem("desktop-session-test", "retained");
       document.cookie = "session-test=retained; Max-Age=3600; SameSite=Lax";
     });
+    // Replace only the OS boundary; the real renderer click and shell navigation policy remain active.
+    await desktop.evaluate(({ shell }) => {
+      globalThis.openedBrowserLinks = [];
+      shell.openExternal = async (value) => {
+        globalThis.openedBrowserLinks.push(value);
+      };
+    });
+    await page.getByText("Manage integrations in browser", { exact: true }).click();
+    await expect
+      .poll(() => desktop.evaluate(() => globalThis.openedBrowserLinks))
+      .toEqual([`${url}/#settings/integrations`]);
+    assert.equal(page.url(), `${url}/`);
+    assert.equal(desktop.windows().length, 1);
+    assert.match(await page.evaluate(() => document.cookie), /session-test=retained/);
     await page.getByText("Unsafe").click();
     assert.equal(new URL(page.url()).origin, url);
     await page.evaluate(() => window.open("file:///etc/passwd"));

@@ -7,6 +7,22 @@ sorting and board status controls keep their behavior.
 
 ## Development cards and activity
 
+Every issue includes **Copy git branch name** in Development, even before a GitHub repository is
+connected. **Cmd/Ctrl + Shift + .** copies the same name while the issue is open; the shortcut
+does not intercept typing inside an input, text area or editable document. The generated name
+uses the latest team key, assigned issue number, title and the current member's display name.
+An issue waiting for its server-assigned number cannot be copied yet. Clipboard failures leave
+the branch name visible so it can be selected and copied manually.
+
+Workspace owners and admins choose **Settings → Integrations → Git branch names**. The format
+must include `{issueIdentifier}` and can also use `{username}` and `{issueTitle}`. Usernames and
+titles become lowercase ASCII slugs; names without ASCII characters fall back to `member` and
+`issue`. The title portion retains at most 50 characters. The default is
+`{username}/{issueIdentifier}-{issueTitle}`. Formats accept letters, numbers, hyphens, underscores
+and slashes and must produce valid Git branch names. Format changes use normal durable sync,
+including offline persistence and rejection feedback. Copying a name does not create a GitHub
+branch, assign the issue or change its status. Automatic PR linking is a separate capability.
+
 Issue details include a **Development** section. Each linked PR shows its repository and number,
 title, head and base branches, Draft/Open/Closed/Merged state, current-commit review/check signals,
 and **Last confirmed** timestamp. Source links open the pull request, its checks and commit on

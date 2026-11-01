@@ -86,9 +86,15 @@ the complete original HTTPS email link, so it works before the browser UI deploy
 occurs only when that command is invoked; invalid contents are never echoed. Custom protocol and
 clipboard callbacks accept only valid sign-in tokens and known issue/invitation return hashes, and
 always navigate to the configured app origin. Expired, used or mismatched links remain unavailable.
-General third-party OAuth redirect handoff remains separate work.
+Integration settings offer **Manage in browser** before starting third-party authorization.
+An explicit settings-only link opens the configured app's integration page in the system browser;
+sign in there and start the connection in that browser. OAuth state and callbacks then remain in
+one browser session. Reload the desktop app after changing a connection. This requires an updated
+desktop build. Settings also shows a selectable integration-page address: older builds can copy it
+and paste it directly into a browser instead. No OAuth
+codes, credentials or session cookies are handed between the desktop app and browser.
 
-Same-origin navigation remains inside the window. User-triggered HTTP, HTTPS and mail links to
+Other same-origin navigation remains inside the window. User-triggered HTTP, HTTPS and mail links to
 other origins open in the system browser. Other schemes are denied, and cross-origin redirects are
 blocked rather than moving privileged application windows to external sites. Same-origin popups
 reuse the current window. Native menus support editing, reload, zoom, fullscreen and window actions.

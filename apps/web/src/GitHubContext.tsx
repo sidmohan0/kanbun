@@ -1,7 +1,8 @@
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
-import { useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { Row } from "@kanbun/model";
+import { branchName, DEFAULT_GIT_BRANCH_FORMAT, issueIdentifier } from "@kanbun/mutators";
 import { issueIncarnation } from "@kanbun/sync";
 import { membershipRequest } from "./membership";
 import { workspace, type WorkspaceSnapshot } from "./workspace";
@@ -87,6 +88,51 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const team = snapshot.teams.find((candidate) => candidate.id === issue.teamId);
+  const member = snapshot.members.find((candidate) => candidate.id === snapshot.context?.actor.id);
+  const gitBranch = team
+    ? branchName(
+        snapshot.organization?.gitBranchFormat ?? DEFAULT_GIT_BRANCH_FORMAT,
+        member?.displayName ?? "member",
+        issueIdentifier(team, issue),
+        issue.title,
+      )
+    : "";
+  const copyBranch = useCallback(async () => {
+    if (!gitBranch || issue.archivedAt || issue.trashed) return;
+    setError(null);
+    setCopied(null);
+    try {
+      if (!navigator.clipboard?.writeText)
+        throw new Error("Clipboard access is unavailable. Select and copy the branch name below.");
+      await navigator.clipboard.writeText(gitBranch);
+      setCopied(gitBranch);
+    } catch {
+      setError("The branch name could not be copied. Select and copy it below, or allow clipboard access.");
+    }
+  }, [gitBranch, issue.archivedAt, issue.trashed]);
+  useEffect(() => {
+    function keydown(event: KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        event.repeat ||
+        event.isComposing ||
+        event.altKey ||
+        !(event.metaKey || event.ctrlKey) ||
+        !event.shiftKey ||
+        event.code !== "Period" ||
+        (event.target instanceof Element &&
+          event.target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])")) ||
+        !gitBranch
+      )
+        return;
+      event.preventDefault();
+      void copyBranch();
+    }
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, [copyBranch, gitBranch]);
   const repositories = snapshot.githubRepositories.filter(
     (repository) => repository.teamId === issue.teamId && !repository.archivedAt,
   );
@@ -134,12 +180,32 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
       setUrl("");
     });
   }
-  if (!repositories.length && !(snapshot.context?.mode === "hosted" && snapshot.context.role === "owner")) return null;
   return (
     <section className="issue-development" aria-label="Development">
       <header className="github-section-heading">
         <h3>Development</h3>
       </header>
+      <div className="github-branch-copy">
+        {gitBranch ? (
+          <code>{gitBranch}</code>
+        ) : (
+          <span>
+            {issue.number > 0
+              ? "Branch name unavailable. Check the format in Settings."
+              : "Waiting for the issue number…"}
+          </span>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!gitBranch || Boolean(issue.archivedAt) || issue.trashed}
+          onClick={() => void copyBranch()}
+          aria-keyshortcuts="Control+Shift+. Meta+Shift+."
+        >
+          Copy git branch name
+        </Button>
+        {copied === gitBranch && <span role="status">Branch name copied</span>}
+      </div>
       {error && (
         <p className="notice" role="alert">
           {error}
