@@ -1,63 +1,48 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="brand/svg/lockup-reverse-on-ink.svg" />
-  <img src="brand/svg/lockup-color-on-bone.svg" alt="kanbun" width="360" />
-</picture>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/svg/lockup-reverse-on-ink.svg" />
+    <img src="brand/svg/lockup-color-on-bone.svg" alt="kanbun" width="360" />
+  </picture>
+</p>
 
-# kanbun
+<p align="center"><b>Collaborative issue tracking, close to your code.</b></p>
 
-A local-first issue tracker with collaborative editing and GitHub context.
+<p align="center">
+  <a href="#installation"><b>Get started</b></a> ·
+  <a href="#features"><b>Features</b></a> ·
+  <a href="docs/architecture.md"><b>Architecture</b></a> ·
+  <a href="CONTRIBUTING.md"><b>Contribute</b></a>
+</p>
 
-Kanbun helps engineering teams organize issues, discuss work, and review linked pull requests.
-The application runs in your Cloudflare account. Developers can evaluate it locally with the
-repository's Docker-based devcontainer.
+![Kanbun issue list using synthetic local data](docs/images/issue-list.png)
 
-[Run locally](#run-locally) · [Deploy to Cloudflare](docs/cloudflare-deployment.md) ·
-[Evaluate for your team](docs/evaluation.md) · [Implementation help](#implementation-help)
+Kanbun is an open-source, local-first issue tracker for engineering teams. Organize work, write
+and discuss issues together, and see GitHub pull requests alongside the work they support. Run a
+workspace in your own Cloudflare account or explore it locally with synthetic data.
+
+> Kanbun is in active development for an invited-team pilot. Check the
+> [launch-readiness report](docs/launch-readiness.md) before choosing a release for team use.
+
+## Installation
+
+Choose the setup that fits what you want to do.
+
+| Setup               | Start here                                                                                                       |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Explore locally     | [Run Kanbun locally](#run-locally) with Docker or Colima and host Node.js.                                       |
+| Host a workspace    | Follow the [Cloudflare installation guide](docs/cloudflare-deployment.md).                                       |
+| Evaluate for a team | Review the [evaluation guide](docs/evaluation.md) and [operating responsibilities](docs/operations-overview.md). |
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fsidmohan0%2Fkanbun)
 
 The button provisions a setup shell. Complete owner, origin, email, and Turnstile configuration
-using the [installation guide](docs/cloudflare-deployment.md) before signing in. An isolated-installation
-rehearsal is tracked in launch readiness.
+using the installation guide before signing in. An isolated-installation rehearsal is tracked in
+launch readiness.
 
-![Kanbun issue list using synthetic local data](docs/images/issue-list.png)
+### Run locally
 
-## What works today
-
-- Issues with status, priority, assignment, labels, archive and Undo, sub-issues, and dependencies.
-- List and board views, My Issues, search, filters, and sorting.
-- Collaborative descriptions, attributed discussion, and a personal notification inbox.
-- Optimistic edits, persisted browser queues, and automatic synchronization across sessions.
-- Email-link sign-in, targeted invitations, membership administration, teams, and workflow settings.
-- GitHub pull request, review, branch, and CI context from selected repositories.
-- Private workspace backup bundles and isolated restoration.
-
-Kanbun is in active development for an invited-team pilot. Review the
-[launch-readiness report](docs/launch-readiness.md) before choosing a release for team use.
-The [team-readiness record](docs/team-readiness.md) links existing product tests and historical
-qualification evidence. Each release candidate needs its own verification.
-
-## Current boundaries
-
-| Area               | Current scope                                                                                                                                          |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Offline work       | An already open, authorized page can queue edits. Hosted cold starts and reloads require connectivity and authentication before reopening cached work. |
-| Hosting            | Cloudflare Workers, SQLite Durable Objects, D1, and R2. Local workerd runs inside the devcontainer for development and evaluation.                     |
-| Access             | An owner initializes a workspace and invites eligible people within the configured email domain.                                                       |
-| GitHub             | Selected repositories supply read-only development context. People control issue status.                                                               |
-| Workspace branches | APIs support isolated issue creation, title changes, conflict choices, and durable merge receipts. A branch-review interface is planned.               |
-| Agents             | The engine includes agent scopes and branch ownership. A complete agent execution and review workflow is planned.                                      |
-| Events             | Supported issue and discussion commands record semantic events. Some mutations retain the legacy patch path.                                           |
-| Data portability   | Recovery bundles restore compatible Kanbun state. General-purpose backlog import and export are planned.                                               |
-
-External notification delivery, autonomous agent runs, derived status from provider evidence, and
-time-travel views are planned. The [specification](SPEC.md) describes the longer-term design;
-its implementation-status section identifies the current scope.
-
-## Run locally
-
-Install Docker, or Colima on macOS, and host Node.js to bootstrap the pinned devcontainer CLI.
-Run these commands from the checkout:
+Install Docker or Colima on macOS, plus host Node.js to bootstrap the pinned devcontainer CLI.
+From your checkout, run:
 
 ```sh
 ./scripts/devcontainer.sh up
@@ -70,74 +55,93 @@ In another terminal, print the published address:
 ./scripts/devcontainer.sh url
 ```
 
-Open that address and choose **Initialize local workspace**. Local mode uses synthetic Alice and
+Open the address and choose **Initialize local workspace**. Local mode uses synthetic Alice and
 Bob identities. Create an issue, change its properties, open its description, and try the board.
-Use this mode on localhost with synthetic data.
+Use this mode on localhost with synthetic data. Stop the checkout's containers with
+`./scripts/devcontainer.sh stop`.
 
-Stop this checkout's containers with `./scripts/devcontainer.sh stop`. The
-[local guide](docs/local-worker.md) explains persistence, initialization, troubleshooting, and
-reset procedures. Docker provides the local development environment; ongoing team hosting uses
-the authenticated Cloudflare installation.
+See the [local guide](docs/local-worker.md) for persistence, troubleshooting, and reset procedures.
+For a hosted workspace, configure a custom origin, email delivery, Turnstile, storage, and owner
+identity. Add an installer-owned GitHub App when your team needs repository context.
 
-## Deploy to Cloudflare
+## Features
 
-Follow the [Cloudflare installation guide](docs/cloudflare-deployment.md) to configure a workspace
-in your account. Setup includes a custom origin, email delivery, Turnstile, storage, and owner
-identity. Configure an installer-owned GitHub App separately when your team needs repository
-context.
+- **Issues and relationships**: Track status, priority, assignees, labels, sub-issues, and dependencies.
+  Archive issues and undo the action when needed.
+- **Views**: Browse lists and boards, find your assigned work, and narrow results with search,
+  filters, and sorting.
+- **Collaborative work**: Edit descriptions together, discuss issues, and keep up through a personal
+  notification inbox.
+- **Local-first editing**: Make optimistic changes, queue pending work in the browser, and sync
+  across sessions when connected.
+- **GitHub context**: See pull requests, reviews, branches, and CI from selected repositories next
+  to related issues. People control issue status.
+- **Workspace administration**: Invite eligible people, manage members and teams, configure
+  workflows, and create private backup bundles for restoration.
 
-Review [operating responsibilities](docs/operations-overview.md), required provider services, data
-recovery, and upgrade limits before putting a real backlog into the installation. The existing
-maintainer preview has its own [operations runbook](docs/operations.md).
+## Current boundaries
+
+Kanbun is growing toward a broader collaborative workflow. Here's where things stand today:
+
+| Area                          | Available today                                                                                                   | Planned or limited                                                                            |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Offline work                  | An open, authorized page can queue edits.                                                                         | Hosted cold starts and reloads require connectivity and authentication.                       |
+| Hosting                       | Cloudflare Workers, SQLite Durable Objects, D1, and R2. Local development uses workerd in the devcontainer.       | Review the [installation guide](docs/cloudflare-deployment.md) before hosting a real backlog. |
+| Access                        | An owner initializes a workspace and invites people within the configured email domain.                           | See [team readiness](docs/team-readiness.md) for qualification evidence.                      |
+| GitHub                        | Selected repositories provide read-only development context.                                                      | Provider evidence does not automatically change issue status.                                 |
+| Workspace branches and agents | APIs support isolated issue changes and merge receipts; the engine includes agent scopes and branch ownership.    | Branch review and a complete agent execution workflow are planned.                            |
+| Events and portability        | Supported issue and discussion commands record semantic events; recovery bundles restore compatible Kanbun state. | Some mutations use a legacy patch path. General backlog import and export are planned.        |
+
+External notification delivery and time-travel views are also planned. The [specification](SPEC.md)
+describes the longer-term design and identifies implementation status.
+
+## How Kanbun works
+
+![Kanbun architecture: browser clients connect to a Cloudflare Worker, which routes workspace and document changes to Durable Objects and uses D1 and R2 for accounts and backups](docs/images/architecture-flow.svg)
+
+A Worker serves the React application and routes authenticated requests. A SQLite-backed Durable
+Object serializes each workspace's writes, while Document Durable Objects merge collaborative
+descriptions with Yjs. D1 stores the account directory and R2 holds private backup bundles.
+
+The browser applies optimistic commands, stores pending work in IndexedDB, and reconciles it with
+HTTP responses. WebSocket notifications prompt clients to pull committed changes. Explore the
+[architecture overview](docs/architecture.md), [engineering case study](docs/case-study.md), and
+[event replay guide](docs/event-replay.md).
 
 ## Development
 
-The [devcontainer](.devcontainer/devcontainer.json) is the standard environment for local work and
-repository-owned CI. It pins the Linux image, Node.js, pnpm, and browser dependencies. VS Code
-Dev Containers and GitHub Codespaces use the same configuration.
+The [devcontainer](.devcontainer/devcontainer.json) is the shared environment for development and
+repository-owned CI. It pins Linux, Node.js, pnpm, and browser dependencies. VS Code Dev Containers
+and GitHub Codespaces use the same configuration.
 
 ```sh
 ./scripts/devcontainer.sh up
-./scripts/devcontainer.sh verify
 ./scripts/devcontainer.sh exec pnpm install --frozen-lockfile
+./scripts/devcontainer.sh verify
 ```
 
-Run repository commands with `./scripts/devcontainer.sh exec <command...>`. After changing the
-container image or browser dependency, run `./scripts/devcontainer.sh rebuild`. Keep each
-workspace's dependencies in its own manifest and commit the root `pnpm-lock.yaml` with dependency
-changes.
+Run repository commands with `./scripts/devcontainer.sh exec <command...>`. Rebuild with
+`./scripts/devcontainer.sh rebuild` after changing the container image or browser dependencies.
+Keep dependencies in their owning workspace manifest and commit the root `pnpm-lock.yaml` with
+manifest changes.
 
-The complete verifier runs formatting, lint, typechecking, tests, builds, seed smoke checks,
-browser recovery scenarios, spec/archive checks, and mechanical documentation checks. Changelog
-and history-aware spec-lock checks are separate required checks. See
-[verification](docs/verification.md) and [contribution guidance](CONTRIBUTING.md).
+The verifier covers formatting, lint, typechecking, tests, builds, seed smoke checks, browser
+recovery scenarios, spec/archive checks, and mechanical documentation checks. Changelog and
+history-aware spec-lock checks are separate required checks. See [verification](docs/verification.md)
+and [contribution guidance](CONTRIBUTING.md).
 
-### Capture UI screens
-
-With the local development stack running, capture the local workspace at a 1920 × 1320 viewport:
+To capture UI screens while the local stack runs:
 
 ```sh
 ./scripts/devcontainer.sh exec pnpm --filter @kanbun/verifier capture:ui
 ./scripts/devcontainer.sh exec pnpm --filter @kanbun/verifier capture:hosted
 ```
 
-Screenshots are saved in `output/ui-capture`. Issue detail captures require an existing local issue;
-hosted-only screens are captured separately using a disposable local Worker and fixture accounts,
-without accessing hosted data. Set `KANBUN_CAPTURE_DIR` to choose a different output directory.
+Screenshots are saved in `output/ui-capture`; set `KANBUN_CAPTURE_DIR` to change the destination.
+Issue detail captures require an existing local issue. Hosted-only screens use a disposable local
+Worker and fixture accounts, without accessing hosted data.
 
-## Architecture
-
-A Worker serves the React application and routes authenticated requests. Each workspace has a
-SQLite-backed Durable Object that serializes writes, while separate Document Durable Objects
-merge collaborative descriptions with Yjs. D1 stores the account directory. R2 holds private
-backup bundles.
-
-The client applies optimistic commands, persists pending work in IndexedDB, and reconciles it with
-authoritative HTTP responses. WebSocket notifications prompt clients to pull committed changes.
-Read the [architecture overview](docs/architecture.md),
-[engineering case study](docs/case-study.md), and [event replay guide](docs/event-replay.md).
-
-Current workspace packages:
+### Packages
 
 <!-- workspace-inventory:start -->
 
@@ -152,22 +156,19 @@ Current workspace packages:
 
 <!-- workspace-inventory:end -->
 
-## Implementation help
+## Contributing and support
 
-I offer paid help deploying Kanbun in your Cloudflare account, configuring authentication and
-GitHub integration, verifying backups, and preparing your team to operate it.
+Report a bug or request a feature through [GitHub issues](https://github.com/sidmohan0/kanbun/issues/new/choose).
+Read the [contribution guide](CONTRIBUTING.md) before opening a pull request, and use the
+[security policy](SECURITY.md) to report vulnerabilities privately.
 
-Email [sid@datafog.ai](mailto:sid@datafog.ai) with your team size, current tools, and setup
-requirements. The [implementation-help guide](SUPPORT.md#paid-implementation-help) explains the
-scope, customer prerequisites, and handover deliverables. Ongoing maintenance and custom work are
-scoped separately.
+Need help deploying Kanbun, configuring authentication and GitHub, verifying backups, or preparing
+your team to operate it? Email [sid@datafog.ai](mailto:sid@datafog.ai). The
+[implementation-help guide](SUPPORT.md#paid-implementation-help) explains the paid service and
+handover. Ongoing maintenance and custom work are scoped separately.
 
-Built by [Sid Mohan](https://github.com/sidmohan0). [Report a bug](https://github.com/sidmohan0/kanbun/issues/new/choose),
-read the [support policy](SUPPORT.md), or report vulnerabilities privately using the
-[security policy](SECURITY.md).
+## License
 
-## License and assets
-
-Copyright 2026 Sid Mohan. Licensed under the [Apache License, Version 2.0](LICENSE).
-[Third-party notices](THIRD_PARTY_NOTICES.md) describe external components and font references.
-The [brand kit](brand/KIT.txt) documents the original logo assets and usage guidelines.
+Built by [Sid Mohan](https://github.com/sidmohan0). Copyright 2026 Sid Mohan. Kanbun is licensed
+under the [Apache License, Version 2.0](LICENSE). See [third-party notices](THIRD_PARTY_NOTICES.md)
+and the [brand kit](brand/KIT.txt).

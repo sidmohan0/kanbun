@@ -63,12 +63,24 @@ esac
 
 command -v npx >/dev/null || { printf 'Install Node.js to bootstrap the devcontainer CLI.\n' >&2; exit 1; }
 container_cli=(npx --yes @devcontainers/cli@0.90.0)
+# Linked worktrees point at the common Git directory using a host path. Mount it
+# at that same path so Git and source-metadata checks work inside the container.
+worktree_mount=()
+if [ -f "$repo_root/.git" ]; then
+  common_dir="$(git -C "$repo_root" rev-parse --git-common-dir)"
+  common_dir="$(cd "$repo_root" && cd "$common_dir" && pwd -P)"
+  if [[ "$common_dir" == *,* ]]; then
+    printf 'Git common directory cannot contain a comma when mounted: %s\n' "$common_dir" >&2
+    exit 1
+  fi
+  worktree_mount=(--mount "type=bind,source=$common_dir,target=$common_dir")
+fi
 case "$command_name" in
   up)
-    exec "${container_cli[@]}" up --workspace-folder "$repo_root" "$@"
+    exec "${container_cli[@]}" up --workspace-folder "$repo_root" "${worktree_mount[@]}" "$@"
     ;;
   rebuild)
-    exec "${container_cli[@]}" up --workspace-folder "$repo_root" --remove-existing-container "$@"
+    exec "${container_cli[@]}" up --workspace-folder "$repo_root" --remove-existing-container "${worktree_mount[@]}" "$@"
     ;;
   exec)
     [ "$#" -gt 0 ] || { printf 'Supply a command to execute.\n' >&2; exit 2; }
