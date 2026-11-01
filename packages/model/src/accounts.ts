@@ -184,3 +184,13 @@ export const slackConnections = sqliteTable(
   },
   (t) => [uniqueIndex("slack_connections_team").on(t.teamId)],
 );
+/** Private export authorization; never synchronized to browsers or revived by restore. */
+export const googleSheetsConnections = sqliteTable("google_sheets_connections", {
+  workspaceId: text("workspace_id").primaryKey(),
+  refreshToken: text("refresh_token").notNull(),
+  spreadsheetId: text("spreadsheet_id"),
+  projectsEnabled: bool("projects_enabled").notNull().default(false),
+  lastSyncedSeq: text("last_synced_seq"),
+  lastSyncedAt: text("last_synced_at"),
+  error: text("error"),
+});

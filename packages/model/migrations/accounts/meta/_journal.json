@@ -36,6 +36,13 @@
       "when": 1793571469100,
       "tag": "0004_reflective_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793571656220,
+      "tag": "0005_illegal_grim_reaper",
+      "breakpoints": true
     }
   ]
 }

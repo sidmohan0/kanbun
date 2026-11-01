@@ -188,6 +188,26 @@ describe("complete SQLite backups", () => {
   });
 });
 
+it("does not revive Google export authorization when restoring the directory", async () => {
+  const source = new DatabaseSync(":memory:"),
+    target = new DatabaseSync(":memory:");
+  try {
+    for (const db of [source, target])
+      db.exec(
+        "CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO d1_migrations VALUES(1,'fixture'); CREATE TABLE accounts(id TEXT PRIMARY KEY); CREATE TABLE google_sheets_connections(workspace_id TEXT PRIMARY KEY, refresh_token TEXT)",
+      );
+    source.exec(
+      "INSERT INTO accounts VALUES('owner'); INSERT INTO google_sheets_connections VALUES('workspace','encrypted-refresh-credential')",
+    );
+    await restoreDirectory(directory(target), await captureDirectory(directory(source)));
+    expect(target.prepare("SELECT id FROM accounts").all()).toEqual([{ id: "owner" }]);
+    expect(target.prepare("SELECT * FROM google_sheets_connections").all()).toEqual([]);
+  } finally {
+    source.close();
+    target.close();
+  }
+});
+
 describe("private immutable backup archives", () => {
   it("publishes the manifest last with conditional-create parts and verifies their hashes", async () => {
     const bucket = new Bucket(),
