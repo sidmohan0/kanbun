@@ -7,6 +7,7 @@ preparation moves them to a dated version heading.
 
 ### Changed
 
+- Run package and browser recovery tests concurrently with bounded workers, and verify WebSocket close frames without waiting for development proxy TCP teardown.
 - Reuse development image layers and browser test infrastructure, streamline deployment setup, and run independent verification work concurrently while retaining main-branch scale coverage.
 - Improve devcontainer diagnostics, isolate caches and verification evidence, coordinate heavy verifier runs, and check both local development services during installation rehearsal.
 - Move workspace member management into Settings.

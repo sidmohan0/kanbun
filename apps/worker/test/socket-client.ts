@@ -54,8 +54,6 @@ function connected(socket: Socket, head: Buffer): TestSocket {
     socket.destroy();
     rejectClose(error);
   };
-  closeTimer = setTimeout(() => fail(new Error("WebSocket close frame timed out")), 30_000);
-  closeTimer.unref();
   const consume = (chunk: Buffer) => {
     bytes = Buffer.concat([bytes, chunk]);
     while (bytes.length >= 2 && !settled) {
