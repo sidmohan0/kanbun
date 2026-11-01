@@ -102,10 +102,10 @@ if [ "$command_name" = doctor ]; then
 fi
 case "$command_name" in
   up)
-    exec "${container_cli[@]}" up --workspace-folder "$repo_root" "${worktree_mount[@]}" "$@"
+    exec "${container_cli[@]}" up --workspace-folder "$repo_root" ${worktree_mount[@]+"${worktree_mount[@]}"} "$@"
     ;;
   rebuild)
-    exec "${container_cli[@]}" up --workspace-folder "$repo_root" --remove-existing-container "${worktree_mount[@]}" "$@"
+    exec "${container_cli[@]}" up --workspace-folder "$repo_root" --remove-existing-container ${worktree_mount[@]+"${worktree_mount[@]}"} "$@"
     ;;
   exec)
     [ "$#" -gt 0 ] || { printf 'Supply a command to execute.\n' >&2; exit 2; }

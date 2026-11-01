@@ -48,6 +48,16 @@ test("doctor detects inaccessible Git metadata in a running container", (t) => {
   assert.match(healthy.stdout, /Git metadata: accessible/);
 });
 
+test("full checkout starts without a worktree mount", (t) => {
+  const { run, mock } = fixture(t);
+  mock("npx", 'printf "%s\\n" "$@"');
+  for (const command of ["up", "rebuild"]) {
+    const result = run([command], { DEFAULT_OK: "1" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout, /--mount/);
+  }
+});
+
 test("linked worktree passes its Git common directory as a mount", (t) => {
   const { root } = fixture(t);
   const repository = path.join(root, "source");
