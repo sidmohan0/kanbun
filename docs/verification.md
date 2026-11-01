@@ -123,6 +123,8 @@ Run `pnpm test:recovery` directly or use `pnpm verify recovery` for a verificati
 JSON and HTML reports, failure traces, and failed-test server state are retained under
 `artifacts/recovery/`, with early cases retained separately under `artifacts/recovery-preflight/`. The recovery runner keeps live browser artifacts in a unique container-local
 temporary directory, then exports the completed reports and attachments after Playwright exits.
+Each invocation exports into its own subdirectory, so concurrent or later runs do not overwrite
+earlier evidence. Remove old run directories when they are no longer needed.
 This avoids transient trace writes on shared host mounts. Test failures still export their evidence;
 missing reports or failed exports fail the command. If export fails, the runner prints the retained
 container-local directory for recovery. Filter cases with, for example,

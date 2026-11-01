@@ -20,6 +20,9 @@ async function exportEvidenceDirectory(source, destination) {
 /** Playwright's live trace files must stay off shared host mounts. Export only after exit. */
 export async function runWithRecoveryEvidence({ command, args, cwd, destination }) {
   const temporary = await mkdtemp(path.join(tmpdir(), "kanbun-browser-recovery-"));
+  // Each invocation owns a distinct retained directory, so concurrent runs cannot
+  // delete or overwrite one another's evidence.
+  const retained = path.join(destination, path.basename(temporary));
   let code = 1;
   let report = null;
   try {
@@ -50,21 +53,20 @@ export async function runWithRecoveryEvidence({ command, args, cwd, destination 
     }
   } finally {
     try {
-      await rm(destination, { recursive: true, force: true });
-      await exportEvidenceDirectory(temporary, destination);
+      await exportEvidenceDirectory(temporary, retained);
       // JSON attachment paths must address the retained copy, not the temporary directory.
       const retainedPaths = (value) => {
         if (typeof value === "string" && (value === temporary || value.startsWith(temporary + path.sep)))
-          return destination + value.slice(temporary.length);
+          return retained + value.slice(temporary.length);
         if (Array.isArray(value)) return value.map(retainedPaths);
         if (value && typeof value === "object")
           return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, retainedPaths(item)]));
         return value;
       };
       if (report)
-        await writeFile(path.join(destination, "results.json"), JSON.stringify(retainedPaths(report), null, 2) + "\n");
+        await writeFile(path.join(retained, "results.json"), JSON.stringify(retainedPaths(report), null, 2) + "\n");
       await rm(temporary, { recursive: true, force: true });
-      console.log("Browser recovery artifacts:", destination);
+      console.log("Browser recovery artifacts:", retained);
     } catch (error) {
       console.error("Could not export browser recovery evidence:", error.message);
       console.error("Container-local evidence remains at:", temporary);
