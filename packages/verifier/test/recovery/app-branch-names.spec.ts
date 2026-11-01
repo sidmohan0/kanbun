@@ -1,6 +1,32 @@
 import type { BootstrapResponse } from "@kanbun/sync";
 import { test, expect, loginEmail, nativeBrowser } from "./app-email.fixture";
 
+test("desktop integration settings hand off to browser setup before creating OAuth state", async ({
+  browser,
+  emailApp: app,
+}) => {
+  const context = await browser.newContext({ userAgent: "KanbunDesktop/1.0" });
+  await nativeBrowser(context);
+  const page = await context.newPage();
+  const integrationRequests: string[] = [];
+  context.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/integrations/github")) integrationRequests.push(request.url());
+  });
+  try {
+    await loginEmail(page, app, app.runtime.ownerEmail, "#settings/integrations");
+    const connection = page.getByRole("region", { name: "GitHub connection", exact: true });
+    await expect(connection.getByRole("link", { name: "Manage GitHub in browser", exact: true })).toHaveAttribute(
+      "href",
+      `${app.origin}/?kanbun-browser=integrations#settings/integrations`,
+    );
+    await expect(connection.getByRole("button", { name: "Connect GitHub", exact: true })).toHaveCount(0);
+    await expect(connection).toContainText("Sign in there");
+    expect(integrationRequests).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
+
 test("shares the branch format across browsers and copies the current issue name without intercepting text editing", async ({
   browser,
   emailApp: app,

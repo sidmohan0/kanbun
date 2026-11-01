@@ -6,7 +6,7 @@ import { configureHooks } from "./hook-setup.js";
 import { readHookStatuses } from "./hook-store.js";
 import { linuxAutostart } from "./autostart.js";
 import type { MenuItemConstructorOptions } from "electron";
-import { appUrl, linkAction, signInDestination } from "./policy.js";
+import { appUrl, browserSettingsDestination, linkAction, signInDestination } from "./policy.js";
 
 const application = appUrl(process.env.KANBUN_DESKTOP_URL);
 app.setName("kanbun");
@@ -246,6 +246,12 @@ function createWindow(destination = pendingSignIn ?? application.href) {
   current.webContents.session.setPermissionCheckHandler(() => false);
   current.webContents.on("will-attach-webview", (event) => event.preventDefault());
   current.webContents.on("will-navigate", (event, url) => {
+    const settings = browserSettingsDestination(url, application);
+    if (settings) {
+      event.preventDefault();
+      void openExternal(settings);
+      return;
+    }
     const action = linkAction(url, application);
     if (action !== "internal") {
       event.preventDefault();
@@ -256,9 +262,13 @@ function createWindow(destination = pendingSignIn ?? application.href) {
     if (linkAction(url, application) !== "internal") event.preventDefault();
   });
   current.webContents.setWindowOpenHandler(({ url }) => {
-    const action = linkAction(url, application);
-    if (action === "internal") void current.loadURL(url);
-    else if (action === "external") void openExternal(url);
+    const settings = browserSettingsDestination(url, application);
+    if (settings) void openExternal(settings);
+    else {
+      const action = linkAction(url, application);
+      if (action === "internal") void current.loadURL(url);
+      else if (action === "external") void openExternal(url);
+    }
     return { action: "deny" };
   });
   current.webContents.on("did-fail-load", (_event, code, _description, _url, isMainFrame) => {
