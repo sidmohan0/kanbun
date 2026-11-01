@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -123,6 +123,27 @@ test("desktop shell isolates hosted content, restricts navigation and restores i
     assert.equal(page.url(), `${url}/`);
     assert.equal(desktop.windows().length, 1);
     assert.match(await page.evaluate(() => document.cookie), /session-test=retained/);
+    const csvFile = path.join(directory, "workspace-export.csv");
+    await desktop.evaluate(({ BrowserWindow }, filename) => {
+      globalThis.csvDownloadState = "waiting";
+      BrowserWindow.getAllWindows()[0].webContents.session.once("will-download", (_event, item) => {
+        item.setSavePath(filename);
+        item.once("done", (_finished, state) => {
+          globalThis.csvDownloadState = state;
+        });
+      });
+    }, csvFile);
+    await page.evaluate(() => {
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob(["ID\r\n42\r\n"], { type: "text/csv" }));
+      link.download = "kanbun-issues.csv";
+      document.body.append(link);
+      link.click();
+      link.remove();
+    });
+    await expect.poll(() => desktop.evaluate(() => globalThis.csvDownloadState)).toBe("completed");
+    assert.equal(await readFile(csvFile, "utf8"), "ID\r\n42\r\n");
+    assert.equal(page.url(), `${url}/`);
     await page.getByText("Unsafe").click();
     assert.equal(new URL(page.url()).origin, url);
     await page.evaluate(() => window.open("file:///etc/passwd"));

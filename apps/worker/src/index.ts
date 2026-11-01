@@ -12,6 +12,7 @@ import {
   type SlackEnvironment,
 } from "./slack";
 import { SLACK_UNFURL_JOB, slackUnfurlDeliverySchema, queueSlackUnfurl, consumeSlackUnfurl } from "./slack-unfurls";
+import { workspaceCsv } from "./workspace-csv";
 import { DurableObject } from "cloudflare:workers";
 import migrations from "@kanbun/model/migrations/workspace/migrations.js";
 import { uuidv7 } from "@kanbun/model";
@@ -123,6 +124,7 @@ export interface Env
 const routes = new Map<string, string>(
   Object.entries({
     "/api/context": "GET",
+    "/api/exports.csv": "GET",
     "/api/members": "GET",
     "/api/workspace/name": "POST",
     "/api/invitations": "POST",
@@ -1018,6 +1020,12 @@ export class WorkspaceDO extends DurableObject<Env> {
       }
       if (url.pathname === "/sync/connect") return await this.upgradeSocket(request, server, url);
       if (url.pathname === "/sync/document") return await this.document(request, server, url);
+      if (url.pathname === "/api/exports.csv") {
+        const input = query(z.strictObject({ type: z.enum(["issues", "projects"]) }), url);
+        const context = await this.requestContext(request, server);
+        if (context.role !== "owner") throw new RequestError("Workspace owner access required", 403);
+        return workspaceCsv(server.store, input.type);
+      }
       if (url.pathname.startsWith("/api/") && url.pathname !== "/api/context") {
         if (mode(this.env) !== "hosted") return json({ error: "Not found" }, 404);
         const input =
@@ -1177,7 +1185,8 @@ export default {
           query(z.strictObject({}), url);
           return json(localContext(selectedActor(request)));
         }
-        if (!syncRoute(url.pathname) && !localRoute(url.pathname)) return json({ error: "Not found" }, 404);
+        if (!syncRoute(url.pathname) && !localRoute(url.pathname) && url.pathname !== "/api/exports.csv")
+          return json({ error: "Not found" }, 404);
         return env.WORKSPACES.getByName("local").fetch(request);
       }
       if (localRoute(url.pathname)) return json({ error: "Not found" }, 404);
