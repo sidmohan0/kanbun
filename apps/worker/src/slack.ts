@@ -55,7 +55,9 @@ async function api(env: SlackEnvironment, method: string, values: Record<string,
     const value: unknown = await result.json();
     if (
       (method === "auth.revoke" || method === "auth.test") &&
-      z.object({ ok: z.literal(false), error: z.enum(["invalid_auth", "token_revoked"]) }).safeParse(value).success
+      z
+        .object({ ok: z.literal(false), error: z.enum(["invalid_auth", "token_revoked", "account_inactive"]) })
+        .safeParse(value).success
     )
       return method === "auth.revoke" ? { ok: true } : { ok: false };
     if (!z.object({ ok: z.literal(true) }).safeParse(value).success) throw unavailable();

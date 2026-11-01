@@ -179,3 +179,46 @@ it("never pairs one Slack team's identity with a concurrent grant for another te
     await runtime.close();
   }
 });
+
+it("removes deleted Slack credentials while retaining connections during provider outages", async () => {
+  const runtime = await startEmailRuntime({ slackConfig: config });
+  try {
+    const owner = nativeAgent(runtime);
+    await owner.requestLink(runtime.ownerEmail);
+    await owner.consume(linkToken(emailLink((await runtime.capturedEmails()).at(-1)!)));
+    await owner.fetch("/api/context");
+
+    for (const method of ["auth.revoke", "auth.test"]) {
+      await runtime.setGithubResponses([
+        { host: "slack.com", method: "POST", path: "/api/oauth.v2.access", body: grant },
+        { host: "slack.com", method: "POST", path: "/api/" + method, body: { ok: false, error: "internal_error" } },
+      ]);
+      const begin = await owner.json("/api/integrations/slack/connect", {});
+      const state = new URL(((await begin.json()) as { url: string }).url).searchParams.get("state");
+      expect(
+        (await owner.fetch("/api/integrations/slack/callback?code=fixture-code&state=" + state, { redirect: "manual" }))
+          .status,
+      ).toBe(303);
+      const remove = () =>
+        method === "auth.revoke"
+          ? owner.json("/api/integrations/slack/disconnect", {})
+          : signed(runtime, {
+              type: "event_callback",
+              api_app_id: "A123",
+              team_id: "T123",
+              event_time: Math.floor(Date.now() / 1000),
+              event: { type: "app_uninstalled" },
+            });
+
+      expect((await remove()).status).toBe(503);
+      expect(await runtime.slackCredentials()).toHaveLength(1);
+      await runtime.setGithubResponses([
+        { host: "slack.com", method: "POST", path: "/api/" + method, body: { ok: false, error: "account_inactive" } },
+      ]);
+      expect((await remove()).status).toBe(200);
+      expect(await runtime.slackCredentials()).toHaveLength(0);
+    }
+  } finally {
+    await runtime.close();
+  }
+});
