@@ -14,6 +14,40 @@ const persistedKey = (context: WorkspaceContext) =>
     ...(context.admissionId ? [context.admissionId] : []),
   ]);
 
+test("user activity extends the idle window and an inactive session returns to sign-in", async ({
+  browser,
+  emailApp,
+}) => {
+  const context = await browser.newContext();
+  await nativeBrowser(context);
+  const page = await context.newPage();
+  const day = 24 * 60 * 60 * 1000;
+  try {
+    await loginEmail(page, emailApp);
+    const session = (await context.cookies()).find((cookie) => cookie.name === SESSION_COOKIE)!;
+    const expires = new Date(Date.now() + 15 * day).toISOString();
+    const oldActivity = new Date(Date.now() - 13 * day).toISOString();
+    await emailApp.runtime.setNativeSessionTimes(session.value, oldActivity, expires);
+    await page.getByRole("link", { name: /All issues/ }).click();
+    await expect
+      .poll(async () => String((await emailApp.runtime.authRows()).sessions[0]!.last_seen_at))
+      .not.toBe(oldActivity);
+    await emailApp.runtime.setNativeSessionTimes(
+      session.value,
+      new Date(Date.now() - 14 * day - 1000).toISOString(),
+      expires,
+    );
+    await page.evaluate(() => {
+      const realNow = Date.now.bind(Date);
+      Date.now = () => realNow() + 61_000;
+    });
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("heading", { name: "Sign in to kanbun", exact: true })).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
 test("native sign-in needs the requesting browser and explicit confirmation, and logout hides workspace data", async ({
   browser,
   emailApp,

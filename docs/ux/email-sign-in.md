@@ -30,8 +30,10 @@ The owner still creates and shares invitation links manually. Creating an invita
 email; requesting a sign-in link does. Email links arrive through Resend from the configured verified
 sender. The normal flow never asks the person to register with the infrastructure provider.
 
-The link and resulting session expire one hour after the request. Confirmation does not restart
-that hour. Links are single-use and require a browser-bound HttpOnly request cookie. A newer request
+The link expires 30 minutes after the request. Confirming it creates a session that lasts up to
+30 days, and expires after 14 days without user interaction. Background synchronization does not
+extend the inactivity timeout. Existing sessions retain their original expiration. Links are
+single-use and require a browser-bound HttpOnly request cookie. A newer request
 replaces that browser's request cookie, so use the most recently requested link. Expired, consumed,
 wrong-browser or no-longer-eligible links show recovery guidance without disclosing an account or
 opening cached work. **Request a new link** returns to the email form. Network failures provide a

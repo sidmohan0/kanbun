@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { App } from "./App";
 import { Button } from "./components/ui/button";
 import { Invitation } from "./Invitation";
+import { workspace } from "./workspace";
 import { AuthenticationCard, EmailSignIn, EmailSignInCallback } from "./EmailSignIn";
 import {
   AuthenticationError,
@@ -67,6 +68,35 @@ export function Entry() {
       window.removeEventListener(signInRequiredEvent, expired);
     };
   }, []);
+  useEffect(() => {
+    if (config?.method !== "email" || !config.authenticated || needsSignIn) return;
+    let lastSent = 0;
+    let sending = false;
+    let active = true;
+    const recordActivity = (event: Event) => {
+      if (!event.isTrusted || sending || Date.now() - lastSent < 60_000) return;
+      sending = true;
+      void authenticationRequest("/api/auth/activity", {})
+        .then(() => {
+          lastSent = Date.now();
+        })
+        .catch((error: unknown) => {
+          if (active && error instanceof AuthenticationError && error.status === 401) {
+            workspace.requireAuthentication();
+            setNeedsSignIn(true);
+          }
+        })
+        .finally(() => {
+          sending = false;
+        });
+    };
+    for (const type of ["pointerdown", "keydown", "wheel"])
+      window.addEventListener(type, recordActivity, { passive: true });
+    return () => {
+      active = false;
+      for (const type of ["pointerdown", "keydown", "wheel"]) window.removeEventListener(type, recordActivity);
+    };
+  }, [config, needsSignIn]);
   if (configError)
     return (
       <AuthenticationCard>

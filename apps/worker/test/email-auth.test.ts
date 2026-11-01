@@ -100,7 +100,7 @@ it("returns uniform request responses with nonce-bound single-use links and hash
     const before = await runtime.authRows();
     expect(before.links).toHaveLength(1);
     expect(Date.parse(String(before.links[0]!.expires_at)) - Date.parse(String(before.links[0]!.created_at))).toBe(
-      3_600_000,
+      1_800_000,
     );
     expect(JSON.stringify(before)).not.toContain(token);
     expect(JSON.stringify(before)).not.toContain(browser.cookies.get(LOGIN_COOKIE));
@@ -116,7 +116,9 @@ it("returns uniform request responses with nonce-bound single-use links and hash
     const rows = await runtime.authRows();
     expect(rows.sessions).toHaveLength(1);
     expect(rows.sessions[0]!.id).toBe(hash(rawSession));
-    expect(rows.sessions[0]!.expires_at).toBe(rows.links[0]!.expires_at);
+    expect(Date.parse(String(rows.sessions[0]!.expires_at)) - Date.parse(String(rows.sessions[0]!.created_at))).toBe(
+      30 * 24 * 60 * 60 * 1000,
+    );
     expect(JSON.stringify(rows)).not.toContain(rawSession);
     expect((await browser.consume(token)).status).toBe(401);
     expect((await browser.fetch("/api/context")).status).toBe(200);
@@ -149,6 +151,37 @@ it("returns uniform request responses with nonce-bound single-use links and hash
     expect(JSON.stringify(runtime.authLogs())).toContain("kanbun.auth.delivery_failed");
     expect(JSON.stringify(runtime.authLogs())).not.toContain("fixture-private-provider-detail");
     expect(JSON.stringify(runtime.authLogs())).not.toContain("fixture-resend-secret");
+  } finally {
+    await runtime.close();
+  }
+}, 30000);
+
+it("expires inactive sessions without extending them for background requests and renews only valid activity", async () => {
+  const runtime = await startEmailRuntime();
+  const browser = nativeAgent(runtime);
+  const day = 24 * 60 * 60 * 1000;
+  try {
+    await signIn(runtime, browser, runtime.ownerEmail);
+    const raw = browser.cookies.get(SESSION_COOKIE)!;
+    const expiry = new Date(Date.now() + 15 * day).toISOString();
+    const seen = new Date(Date.now() - 13 * day).toISOString();
+    await runtime.setNativeSessionTimes(raw, seen, expiry);
+    expect((await browser.fetch("/api/auth/config")).status).toBe(200);
+    expect((await browser.fetch("/api/context")).status).toBe(200);
+    expect((await runtime.authRows()).sessions[0]!.last_seen_at).toBe(seen);
+    expect(
+      (await browser.json("/api/auth/activity", {}, { headers: { Origin: "https://attacker.example.test" } })).status,
+    ).toBe(403);
+    expect((await browser.json("/api/auth/activity", {})).status).toBe(200);
+    const renewed = (await runtime.authRows()).sessions[0]!;
+    expect(Date.parse(String(renewed.last_seen_at))).toBeGreaterThan(Date.parse(seen));
+    expect(renewed.expires_at).toBe(expiry);
+    await runtime.setNativeSessionTimes(raw, new Date(Date.now() - 14 * day - 1000).toISOString(), expiry);
+    expect((await browser.fetch("/api/context")).status).toBe(401);
+    expect((await browser.json("/api/auth/activity", {})).status).toBe(401);
+    expect((await runtime.nativeConnect("inactive", browser.cookieHeader())).status).not.toBe(101);
+    await runtime.setNativeSessionTimes(raw, new Date().toISOString(), new Date(Date.now() - 1000).toISOString());
+    expect((await browser.json("/api/auth/activity", {})).status).toBe(401);
   } finally {
     await runtime.close();
   }

@@ -62,8 +62,9 @@ fallback summary. The report is operational evidence and is not a required PR ch
   correlate their generated `errorId` and invocation time. Never expose private test transports.
 - **Link unavailable or sign-in expired:** use the newest link in the same browser that requested
   it. Another browser, an expired or consumed link, a replaced request cookie, or revoked eligibility
-  requires a fresh request. The session expires one hour after the original request, not an hour
-  after confirmation. A signed-in person with `403` needs a valid workspace invitation/admission;
+  requires a fresh request. Links expire after 30 minutes; new sessions expire 30 days after
+  confirmation or after 14 days without user interaction. Sessions issued before this change retain
+  their existing expiration. A signed-in person with `403` needs a valid workspace invitation/admission;
   repeated sign-in does not restore removed access. See the [email flow](ux/email-sign-in.md).
 - **D1 connectivity:** inspect the accounts database binding and Cloudflare D1 status. The health
   query reads no account or issue rows. Do not recreate the database or apply unreviewed migrations.
