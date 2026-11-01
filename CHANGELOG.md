@@ -7,6 +7,7 @@ preparation moves them to a dated version heading.
 
 ### Changed
 
+- Reuse development image layers and browser test infrastructure, streamline deployment setup, and run independent verification work concurrently while retaining main-branch scale coverage.
 - Improve devcontainer diagnostics, isolate caches and verification evidence, coordinate heavy verifier runs, and check both local development services during installation rehearsal.
 - Move workspace member management into Settings.
 - Keep workspace navigation in view, improve board contrast and drag feedback, and make issue rows open on clicks outside their titles.
