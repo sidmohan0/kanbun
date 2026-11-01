@@ -36,10 +36,10 @@ covers startup and two-browser convergence, durable offline edits and comments, 
 mention validation. Each browser case executes once; `recovery` alone still runs the entire browser
 suite. `check` retains the non-browser checks.
 Independent formatting, lint, types, script, spec and registry checks run as a bounded group and
-all report their results even if one fails. After preflight succeeds, package tests, build, seed and
-remaining recovery run concurrently in CI. Local runs serialize these heavy checks to avoid exhausting
-shared container resources; set `KANBUN_VERIFY_PARALLEL=1` to opt in to the CI schedule. The scale benchmark runs separately after that group so it is
-not measured under their load. Receipt steps remain in their planned order. A failing group
+all report their results even if one fails. After preflight succeeds, package tests run before the
+build and seed checks, which run together. Browser recovery follows separately to avoid resource
+contention; the scale benchmark runs after recovery so it is not measured under their load.
+Receipt steps remain in their planned order. A failing group
 prevents later groups from running. The complete run uses `build:verified` only after typechecking
 passes; standalone `pnpm build` and `pnpm verify build` still typecheck.
 

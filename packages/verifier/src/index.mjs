@@ -372,7 +372,7 @@ export async function runVerification({
       "check-spec-lock",
       "launch-registry",
     ]);
-    const heavy = new Set(["check-tests", "build", "smoke", "recovery"]);
+    const buildAndSmoke = new Set(["build", "smoke"]);
     const perform = async (index) => {
       const step = steps[index];
       onProgress({ name: step.name, state: "start" });
@@ -393,8 +393,8 @@ export async function runVerification({
     for (let index = 0; index < steps.length;) {
       const group = cheap.has(steps[index].name)
         ? cheap
-        : command === "all" && heavy.has(steps[index].name)
-          ? heavy
+        : command === "all" && buildAndSmoke.has(steps[index].name)
+          ? buildAndSmoke
           : null;
       let end = index + 1;
       while (group && end < steps.length && group.has(steps[end].name)) end++;
@@ -403,10 +403,8 @@ export async function runVerification({
         // Execute each group with bounded concurrency, but retain the planned receipt order.
         const results = new Array(end - index);
         let next = index;
-        const capacity =
-          group === heavy && process.env.CI !== "true" && process.env.KANBUN_VERIFY_PARALLEL !== "1" ? 1 : 4;
         await Promise.all(
-          Array.from({ length: Math.min(capacity, end - index) }, async () => {
+          Array.from({ length: Math.min(4, end - index) }, async () => {
             while (next < end) {
               const current = next++;
               results[current - index] = await perform(current);

@@ -162,13 +162,16 @@ test("all executes the required gates and emits one JSON receipt with retained l
 
 test("independent groups overlap while the receipt retains its planned order", (t) => {
   const f = fixture(t);
-  const { report, status } = f.run(["all"], { FIXTURE_OVERLAP: "1", KANBUN_VERIFY_PARALLEL: "1" });
+  const { report, status } = f.run(["all"], { FIXTURE_OVERLAP: "1" });
   assert.equal(status, 0);
   const events = readFileSync(path.join(f.root, ".pnpm-events"), "utf8").trim().split("\n").map(JSON.parse);
   const when = (name, event) => events.find((item) => item.name === name && item.event === event).time;
   assert.ok(when("lint", "start") < when("format:check", "end"));
-  assert.ok(when("build:verified", "start") < when("test", "end"));
-  assert.ok(when("seed", "start") < when("test", "end"));
+  assert.ok(when("seed", "start") < when("build:verified", "end"));
+  assert.ok(when("build:verified", "start") >= when("test", "end"));
+  assert.ok(
+    events.findLast((item) => item.name === "test:recovery" && item.event === "start").time >= when("test", "end"),
+  );
   assert.deepEqual(
     report.steps
       .filter((step) => ["check-tests", "build", "smoke", "recovery"].includes(step.name))
