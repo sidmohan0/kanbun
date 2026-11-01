@@ -96,7 +96,8 @@ import {
 
 export { localActors } from "./local";
 
-export interface Env extends AuthEnvironment, DirectoryEnvironment, GithubEnvironment, SlackEnvironment, GoogleSheetsEnvironment {
+export interface Env
+  extends AuthEnvironment, DirectoryEnvironment, GithubEnvironment, SlackEnvironment, GoogleSheetsEnvironment {
   WORKSPACES: DurableObjectNamespace<WorkspaceDO>;
   DOCUMENTS: DurableObjectNamespace<DocumentDO>;
   ASSETS?: Fetcher;
