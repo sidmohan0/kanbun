@@ -22,6 +22,8 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added a local read-only Codex and Claude Code session collector with a Kanbun-logo tray, background window lifecycle, and configurable start-at-login.
+
 - Add installer-owned Cloudflare setup, an official deployment button, and documented local persistence and recovery workflows.
 - Add public launch criteria with source-bound evidence, publication and writing audits, security/support policies, and adoption documentation.
 

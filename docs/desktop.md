@@ -92,19 +92,50 @@ Same-origin navigation remains inside the window. User-triggered HTTP, HTTPS and
 other origins open in the system browser. Other schemes are denied, and cross-origin redirects are
 blocked rather than moving privileged application windows to external sites. Same-origin popups
 reuse the current window. Native menus support editing, reload, zoom, fullscreen and window actions.
-Closing all windows quits on Linux/Windows; macOS supports reopening through the Dock. A second
-application launch focuses the existing window.
+Closing the window hides it to the Kanbun-logo tray on all platforms. A second application launch reopens the window.
 
 ## Local capabilities
 
 The renderer has Node integration disabled, context isolation and sandboxing enabled, no preload
 bridge, no webviews and no granted browser permissions. This shell does not expose filesystem,
-process-execution, browser-control or computer-use tools to web content. Those require a separate
-agent process and narrow, authorized operations in a later milestone. Never disable the renderer
-sandbox to add local tools.
+process-execution, browser-control or computer-use tools to web content. The read-only collector
+runs in the main process and launches Codex as a child. Never disable the renderer sandbox to add
+local tools.
 
 The desktop smoke test verifies renderer isolation, blocked unsafe navigation/popups, callback
 delivery through macOS/second-instance events and launch arguments, clipboard handoff, and session
 storage/cookie persistence after a real Electron restart against a local HTTP fixture. The full web
 verifier covers the existing application. Hosted account login, external OAuth and native macOS UI
 behavior need separate validation before distribution.
+
+## Local agent session prototype
+
+The Kanbun-logo tray menu opens the window, displays the 30 most recently changed local sessions,
+and refreshes immediately. The collector also refreshes every 30 seconds while Kanbun runs. It
+uses the Claude Agent SDK to list local Claude Code history and a separate `codex app-server` to
+list local Codex threads. Codex must be available on the desktop process PATH (the collector also
+checks common local, Homebrew, nvm, and installed ChatGPT app locations). The tray shows provider errors
+when collection fails. Session titles may contain sensitive text; results stay in process memory,
+are not written to Kanbun's hosted service, and disappear when the app exits. This prototype does
+not add a web dashboard, remote sync, history persistence, hooks, or agent control.
+
+A separate Codex app-server can return `notLoaded` even while a thread runs elsewhere; Claude's
+history listing also does not report whether a session is running. Therefore both providers show
+`unknown` for status. Recent modification is not proof of a running agent. A sleeping, logged-out,
+or powered-off computer cannot collect. Cloud-only sessions may not be visible.
+
+Packaged builds enable start-at-login on first launch, launching hidden with the tray available.
+The tray checkbox allows opting out; explicit Quit stops collection until the next login or launch.
+macOS and Windows use Electron's login-item API. Linux creates a user-owned XDG autostart entry at
+`$XDG_CONFIG_HOME/autostart/ai.kanbun.desktop.desktop` (or `~/.config/autostart/`), with `TryExec`
+so a removed executable is not launched. Linux requires a desktop environment with a system tray.
+A moved AppImage requires toggling Start at login to update its path.
+
+Before uninstalling, choose **Disable startup and quit** from the tray. This removes the Linux
+autostart file or unregisters the macOS/Windows login item. Alternatively, run the installed
+executable with `--remove-startup` as the same user. The Windows NSIS uninstaller additionally
+removes the per-user login registry entry. Deleting a macOS app or Linux AppImage cannot run an
+uninstaller: if removed without disabling startup first, remove the Kanbun entry in system login
+settings or delete the Linux autostart file. Debian package removal cannot safely edit every user's
+home directory; each user should disable startup before removal. The shell's normal browser data is
+retained according to the platform installer; collected session metadata is never persisted.

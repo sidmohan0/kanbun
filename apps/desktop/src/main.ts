@@ -1,10 +1,116 @@
-import { app, BrowserWindow, clipboard, dialog, Menu, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, Menu, nativeImage, shell, Tray } from "electron";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { collectSessions, type Collection } from "./collector.js";
+import { linuxAutostart } from "./autostart.js";
 import type { MenuItemConstructorOptions } from "electron";
 import { appUrl, linkAction, signInDestination } from "./policy.js";
 
 const application = appUrl(process.env.KANBUN_DESKTOP_URL);
 app.setName("kanbun");
 let window: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let quitting = false;
+let collection: Collection | null = null;
+let collecting = false;
+let timer: ReturnType<typeof setInterval> | undefined;
+let loginEnabled = false;
+
+async function setLogin(enabled: boolean) {
+  if (!app.isPackaged) return;
+  if (process.platform === "linux") await linuxAutostart(enabled, process.env.APPIMAGE || process.execPath);
+  else app.setLoginItemSettings({ openAtLogin: enabled, args: ["--background"], name: "kanbun" });
+  loginEnabled = enabled;
+  updateTray();
+}
+
+function showWindow() {
+  if (!window) createWindow();
+  else {
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+  }
+}
+
+async function refreshSessions() {
+  if (collecting) return;
+  collecting = true;
+  try {
+    collection = await collectSessions();
+  } finally {
+    collecting = false;
+    updateTray();
+  }
+}
+
+function showSessions() {
+  const rows =
+    collection?.sessions
+      .slice()
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 30) ?? [];
+  const detail = rows
+    .map((item) => `${item.provider}: ${item.title} (${item.status}; ${new Date(item.updatedAt).toLocaleString()})`)
+    .join("\n");
+  void dialog.showMessageBox({
+    title: "Agent sessions",
+    message: collection ? `${collection.sessions.length} sessions observed locally` : "Collecting sessions…",
+    detail: [
+      detail,
+      ...(collection?.errors ?? []),
+      "Status is unknown when the provider cannot report it. No session data is uploaded.",
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+  });
+}
+
+function updateTray() {
+  if (!tray) return;
+  tray.setToolTip("Kanbun — agent session collector");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Open Kanbun", click: showWindow },
+      { label: "Agent sessions…", click: showSessions },
+      {
+        label: collecting ? "Refreshing…" : "Refresh sessions",
+        enabled: !collecting,
+        click: () => void refreshSessions(),
+      },
+      { type: "separator" },
+      {
+        label: "Start at login",
+        type: "checkbox",
+        checked: loginEnabled,
+        enabled: app.isPackaged,
+        click: (item) =>
+          void setLogin(item.checked).catch(() =>
+            dialog.showErrorBox("Unable to update startup", "Check your system login settings."),
+          ),
+      },
+      {
+        label: "Disable startup and quit",
+        enabled: app.isPackaged,
+        click: () =>
+          void setLogin(false)
+            .then(() => {
+              quitting = true;
+              app.quit();
+            })
+            .catch(() => dialog.showErrorBox("Unable to disable startup", "Check your system login settings.")),
+      },
+      {
+        label: "Quit Kanbun",
+        click: () => {
+          quitting = true;
+          app.quit();
+        },
+      },
+    ]),
+  );
+}
+
 let pendingSignIn = process.argv.map((value) => signInDestination(value, application)).find(Boolean) ?? null;
 
 function receiveSignIn(value: string): boolean {
@@ -93,6 +199,12 @@ function createWindow(destination = pendingSignIn ?? application.href) {
     }
   });
   current.once("ready-to-show", () => current.show());
+  current.on("close", (event) => {
+    if (!quitting) {
+      event.preventDefault();
+      current.hide();
+    }
+  });
   current.on("closed", () => {
     window = null;
   });
@@ -103,16 +215,60 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", (_event, commandLine) => {
+    if (commandLine.includes("--remove-startup")) {
+      void setLogin(false)
+        .then(() => {
+          quitting = true;
+          app.quit();
+        })
+        .catch(() => dialog.showErrorBox("Unable to disable startup", "Check your system login settings."));
+      return;
+    }
     for (const value of commandLine) if (receiveSignIn(value)) return;
-    if (window?.isMinimized()) window.restore();
-    window?.show();
-    window?.focus();
+    if (!commandLine.includes("--background")) showWindow();
   });
-  app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") app.quit();
+  app.on("before-quit", () => {
+    quitting = true;
+    if (timer) clearInterval(timer);
   });
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
+    if (process.argv.includes("--remove-startup")) {
+      try {
+        await setLogin(false);
+      } catch {
+        app.exit(1);
+        return;
+      }
+      app.exit(0);
+      return;
+    }
     if (app.isPackaged) app.setAsDefaultProtocolClient("kanbun");
+    const iconPath = app.isPackaged
+      ? path.join(process.resourcesPath, "tray.png")
+      : path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/public/icons/icon-192.png");
+    tray = new Tray(nativeImage.createFromPath(iconPath).resize({ width: 20, height: 20 }));
+    tray.on("click", showWindow);
+    if (app.isPackaged) {
+      if (process.platform !== "linux") loginEnabled = app.getLoginItemSettings({ args: ["--background"] }).openAtLogin;
+      // Enable on first launch; subsequently preserve the user's explicit choice.
+      const { existsSync, writeFileSync, mkdirSync } = await import("node:fs");
+      const marker = path.join(app.getPath("userData"), "startup-configured");
+      if (!existsSync(marker)) {
+        try {
+          await setLogin(true);
+          mkdirSync(path.dirname(marker), { recursive: true });
+          writeFileSync(marker, "1", { mode: 0o600 });
+        } catch {
+          dialog.showErrorBox("Unable to enable startup", "Enable Kanbun at login from the tray menu.");
+        }
+      } else if (process.platform === "linux") {
+        const { autostartPath } = await import("./autostart.js");
+        loginEnabled = existsSync(autostartPath());
+      }
+    }
+    updateTray();
+    void refreshSessions();
+    timer = setInterval(() => void refreshSessions(), 30000);
     const menu: MenuItemConstructorOptions[] = [
       ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
       {
@@ -142,9 +298,9 @@ if (!app.requestSingleInstanceLock()) {
       { role: "windowMenu" },
     ];
     Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
-    createWindow();
-    app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
-    });
+    const launchedAtLogin =
+      app.isPackaged && process.platform === "darwin" && app.getLoginItemSettings().wasOpenedAtLogin;
+    if ((!process.argv.includes("--background") && !launchedAtLogin) || pendingSignIn) createWindow();
+    app.on("activate", showWindow);
   });
 }

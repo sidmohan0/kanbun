@@ -145,6 +145,7 @@ Worker and fixture accounts, without accessing hosted data.
 
 <!-- workspace-inventory:start -->
 
+- `apps/desktop`
 - `apps/web`
 - `apps/worker`
 - `packages/events`
@@ -155,6 +156,8 @@ Worker and fixture accounts, without accessing hosted data.
 - `packages/verifier`
 
 <!-- workspace-inventory:end -->
+
+The [desktop shell](docs/desktop.md) provides a Kanbun-logo tray and a local, read-only agent session prototype.
 
 ## Contributing and support
 

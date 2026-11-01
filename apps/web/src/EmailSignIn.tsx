@@ -84,7 +84,11 @@ export function EmailSignIn({ siteKey, returnTo }: { siteKey: string; returnTo: 
       <h1>{sent ? "Check your email" : "Sign in to kanbun"}</h1>
       {sent ? (
         <>
-          <p>{desktop ? "Open your email link in Kanbun, or copy it and use File → Open sign-in link from clipboard." : "If eligible, you’ll receive a sign-in link. Open it in this browser."}</p>
+          <p>
+            {desktop
+              ? "Open your email link in Kanbun, or copy it and use File → Open sign-in link from clipboard."
+              : "If eligible, you’ll receive a sign-in link. Open it in this browser."}
+          </p>
           {returnTo.startsWith("#invite/") && <p>Use your invitation link to join after signing in.</p>}
           <Button
             variant="outline"

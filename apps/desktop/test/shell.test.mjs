@@ -30,7 +30,9 @@ test("an email callback delivered by the OS returns to the requesting desktop se
     });
   let desktop;
   try {
-    desktop = await launch();
+    desktop = await launch(["--background"]);
+    assert.equal(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 0);
+    await desktop.evaluate(({ app }) => app.emit("second-instance", {}, ["kanbun"]));
     const page = await desktop.firstWindow();
     await page.waitForSelector("h1");
     await page.evaluate(() => localStorage.setItem("requesting-session", "desktop"));
@@ -95,6 +97,11 @@ test("desktop shell isolates hosted content, restricts navigation and restores i
       };
     });
     assert.deepEqual(preferences, { sandbox: true, nodeIntegration: false, contextIsolation: true });
+    await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    assert.equal(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()), false);
+    await desktop.evaluate(({ app }) => app.emit("second-instance", {}, ["kanbun"]));
+    assert.equal(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()), true);
+
     await page.evaluate(() => {
       localStorage.setItem("desktop-session-test", "retained");
       document.cookie = "session-test=retained; Max-Age=3600; SameSite=Lax";
