@@ -39,3 +39,14 @@ test("workspace controls align and navigate to their labeled views", async ({ pa
   await page.getByRole("button", { name: "Teams", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Team name", exact: true })).toBeVisible();
 });
+
+test("issue row whitespace opens details while the title remains editable", async ({ page, app }) => {
+  await page.goto(`${app.origin}/#issues`);
+  const row = page.getByRole("row", { name: "REC-1", exact: true });
+  await expect(row).toBeVisible();
+  await page.getByRole("button", { name: "Edit title for REC-1" }).click();
+  await expect(page.getByRole("textbox", { name: "Title for REC-1" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await row.locator(".issue-save-state").click();
+  await expect(page.getByRole("region", { name: "Issue details" })).toBeVisible();
+});

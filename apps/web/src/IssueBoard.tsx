@@ -13,6 +13,8 @@ export function IssueBoard({ issues, snapshot }: { issues: Row<"issue">[]; snaps
   const statusControls = useRef(new Map<string, HTMLSelectElement>());
   const restoreFocus = useRef<string | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pending = new Set(snapshot.pendingIssueIds);
   const pullRequestsByIssue = groupPullRequests(snapshot.issuePullRequests);
@@ -65,19 +67,25 @@ export function IssueBoard({ issues, snapshot }: { issues: Row<"issue">[]; snaps
               <div className="board-columns">
                 {columns.map(({ state, name, rows }) => (
                   <section
-                    className="board-column"
+                    className={dropTarget === state?.id ? "board-column drop-target" : "board-column"}
                     aria-label={`${team.key}: ${name}`}
                     key={state?.id ?? "unavailable"}
                     onDragOver={(event) => {
                       if (state && teamIssues.some((issue) => issue.id === dragging.current)) {
                         event.preventDefault();
                         event.dataTransfer.dropEffect = "move";
+                        if (dropTarget !== state.id) setDropTarget(state.id);
                       }
+                    }}
+                    onDragLeave={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null);
                     }}
                     onDrop={(event) => {
                       event.preventDefault();
                       const issue = teamIssues.find((candidate) => candidate.id === dragging.current);
                       dragging.current = null;
+                      setDraggingId(null);
+                      setDropTarget(null);
                       if (issue && state) move(issue, state);
                     }}
                   >
@@ -90,17 +98,20 @@ export function IssueBoard({ issues, snapshot }: { issues: Row<"issue">[]; snaps
                         const assignee = snapshot.members.find((member) => member.id === issue.assigneeId);
                         return (
                           <li
-                            className="board-card"
+                            className={draggingId === issue.id ? "board-card dragging" : "board-card"}
                             aria-label={identifier}
                             key={issue.id}
                             draggable
                             onDragStart={(event) => {
                               dragging.current = issue.id;
+                              setDraggingId(issue.id);
                               event.dataTransfer.effectAllowed = "move";
                               event.dataTransfer.setData("text/plain", issue.id);
                             }}
                             onDragEnd={() => {
                               dragging.current = null;
+                              setDraggingId(null);
+                              setDropTarget(null);
                             }}
                           >
                             <a href={`#issues/${issue.id}`} aria-label={`Open ${identifier}`}>

@@ -1,3 +1,4 @@
+import { Inbox as InboxIcon, ListTodo, CircleUserRound, Settings, UserRound } from "lucide-react";
 import { NativeSelect } from "./components/ui/native-select";
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import type { Row } from "@kanbun/model";
@@ -105,7 +106,15 @@ function IssueRow({
     }
   }
   return (
-    <tr aria-label={name} className={editing ? "issue-row editing" : "issue-row"}>
+    <tr
+      aria-label={name}
+      className={editing ? "issue-row editing" : "issue-row"}
+      onClick={(event) => {
+        if (!editing && !(event.target as Element).closest("a, button, input, select, textarea, form")) {
+          location.hash = `issues/${issue.id}`;
+        }
+      }}
+    >
       <td className="issue-identifier">
         <a href={`#issues/${issue.id}`} aria-label={`Open ${name}`}>
           {name}
@@ -151,17 +160,16 @@ function IssueRow({
             onClick={edit}
           >
             <span>{issue.title}</span>
-            <span className="row-properties" id={`issue-properties-${issue.id}`}>
-              <span aria-label={`Status: ${stateName}`}>◌ {stateName}</span>
-              <span aria-label={`Priority: ${["None", "Urgent", "High", "Medium", "Low"][issue.priority]}`}>
-                ≡ {["None", "Urgent", "High", "Medium", "Low"][issue.priority]}
-              </span>
-              <span aria-label={`Assignee: ${assigneeName}`}>○ {assigneeName}</span>
-            </span>
-            <span className="edit-hint" aria-hidden="true">
-              Edit
-            </span>
           </Button>
+        )}
+        {!editing && (
+          <span className="row-properties" id={`issue-properties-${issue.id}`}>
+            <span aria-label={`Status: ${stateName}`}>◌ {stateName}</span>
+            <span aria-label={`Priority: ${["None", "Urgent", "High", "Medium", "Low"][issue.priority]}`}>
+              ≡ {["None", "Urgent", "High", "Medium", "Low"][issue.priority]}
+            </span>
+            <span aria-label={`Assignee: ${assigneeName}`}>○ {assigneeName}</span>
+          </span>
         )}
         {pullRequests.length > 0 && (
           <GitHubPullRequestChips pullRequests={pullRequests} repositories={githubRepositories} />
@@ -343,31 +351,8 @@ export function App() {
           </div>
         </div>
         <nav>
-          <a
-            className="navigation-item"
-            href="#issues"
-            aria-current={!membersView && !inboxView && !teamsView && view === "all" ? "page" : undefined}
-          >
-            <span className="navigation-symbol" aria-hidden="true">
-              ≡
-            </span>
-            All issues{ready && <span className="navigation-count">{snapshot.issues.length}</span>}
-          </a>
-          <a
-            className="navigation-item my-issues-navigation"
-            href="#my-issues"
-            aria-current={!membersView && !inboxView && !teamsView && view === "mine" ? "page" : undefined}
-          >
-            <span className="navigation-symbol" aria-hidden="true">
-              ◇
-            </span>{" "}
-            My Issues{ready && <span className="navigation-count">{myIssueCount}</span>}
-          </a>
           <a className="navigation-item inbox-navigation" href="#inbox" aria-current={inboxView ? "page" : undefined}>
-            <span className="navigation-symbol" aria-hidden="true">
-              ◉
-            </span>{" "}
-            Inbox
+            <InboxIcon className="navigation-symbol" size={16} aria-hidden="true" /> Inbox
             {ready && snapshot.unreadNotificationCount > 0 && (
               <span
                 className="navigation-count"
@@ -377,28 +362,38 @@ export function App() {
               </span>
             )}
           </a>
-          {canManageTeams && (
-            <a
-              className="navigation-item teams-navigation"
-              href="#settings"
-              aria-current={teamsView ? "page" : undefined}
-            >
-              <span className="navigation-symbol" aria-hidden="true">
-                ▦
-              </span>{" "}
-              Settings
-            </a>
-          )}
+          <a
+            className="navigation-item"
+            href="#issues"
+            aria-current={!membersView && !inboxView && !teamsView && view === "all" ? "page" : undefined}
+          >
+            <ListTodo className="navigation-symbol" size={16} aria-hidden="true" />
+            All issues{ready && <span className="navigation-count">{snapshot.issues.length}</span>}
+          </a>
+          <a
+            className="navigation-item my-issues-navigation"
+            href="#my-issues"
+            aria-current={!membersView && !inboxView && !teamsView && view === "mine" ? "page" : undefined}
+          >
+            <CircleUserRound className="navigation-symbol" size={16} aria-hidden="true" /> My Issues
+            {ready && <span className="navigation-count">{myIssueCount}</span>}
+          </a>
           {context?.mode === "hosted" && context.role === "owner" && (
             <a
               className="navigation-item members-navigation"
               href="#members"
               aria-current={membersView ? "page" : undefined}
             >
-              <span className="navigation-symbol" aria-hidden="true">
-                ◎
-              </span>{" "}
-              Members
+              <UserRound className="navigation-symbol" size={16} aria-hidden="true" /> Members
+            </a>
+          )}
+          {canManageTeams && (
+            <a
+              className="navigation-item teams-navigation"
+              href="#settings"
+              aria-current={teamsView ? "page" : undefined}
+            >
+              <Settings className="navigation-symbol" size={16} aria-hidden="true" /> Settings
             </a>
           )}
         </nav>
