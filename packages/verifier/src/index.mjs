@@ -200,7 +200,11 @@ function plan(command, root, metadata, outputDirectory, evidenceFile) {
     });
     if (command === "all")
       steps.push({ name: "preflight", command: ["pnpm", "--reporter=append-only", "test:recovery", "--preflight"] });
-    steps.push({ name: "check-tests", command: ["pnpm", "--reporter=append-only", "test"] });
+    steps.push({
+      name: "check-tests",
+      command: ["pnpm", "--reporter=append-only", "test"],
+      ...(process.env.CI === "true" ? {} : { env: { KANBUN_TEST_WORKSPACE_CONCURRENCY: "1" } }),
+    });
   }
   if (command === "launch") {
     steps.push({
