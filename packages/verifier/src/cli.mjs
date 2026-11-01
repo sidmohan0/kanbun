@@ -17,7 +17,7 @@ try {
   json = values.json ?? false;
   if (values.help) {
     const usage =
-      "kanbun-verify [all|doctor|check|build|smoke|preflight|recovery|docs|launch] [--json] [--output <directory>] [--evidence <launch-evidence.json>]";
+      "kanbun-verify [all|doctor|check|build|smoke|preflight|recovery|scale|docs|launch] [--json] [--output <directory>] [--evidence <launch-evidence.json>]";
     console.log(json ? JSON.stringify({ usage }) : usage);
   } else {
     if (positionals.length > 1) throw new Error("Choose one verification profile.");

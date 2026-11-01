@@ -20,6 +20,7 @@ pnpm verify build
 pnpm verify smoke
 pnpm verify preflight
 pnpm verify recovery
+pnpm verify scale
 pnpm verify docs
 pnpm verify launch
 pnpm test:verifier
@@ -34,6 +35,14 @@ preflight cases before package tests, builds, seed checks, and the remaining bro
 covers startup and two-browser convergence, durable offline edits and comments, and revoked-access
 mention validation. Each browser case executes once; `recovery` alone still runs the entire browser
 suite. `check` retains the non-browser checks.
+Independent formatting, lint, types, script, spec and registry checks run as a bounded group and
+all report their results even if one fails. After preflight succeeds, package tests and browser
+recovery run together with one package workspace, one Vitest worker, and one browser worker each;
+this shared budget prevents oversubscription without changing assertions. Build and seed run together
+after both succeed. The scale benchmark runs separately so it is not measured under their load.
+Receipt steps remain in their planned order. A failing group
+prevents later groups from running. The complete run uses `build:verified` only after typechecking
+passes; standalone `pnpm build` and `pnpm verify build` still typecheck.
 
 For machine-readable stdout, suppress pnpm's lifecycle banner:
 
@@ -55,7 +64,16 @@ Skipped or unexecuted checks do not count as successful verification.
 
 When the Docker runtime is shared with other active work, set `KANBUN_RECOVERY_WORKERS=1` to
 limit concurrent browser test cases. This preserves every scenario and its assertions; it does
-not raise timeouts or enable retries. The default retains Playwright's normal worker selection.
+not raise timeouts or enable retries. CI defaults to three workers; local runs retain Playwright's
+normal worker selection. An explicit `KANBUN_RECOVERY_WORKERS` overrides either default.
+
+Full, preflight, recovery, and scale verifier profiles acquire a shared Docker volume lock across Kanbun
+containers on the same Docker daemon, including containers for separate clones. Other profiles and
+focused commands may run concurrently. Waiting defaults to 900 seconds; set
+`KANBUN_VERIFY_LOCK_TIMEOUT` inside the container to change it. A timeout fails the run without
+skipping checks. The kernel releases the lock when its owning process exits. Rebuild
+older containers after updating the devcontainer configuration; different Docker daemons do not
+share the lock. Direct `pnpm test:recovery` does not acquire it and must be coordinated separately.
 
 ```sh
 ./scripts/devcontainer.sh exec --remote-env KANBUN_RECOVERY_WORKERS=1 pnpm --silent verify --json
@@ -63,7 +81,11 @@ not raise timeouts or enable retries. The default retains Playwright's normal wo
 
 ## PR and main checks
 
-The complete verifier runs on every PR, including documentation-only changes. On pushes to `main`,
+The verifier runs on every PR, including documentation-only changes. PR browser recovery omits the
+5,000-issue scale benchmark; changes to its performance target are therefore checked on main, not
+before merge. Local full runs and fresh main full runs include it. When main reuses PR qualification,
+it runs a fresh scale profile as well as a fresh build and fails if either fails or scale did not run.
+On pushes to `main`,
 CI first runs fresh environment diagnosis. It may reuse a successful same-repository PR's full test
 qualification only when the clean Git tree, all source fingerprints, lockfile, tool versions, Linux
 architecture, OS identity, installed system-package inventory, and complete required suite match.
@@ -82,7 +104,9 @@ and browser downloads, still performing frozen installation and environment diag
 Superseded PR and main verification runs are canceled; deployments retain their separate serialized,
 non-canceling lock. The spec-lock summary flags schema/configuration rollout needs without secrets;
 the trusted release continues checking the actual deployed version and migration state.
-GitHub Actions uploads its reports and logs after both successful and failed runs. The separate
+GitHub Actions uploads its reports and logs after both successful and failed runs, and summarizes
+per-step durations in the job summary. PR and main use the same ARM runner architecture so a
+matching runtime can qualify for reuse. The separate
 spec-lock workflow compares changes against their base; the separate changelog workflow checks the
 full committed PR and its exemption metadata. A current-tree verifier receipt does not replace those
 history-aware checks.
@@ -123,6 +147,8 @@ Run `pnpm test:recovery` directly or use `pnpm verify recovery` for a verificati
 JSON and HTML reports, failure traces, and failed-test server state are retained under
 `artifacts/recovery/`, with early cases retained separately under `artifacts/recovery-preflight/`. The recovery runner keeps live browser artifacts in a unique container-local
 temporary directory, then exports the completed reports and attachments after Playwright exits.
+Each invocation exports into its own subdirectory, so concurrent or later runs do not overwrite
+earlier evidence. Remove old run directories when they are no longer needed.
 This avoids transient trace writes on shared host mounts. Test failures still export their evidence;
 missing reports or failed exports fail the command. If export fails, the runner prints the retained
 container-local directory for recovery. Filter cases with, for example,
@@ -217,3 +243,17 @@ transitive override is configured. Review these findings when the parent tools p
 updates, or when commands, glob settings or loader usage change. A passing production audit does
 not resolve the development-tool findings, and the audit results can change as advisories are
 published.
+
+## CI image and setup profiles
+
+Changes to the devcontainer image inputs on `main` publish an amd64 and arm64 image to GHCR,
+tagged by the content hash of those inputs. Repository CI uses that exact tag as a build cache when
+available. A missing or inaccessible image, including on a fork or a pull request changing image
+inputs, falls back to a normal build from the checked-out Dockerfile. First publication can race a
+main run; trigger the image workflow manually to seed the cache if necessary. The optional cache
+does not replace source or runtime qualification checks. Only the image workflow has package-write
+permission; CI uses read-only access.
+
+The CI setup action has three profiles: `full` installs frozen dependencies and Chromium; `deps`
+installs dependencies without downloading Chromium for the preview deployment; `policy` skips
+dependency setup for the standalone Node policy checks. Local setup remains `full` by default.

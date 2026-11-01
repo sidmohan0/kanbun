@@ -18,13 +18,13 @@ const required = [
   "check-types",
   "check-script-tests",
   "check-spec-lock",
+  "launch-registry",
   "preflight",
   "check-tests",
   "build",
   "smoke",
   "recovery",
   "docs",
-  "launch-registry",
 ];
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -44,6 +44,7 @@ export function qualifies(report, current, run, workflowId, repository) {
     report.pass === true &&
     report.executed === true &&
     report.reportWritten === true &&
+    report.metadata?.scaleExcluded === true &&
     current?.pass === true &&
     current.command === "doctor" &&
     current.reportWritten === true &&
@@ -151,6 +152,18 @@ export async function readQualificationArchive(bytes, archive) {
   return reports[0];
 }
 
+/** A reused PR qualification still requires a fresh build and the omitted scale test on main. */
+export async function runReusedChecks({ root, onProgress, verify = runVerification }) {
+  const build = await verify({ root, command: "build", onProgress });
+  const scale = await verify({ root, command: "scale", onProgress });
+  const scaleStep = scale?.steps?.find((step) => step.name === "scale");
+  return {
+    build,
+    scale,
+    pass: build?.pass === true && scale?.pass === true && scaleStep?.executed === true && scaleStep?.pass === true,
+  };
+}
+
 async function main() {
   const root = process.cwd();
   const output = path.join(root, "artifacts/verification");
@@ -174,13 +187,14 @@ async function main() {
       readReport: (bytes) => readQualificationArchive(bytes, archive),
     });
     if (qualification) {
-      // Produce fresh build artifacts even when tests qualify by identity (including desktop bundles).
-      const build = await runVerification({ root, command: "build", onProgress: progress });
+      // PRs omit the scale benchmark: always produce fresh main-branch scale evidence and builds.
+      const { build, scale, pass } = await runReusedChecks({ root, onProgress: progress });
       const receipt = {
         mode: "reused",
-        pass: build.pass,
+        pass,
         current,
         build,
+        scale,
         qualifiedRun: qualification.runId,
         qualifiedAttempt: qualification.runAttempt,
         artifactId: qualification.artifactId,
@@ -188,7 +202,7 @@ async function main() {
       };
       await writeFile(path.join(output, "reuse.json"), JSON.stringify(receipt, null, 2) + "\n");
       console.error(
-        `[ci] Reused complete test qualification from Actions run ${qualification.runId}; fresh build ${build.pass ? "passed" : "failed"}.`,
+        `[ci] Reused test qualification from Actions run ${qualification.runId}; fresh build ${build.pass ? "passed" : "failed"}; scale ${scale.pass ? "passed" : "failed"}.`,
       );
       console.log(JSON.stringify(receipt));
       process.exitCode = receipt.pass ? 0 : 1;

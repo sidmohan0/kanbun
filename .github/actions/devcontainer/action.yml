@@ -2,7 +2,7 @@ name: Start development container
 description: Initialize the same pinned development environment used locally.
 inputs:
   profile:
-    description: full installs workspace dependencies and Chromium; policy runs Node-only checks without installation.
+    description: full installs dependencies and Chromium; deps omits Chromium; policy skips installation.
     default: full
 runs:
   using: composite
@@ -14,9 +14,14 @@ runs:
       shell: bash
       env:
         PROFILE: ${{ inputs.profile }}
-      run: case "$PROFILE" in full|policy) ;; *) exit 1 ;; esac
+      run: case "$PROFILE" in full|deps|policy) ;; *) exit 1 ;; esac
+    - name: Cache pinned devcontainer CLI
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: ~/.npm/_npx
+        key: devcontainer-cli-${{ runner.os }}-${{ runner.arch }}-0.90.0
     - name: Restore package and browser downloads
-      if: inputs.profile == 'full'
+      if: inputs.profile != 'policy'
       uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
       with:
         path: ${{ runner.temp }}/kanbun-cache
@@ -27,16 +32,28 @@ runs:
       shell: bash
       env:
         PROFILE: ${{ inputs.profile }}
+        REGISTRY_TOKEN: ${{ github.token }}
+        REGISTRY_USER: ${{ github.actor }}
+        REPOSITORY: ${{ github.repository }}
+        IMAGE: ghcr.io/sidmohan0/kanbun-devcontainer:inputs-${{ hashFiles('.devcontainer/Dockerfile', '.devcontainer/Dockerfile.dockerignore', '.devcontainer/devcontainer.json', '.nvmrc', 'package.json', 'packages/verifier/package.json', 'config/audit-tools.json', 'scripts/install-audit-tools.mjs') }}
       run: |
+        # The prebuild is an optional cache. Forks and new image inputs can lack
+        # access to it; a cache miss must still build the exact checked-out source.
+        cache=()
+        trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+        if [ "$REPOSITORY" = sidmohan0/kanbun ]; then
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$REGISTRY_USER" --password-stdin || true
+        fi
+        if docker pull "$IMAGE"; then cache=(--cache-from "$IMAGE"); fi
         if [ "$PROFILE" = policy ]; then
-          ./scripts/devcontainer.sh up --skip-post-create
+          ./scripts/devcontainer.sh up --skip-post-create "${cache[@]}"
         else
           mkdir -p "$RUNNER_TEMP/kanbun-cache/store" "$RUNNER_TEMP/kanbun-cache/browsers"
           chmod -R a+rwX "$RUNNER_TEMP/kanbun-cache"
-          ./scripts/devcontainer.sh up --skip-post-create \
+          ./scripts/devcontainer.sh up --skip-post-create "${cache[@]}" \
             --mount "type=bind,source=$RUNNER_TEMP/kanbun-cache/store,target=/home/node/.local/share/pnpm/store" \
             --mount "type=bind,source=$RUNNER_TEMP/kanbun-cache/browsers,target=/home/node/.cache/ms-playwright"
-          ./scripts/devcontainer.sh exec bash .devcontainer/setup.sh
+          ./scripts/devcontainer.sh exec bash .devcontainer/setup.sh "$PROFILE"
         fi
     - name: Confirm container runtime
       shell: bash

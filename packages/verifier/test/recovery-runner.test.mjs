@@ -41,17 +41,18 @@ for (const exitCode of [0, 7]) {
       });
       assert.equal(code, exitCode);
       const temporary = await readFile(path.join(root, "output-location.txt"), "utf8");
+      const retained = path.join(destination, path.basename(temporary));
       assert.equal(path.dirname(temporary), tmpdir());
       assert.equal(temporary.startsWith(destination), false);
       await assert.rejects(stat(temporary), { code: "ENOENT" });
-      await assert.rejects(stat(path.join(destination, "stale.txt")), { code: "ENOENT" });
-      const results = JSON.parse(await readFile(path.join(destination, "results.json"), "utf8"));
-      assert.equal(results.config.outputDir, destination);
-      assert.equal(results.attachments[0].path, path.join(destination, "test-results", "trace.zip"));
+      assert.equal(await readFile(path.join(destination, "stale.txt"), "utf8"), "An older run is not current evidence");
+      const results = JSON.parse(await readFile(path.join(retained, "results.json"), "utf8"));
+      assert.equal(results.config.outputDir, retained);
+      assert.equal(results.attachments[0].path, path.join(retained, "test-results", "trace.zip"));
       assert.equal(await readFile(results.attachments[0].path, "utf8"), "completed trace bytes");
-      assert.match(await readFile(path.join(destination, "report", "index.html"), "utf8"), /Retained browser report/);
+      assert.match(await readFile(path.join(retained, "report", "index.html"), "utf8"), /Retained browser report/);
       assert.deepEqual(
-        await readFile(path.join(destination, "report", "data", "nested", "screenshot.png")),
+        await readFile(path.join(retained, "report", "data", "nested", "screenshot.png")),
         Buffer.from([0, 255, 13, 10, 128]),
       );
     } finally {
@@ -71,7 +72,11 @@ test("an incomplete report fails while retaining partial diagnostic artifacts", 
       destination,
     });
     assert.notEqual(code, 0);
-    assert.equal(await readFile(path.join(destination, "test-results", "trace.zip"), "utf8"), "completed trace bytes");
+    const temporary = await readFile(path.join(root, "output-location.txt"), "utf8");
+    assert.equal(
+      await readFile(path.join(destination, path.basename(temporary), "test-results", "trace.zip"), "utf8"),
+      "completed trace bytes",
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -90,12 +95,44 @@ test("unexpected symlink evidence fails export and preserves the local originals
     assert.notEqual(code, 0);
     temporary = await readFile(path.join(root, "output-location.txt"), "utf8");
     assert.equal(await readFile(path.join(temporary, "test-results", "trace.zip"), "utf8"), "completed trace bytes");
-    await assert.rejects(stat(path.join(root, "artifacts", "recovery", "report", "linked-trace.zip")), {
-      code: "ENOENT",
-    });
+    await assert.rejects(
+      stat(path.join(root, "artifacts", "recovery", path.basename(temporary), "report", "linked-trace.zip")),
+      {
+        code: "ENOENT",
+      },
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
     if (temporary) await rm(temporary, { recursive: true, force: true });
+  }
+});
+
+test("concurrent runs retain separate evidence without deleting earlier runs", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "kanbun-recovery-concurrent-test-"));
+  const destination = path.join(root, "recovery");
+  try {
+    const dirs = [path.join(root, "first"), path.join(root, "second")];
+    await Promise.all(dirs.map((dir) => mkdir(dir)));
+    const codes = await Promise.all(
+      dirs.map((cwd) =>
+        runWithRecoveryEvidence({
+          command: process.execPath,
+          args: ["--input-type=module", "-e", child, "0"],
+          cwd,
+          destination,
+        }),
+      ),
+    );
+    assert.deepEqual(codes, [0, 0]);
+    const outputs = await Promise.all(dirs.map((dir) => readFile(path.join(dir, "output-location.txt"), "utf8")));
+    assert.notEqual(outputs[0], outputs[1]);
+    for (const output of outputs) {
+      const retained = path.join(destination, path.basename(output));
+      const report = JSON.parse(await readFile(path.join(retained, "results.json"), "utf8"));
+      assert.equal(await readFile(report.attachments[0].path, "utf8"), "completed trace bytes");
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
 

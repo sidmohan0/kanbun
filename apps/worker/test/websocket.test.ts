@@ -3,6 +3,7 @@ import { request as httpRequest } from "node:http";
 import { describe, expect, it } from "vitest";
 import type { Mutation, PushResponse } from "@kanbun/sync";
 import { startWorkspaceRuntime } from "./runtime";
+import { connectTestSocket } from "./socket-client";
 
 type Runtime = Awaited<ReturnType<typeof startWorkspaceRuntime>>;
 const id = (n: number) => `019a0000-0000-7000-8000-${n.toString(16).padStart(12, "0")}`;
@@ -34,32 +35,17 @@ async function push(runtime: Runtime, clientId: string, mutations: Mutation[], b
   return result;
 }
 
-function connect(runtime: Runtime, clientId: string) {
-  const url = new URL("/sync/connect", runtime.origin);
-  url.protocol = "ws:";
-  url.searchParams.set("clientId", clientId);
-  const socket = new WebSocket(url);
-  const messages: unknown[] = [];
-  const opened = new Promise<void>((resolve, reject) => {
-    socket.addEventListener("open", () => resolve(), { once: true });
-    socket.addEventListener("error", () => reject(new Error("Worker WebSocket handshake failed")), { once: true });
-  });
-  const closed = new Promise<CloseEvent>((resolve) => socket.addEventListener("close", resolve, { once: true }));
-  socket.addEventListener("message", (event) => {
-    try {
-      messages.push(JSON.parse(String(event.data)));
-    } catch {
-      messages.push(event.data);
-    }
-  });
+async function connect(runtime: Runtime, clientId: string) {
+  const result = await connectTestSocket(runtime.origin, `/sync/connect?clientId=${encodeURIComponent(clientId)}`);
+  if (!result.connection) throw new Error(`Worker WebSocket handshake failed (${result.status})`);
+  const socket = result.connection;
   return {
     socket,
-    messages,
-    opened,
-    closed,
+    messages: socket.messages,
+    closed: socket.closed,
     async close() {
       if (socket.readyState !== WebSocket.CLOSED) socket.close();
-      await closed;
+      await socket.closed;
     },
   };
 }
@@ -95,12 +81,11 @@ function upgrade(runtime: Runtime, path: string, headers: Record<string, string>
 describe("workspace WebSocket notifications in workerd", () => {
   it("sends only committed main cursors and preserves an accepted socket through hibernation", async () => {
     const runtime = await startWorkspaceRuntime();
-    let connection: ReturnType<typeof connect> | undefined;
+    let connection: Awaited<ReturnType<typeof connect>> | undefined;
     try {
       const { issueId } = await runtime.seed();
       const baseline = (await runtime.inspect()).seq;
-      connection = connect(runtime, "ws-main-reader");
-      await connection.opened;
+      connection = await connect(runtime, "ws-main-reader");
       const messages = connection.messages;
       await expect.poll(() => messages).toEqual([{ type: "poke", seq: baseline }]);
       // Connecting binds the client without silently replacing its bootstrap checkpoint.
@@ -154,7 +139,7 @@ describe("workspace WebSocket notifications in workerd", () => {
 
   it("validates socket admission and rechecks identities across hibernation", async () => {
     const runtime = await startWorkspaceRuntime();
-    let connection: ReturnType<typeof connect> | undefined;
+    let connection: Awaited<ReturnType<typeof connect>> | undefined;
     try {
       const { issueId } = await runtime.seed();
       expect((await runtime.fetch("/sync/connect?clientId=plain-http")).status).toBe(426);
@@ -187,15 +172,13 @@ describe("workspace WebSocket notifications in workerd", () => {
       await json(runtime, `/sync/bootstrap?clientId=branch-bound&branchId=${branchId}`);
       expect(await upgrade(runtime, "/sync/connect?clientId=branch-bound")).toBe(403);
 
-      connection = connect(runtime, "ws-client-message");
-      await connection.opened;
+      connection = await connect(runtime, "ws-client-message");
       await expect.poll(() => connection!.messages.length).toBe(1);
       await runtime.hibernate();
       connection.socket.send(JSON.stringify({ type: "push", mutations: [] }));
       expect((await connection.closed).code).toBe(1008);
 
-      connection = connect(runtime, "ws-revoked-member");
-      await connection.opened;
+      connection = await connect(runtime, "ws-revoked-member");
       await expect.poll(() => connection!.messages.length).toBe(1);
       await runtime.hibernate();
       await runtime.setMemberActive("alice", false);

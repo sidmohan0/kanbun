@@ -42,6 +42,12 @@ if (operation === "reset") {
   while (true) {
     try {
       await request("/api/context");
+      const web = await fetch("http://127.0.0.1:5173/", { signal: AbortSignal.timeout(5000) });
+      assert.equal(web.status, 200, "Vite did not serve the web shell");
+      assert.match(await web.text(), /<div id="root"><\/div>/, "Vite response is not the web shell");
+      const worker = await fetch("http://127.0.0.1:8787/api/context", { signal: AbortSignal.timeout(5000) });
+      assert.equal(worker.status, 200, "Wrangler did not serve the workspace API directly");
+      assert.equal((await worker.json()).workspaceId, (await request("/api/context")).workspaceId);
       break;
     } catch (error) {
       if (Date.now() >= deadline) throw error;

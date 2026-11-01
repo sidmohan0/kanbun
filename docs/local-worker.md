@@ -6,6 +6,17 @@ The separate [hosted preview](hosted-preview.md) uses authenticated identity and
 
 ## Start in the devcontainer
 
+Run `./scripts/devcontainer.sh doctor` to inspect the selected Docker context, available workspace
+disk space, and Git access from a running container. A linked worktree requires its common Git
+directory to be mounted; rebuild its container if the doctor reports inaccessible Git metadata.
+The launcher uses `colima-kanbun` only when the default Docker endpoint is unavailable and neither
+`DOCKER_CONTEXT` nor `DOCKER_HOST` was explicitly set. It does not change the global Docker context.
+
+If Colima reports that its VM driver is running without a host agent, check whether other worktrees
+are using the profile before stopping it. Once it is safe to do so, stop and restart the Kanbun
+profile with `colima stop --profile kanbun` and `colima start --profile kanbun --activate=false`,
+then rerun the doctor and an in-container command. Do not delete the profile as a first step.
+
 ```sh
 ./scripts/devcontainer.sh up
 ./scripts/devcontainer.sh dev
@@ -54,7 +65,8 @@ Removing the container alone preserves the bind-mounted state. Removing the chec
 
 The installation rehearsal clones a committed, clean candidate into a temporary directory and
 uses this same devcontainer. It initializes synthetic data, edits an issue through the HTTP API,
-checks repeated initialization, stops/restarts the container, replaces it, verifies stable issue
+checks that Vite serves the web shell and Wrangler serves the workspace API directly, checks repeated
+initialization, stops/restarts the container, replaces it, verifies stable issue
 identity and contents, and tests reset in that disposable checkout:
 
 ```sh

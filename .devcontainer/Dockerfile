@@ -15,4 +15,7 @@ COPY scripts/install-audit-tools.mjs /tmp/kanbun-tools/scripts/install-audit-too
 RUN node /tmp/kanbun-tools/scripts/install-audit-tools.mjs /usr/local/bin \
     && rm -rf /tmp/kanbun-tools
 
+RUN mkdir -p /var/lock/kanbun && chmod 1777 /var/lock/kanbun \
+    && touch /var/lock/kanbun/verifier.lock && chmod 666 /var/lock/kanbun/verifier.lock
+
 USER node

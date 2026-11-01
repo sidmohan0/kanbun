@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
   actions: read
 
 # Use the deployment lock so a routine release cannot race the observed version.

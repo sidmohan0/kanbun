@@ -11,12 +11,13 @@
   "scripts": {
     "dev": "pnpm -r --parallel --filter './apps/*' dev",
     "build": "pnpm -r build",
+    "build:verified": "pnpm --filter @kanbun/web build:verified && pnpm -r --filter '!@kanbun/web' build",
     "deploy:preview": "node scripts/deploy-preview.mjs",
     "install:cloudflare": "node scripts/install-cloudflare.mjs",
     "deploy": "node scripts/install-cloudflare.mjs deploy",
     "build:cloudflare": "pnpm --filter @kanbun/web build",
     "audit:public": "node scripts/public-audit.mjs",
-    "test": "pnpm -r test",
+    "test": "pnpm -r --no-sort --workspace-concurrency=${KANBUN_TEST_WORKSPACE_CONCURRENCY:-2} test",
     "test:changelog": "node --test scripts/check-changelog.test.mjs",
     "test:scripts": "node --test scripts/*.test.mjs",
     "test:verifier": "pnpm --filter @kanbun/verifier test",
@@ -29,7 +30,7 @@
     "db:generate": "pnpm --filter @kanbun/model run db:generate",
     "spec:check": "node scripts/check-spec-lock.mjs",
     "changelog:check": "node scripts/check-changelog.mjs",
-    "verify": "node packages/verifier/src/cli.mjs"
+    "verify": "bash .devcontainer/verify-entry.sh"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

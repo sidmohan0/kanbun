@@ -1,0 +1,49 @@
+name: Prebuild devcontainer image
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/devcontainer-image.yml
+      - .devcontainer/Dockerfile
+      - .devcontainer/Dockerfile.dockerignore
+      - .devcontainer/devcontainer.json
+      - .nvmrc
+      - package.json
+      - packages/verifier/package.json
+      - config/audit-tools.json
+      - scripts/install-audit-tools.mjs
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: devcontainer-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    if: github.repository == 'sidmohan0/kanbun' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.npm/_npx
+          key: devcontainer-cli-${{ runner.os }}-${{ runner.arch }}-0.90.0
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish content-addressed image
+        env:
+          IMAGE: ghcr.io/sidmohan0/kanbun-devcontainer:inputs-${{ hashFiles('.devcontainer/Dockerfile', '.devcontainer/Dockerfile.dockerignore', '.devcontainer/devcontainer.json', '.nvmrc', 'package.json', 'packages/verifier/package.json', 'config/audit-tools.json', 'scripts/install-audit-tools.mjs') }}
+        run: npx --yes @devcontainers/cli@0.90.0 build --workspace-folder . --image-name "$IMAGE" --platform linux/amd64,linux/arm64 --cache-to type=inline --push
