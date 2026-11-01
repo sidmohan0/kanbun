@@ -132,6 +132,7 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
       setUrl("");
     });
   }
+  if (!repositories.length && !(snapshot.context?.mode === "hosted" && snapshot.context.role === "owner")) return null;
   return (
     <section className="issue-development" aria-label="Development">
       <header className="github-section-heading">
@@ -244,7 +245,7 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
         </form>
       ) : (
         snapshot.context?.mode === "hosted" &&
-        snapshot.context.role === "owner" && <a href="#settings">Connect one in Settings</a>
+        snapshot.context.role === "owner" && <a href="#settings/integrations">Connect one in Settings</a>
       )}
     </section>
   );

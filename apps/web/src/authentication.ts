@@ -30,7 +30,7 @@ export function authenticationConfig(value: unknown): AuthenticationConfig {
 /** Only application hash destinations can survive a sign-in round trip. */
 export function validReturnTo(value: string): boolean {
   return (
-    ["#issues", "#my-issues", "#inbox", "#settings", "#members"].includes(value) ||
+    ["#issues", "#my-issues", "#inbox", "#settings", "#settings/integrations", "#members"].includes(value) ||
     /^#issues\/[A-Za-z0-9_-]+$/u.test(value) ||
     /^#invite\/[A-Za-z0-9_-]{43}$/u.test(value)
   );

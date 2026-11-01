@@ -144,11 +144,7 @@ export function Invitation({ token, nativeEmail = false }: { token: string; nati
             is no longer valid.
           </p>
         )}
-        <p className="members-description">
-          No separate Kanbun registration is needed. Use the email your workspace owner invited.
-          {!nativeEmail &&
-            " To use a different account, open this complete invitation link in a private browser window and sign in there."}
-        </p>
+        {!nativeEmail && <p className="members-description">Use a private window to sign in with another account.</p>}
       </div>
     </main>
   );

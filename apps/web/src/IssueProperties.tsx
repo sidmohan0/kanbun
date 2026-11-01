@@ -21,6 +21,7 @@ export function IssueProperties({
 }) {
   const [newLabel, setNewLabel] = useState("");
   const [creatingLabel, setCreatingLabel] = useState(false);
+  const [labelSearch, setLabelSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const states = snapshot.workflowStates.filter((state) => state.teamId === issue.teamId);
   const team = snapshot.teams.find((candidate) => candidate.id === issue.teamId);
@@ -127,24 +128,36 @@ export function IssueProperties({
                 {label.name} <span aria-hidden="true">×</span>
               </button>
             ))}
-          <select
-            className="add-label"
-            aria-label="Add label"
-            value=""
-            disabled={!available.length}
-            onChange={(event) => {
-              if (event.target.value) change(() => workspace.setIssueLabel(issue.id, event.target.value, true));
-            }}
-          >
-            <option value="">
-              {available.length ? "+ Add label" : labels.length ? "All labels applied" : "No labels available"}
-            </option>
-            {available.map((label) => (
-              <option key={label.id} value={label.id}>
-                {label.name}
+          <details className="label-picker">
+            <summary>+ Add label</summary>
+            <input
+              type="search"
+              aria-label="Search labels"
+              placeholder="Search labels"
+              value={labelSearch}
+              onChange={(event) => setLabelSearch(event.target.value)}
+            />
+            <select
+              className="add-label"
+              aria-label="Add label"
+              value=""
+              disabled={!available.length}
+              onChange={(event) => {
+                if (event.target.value) change(() => workspace.setIssueLabel(issue.id, event.target.value, true));
+              }}
+            >
+              <option value="">
+                {available.length ? "+ Add label" : labels.length ? "All labels applied" : "No labels available"}
               </option>
-            ))}
-          </select>
+              {available
+                .filter((label) => label.name.toLowerCase().includes(labelSearch.toLowerCase().trim()))
+                .map((label) => (
+                  <option key={label.id} value={label.id}>
+                    {label.name}
+                  </option>
+                ))}
+            </select>
+          </details>
           <button
             className="button quiet compact"
             onClick={() => {

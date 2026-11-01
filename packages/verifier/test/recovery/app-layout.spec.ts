@@ -1,0 +1,41 @@
+import { test, expect } from "./app.fixture";
+
+test("workspace controls align and navigate to their labeled views", async ({ page, app }) => {
+  await page.setViewportSize({ width: 1920, height: 1320 });
+  await page.goto(`${app.origin}/#issues`);
+  await expect(page.locator(".sync-indicator")).toContainText("Saved");
+  const heading = page.getByRole("heading", { name: "Issues", exact: true });
+  const create = page.getByRole("button", { name: "New issue" });
+  const search = page.getByRole("searchbox", { name: "Search issues", exact: true });
+  const status = page.getByRole("combobox", { name: "Filter by status", exact: true });
+  const headingBox = (await heading.boundingBox())!;
+  const createBox = (await create.boundingBox())!;
+  const searchBox = (await search.boundingBox())!;
+  const statusBox = (await status.boundingBox())!;
+  expect(Math.abs(headingBox.y + headingBox.height / 2 - createBox.y - createBox.height / 2)).toBeLessThanOrEqual(1);
+  expect(Math.abs(searchBox.y - statusBox.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(searchBox.height - statusBox.height)).toBeLessThanOrEqual(1);
+
+  await create.click();
+  await expect(page.getByRole("dialog", { name: "New issue" })).toBeVisible();
+  await page.getByRole("button", { name: "Close new issue" }).click();
+  await expect(page.getByRole("dialog", { name: "New issue" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Board", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Issue board" })).toBeVisible();
+  await page.getByRole("button", { name: "List", exact: true }).click();
+  await page.getByRole("link", { name: "Open REC-1" }).click();
+  await expect(page.getByRole("region", { name: "Issue details" })).toBeVisible();
+  await page.getByText("Structure and dependencies", { exact: true }).first().click();
+  await expect(page.getByRole("region", { name: "Issue relationships" })).toBeVisible();
+  await page.getByRole("link", { name: "← All issues" }).click();
+  await expect(page.getByRole("heading", { name: "Issues", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: /My Issues/ }).click();
+  await expect(page.getByRole("heading", { name: "My Issues", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Inbox", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Notifications" })).toBeVisible();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Workflow", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Workflow statuses" })).toBeVisible();
+  await page.getByRole("button", { name: "Teams", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Team name", exact: true })).toBeVisible();
+});

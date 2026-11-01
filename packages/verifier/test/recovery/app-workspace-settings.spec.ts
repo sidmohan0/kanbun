@@ -17,10 +17,12 @@ test("workspace name changes reach another owner browser and members cannot open
     await observerPage.goto(`${app.origin}/#issues`);
     await expect(ownerPage.locator(".sync-indicator")).toContainText("Saved");
     await expect(observerPage.locator(".sync-indicator")).toContainText("Saved");
+    await ownerPage.getByRole("button", { name: "Workspace", exact: true }).click();
     await ownerPage.getByRole("textbox", { name: "Workspace name", exact: true }).fill("DataFog pilot");
     await ownerPage.getByRole("button", { name: "Save workspace name", exact: true }).click();
     await expect(observerPage.locator(".workspace-label")).toContainText("DataFog pilot");
     await ownerPage.reload();
+    await ownerPage.getByRole("button", { name: "Workspace", exact: true }).click();
     await expect(ownerPage.getByRole("textbox", { name: "Workspace name", exact: true })).toHaveValue("DataFog pilot");
     await testInfo.attach("workspace-settings", {
       body: await ownerPage.screenshot({ fullPage: true }),

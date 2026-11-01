@@ -32,3 +32,6 @@ wrangler.install.json
 .wrangler-install-*.json
 installation.local.json
 artifacts/launch/
+
+# Local UI captures and review artifacts
+/output/

@@ -112,6 +112,18 @@ browser recovery scenarios, spec/archive checks, and mechanical documentation ch
 and history-aware spec-lock checks are separate required checks. See
 [verification](docs/verification.md) and [contribution guidance](CONTRIBUTING.md).
 
+### Capture UI screens
+
+With the local development stack running, capture the local workspace at a 1920 × 1320 viewport:
+
+```sh
+./scripts/devcontainer.sh exec pnpm --filter @kanbun/verifier capture:ui
+```
+
+Screenshots are saved in `output/ui-capture`. Issue detail captures require an existing local issue;
+hosted-only screens require a separate authenticated session. Set `KANBUN_CAPTURE_DIR` to choose
+a different output directory.
+
 ## Architecture
 
 A Worker serves the React application and routes authenticated requests. Each workspace has a

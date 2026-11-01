@@ -31,8 +31,19 @@ test("links real GitHub PR context and converges after signed webhook updates in
         },
       });
     });
-    await loginEmail(first, app);
-    await first.goto(`${app.origin}/#settings`);
+    await loginEmail(first, app, app.runtime.ownerEmail, "#settings/integrations");
+    await expect(first.getByRole("region", { name: "GitHub connection", exact: true })).toBeVisible();
+    await first.goto(`${app.origin}/#issues`);
+    await first.getByRole("button", { name: "New issue" }).click();
+    await first.getByRole("textbox", { name: "Issue title", exact: true }).fill("Integration navigation");
+    await first.getByRole("button", { name: "Create issue", exact: true }).click();
+    await first
+      .getByRole("link", { name: /^Open KAN-/ })
+      .first()
+      .click();
+    await first.getByRole("link", { name: "Connect one in Settings" }).click();
+    await expect(first).toHaveURL(/#settings\/integrations$/);
+    await expect(first.getByRole("region", { name: "GitHub connection", exact: true })).toBeVisible();
     const connection = first.getByRole("region", { name: "GitHub connection", exact: true });
     await connection.getByRole("button", { name: "Connect GitHub", exact: true }).click();
     await expect(connection.getByRole("combobox", { name: "GitHub repository", exact: true })).toContainText(
