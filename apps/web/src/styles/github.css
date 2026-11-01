@@ -50,11 +50,16 @@
   justify-self: start;
 }
 .github-connection-actions,
+.github-branch-copy,
 .github-card-actions {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+.github-branch-copy {
+  margin-top: 16px;
+  overflow-wrap: anywhere;
 }
 .github-activity-source {
   margin-left: 8px;

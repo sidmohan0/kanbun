@@ -8,6 +8,7 @@ import { DEFAULT_STATES } from "@kanbun/mutators";
 import { workspace, type WorkspaceSnapshot } from "./workspace";
 import "./styles/teams.css";
 import { GitHubSettings } from "./GitHubSettings";
+import { GitBranchSettings } from "./GitBranchSettings";
 
 const categoryName: Record<WorkflowStateType, string> = {
   triage: "Triage",
@@ -274,10 +275,10 @@ function WorkspaceName({ name }: { name: string }) {
 export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
   const [section, setSection] = useState<"workspace" | "integrations" | "teams" | "workflow">(() => {
     try {
-      if (snapshot.context?.mode !== "hosted") return "teams";
       if (location.hash === "#settings/integrations") return "integrations";
       const saved = sessionStorage.getItem("kanbun:settings-section");
-      return saved === "workspace" || saved === "integrations" || saved === "workflow" ? saved : "teams";
+      if (saved === "workspace") return snapshot.context?.mode === "hosted" ? saved : "teams";
+      return saved === "integrations" || saved === "workflow" ? saved : "teams";
     } catch {
       return "teams";
     }
@@ -337,17 +338,15 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
             Workspace
           </Button>
         )}
-        {snapshot.context?.mode === "hosted" && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="button quiet compact"
-            aria-pressed={section === "integrations"}
-            onClick={() => selectSection("integrations")}
-          >
-            Integrations
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="button quiet compact"
+          aria-pressed={section === "integrations"}
+          onClick={() => selectSection("integrations")}
+        >
+          Integrations
+        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -378,6 +377,7 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
         </div>
       )}
       <div hidden={section !== "integrations"}>
+        <GitBranchSettings snapshot={snapshot} />
         <GitHubSettings snapshot={snapshot} />
       </div>
       <div hidden={section !== "teams" && section !== "workflow"} className="settings-team-section">

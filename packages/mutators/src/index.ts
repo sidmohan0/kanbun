@@ -42,7 +42,8 @@ export function tools(only?: string[]) {
   return toolDefinitions(mutators, only).filter((t) => !(SYSTEM_ONLY as readonly string[]).includes(t.name));
 }
 
-export { issueIdentifier, branchName, requireIssue } from "./issues";
+export { issueIdentifier, requireIssue } from "./issues";
+export { branchName, gitBranchFormatSchema, DEFAULT_GIT_BRANCH_FORMAT, validGitBranchName } from "./branch-names";
 export { DEFAULT_STATES } from "./teams";
 export * from "./ordering";
 

@@ -2,6 +2,7 @@ import type { Row } from "@kanbun/model";
 import { MutationError, defineMutator, type MutatorContext } from "@kanbun/sync";
 import { z } from "zod";
 import { actorRef, id, iso, nullable } from "./schema";
+import { gitBranchFormatSchema } from "./branch-names";
 
 const AVATAR_COLORS = ["#5E6AD2", "#26B5CE", "#4CB782", "#F2C94C", "#F2994A", "#EB5757", "#BB6BD9", "#2F80ED"];
 
@@ -90,6 +91,23 @@ export const workspaceInitArgs = z.object({
 });
 
 export const mutators = {
+  organizationGitBranchFormatUpdate: defineMutator({
+    args: z.strictObject({ format: gitBranchFormatSchema }),
+    description: "Choose the workspace's issue git branch naming format. Admin or owner only.",
+    run(ctx, args) {
+      const member = ctx.store.get("user", ctx.actorId);
+      if (
+        ctx.actor.type !== "user" ||
+        !member?.active ||
+        member.archivedAt ||
+        (member.role !== "owner" && member.role !== "admin")
+      )
+        throw new MutationError("Workspace admin required", "forbidden");
+      const organization = ctx.store.list("organization")[0];
+      if (!organization) throw new MutationError("workspace not found", "not_found");
+      ctx.store.patch("organization", organization.id, { gitBranchFormat: args.format, updatedAt: ctx.now });
+    },
+  }),
   workspaceNameSync: defineMutator({
     args: z.object({ id, name: z.string().trim().min(1) }),
     description: "Mirror the directory's authoritative workspace name. System actor only.",
