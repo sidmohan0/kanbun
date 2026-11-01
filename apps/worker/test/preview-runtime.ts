@@ -59,6 +59,7 @@ export async function startPreviewRuntime({
   const authProviderWorker = `preview-test-auth-provider-${instance}`;
   const githubProviderWorker = `preview-test-github-provider-${instance}`;
   const googleProviderWorker = `preview-test-google-provider-${instance}`;
+  const googleControlWorker = `preview-test-google-control-${instance}`;
   const local = await localWorkerConfig();
   const issuer = "https://test-access.cloudflareaccess.com";
   const audience = "protected-preview-test-audience";
@@ -194,6 +195,22 @@ export async function startPreviewRuntime({
             },
           ]
         : []),
+      ...(sheetsConfig
+        ? [
+            {
+              config: {
+                name: googleControlWorker,
+                main: "test/google-sheets-control-worker.ts",
+                compatibility_date: "2026-10-29",
+                durable_objects: {
+                  bindings: [
+                    { name: "WORKSPACES", class_name: "WorkspaceDO", script_name: `kanbun-preview-test-${instance}` },
+                  ],
+                },
+              },
+            },
+          ]
+        : []),
     ].map((worker) => worker.config),
   );
   try {
@@ -228,6 +245,13 @@ export async function startPreviewRuntime({
       };
       if (!result.ok) throw new Error(result.error);
       return result.value;
+    };
+    const googleControl = async (action: string) => {
+      const response = await harness.getWorker(googleControlWorker).fetch("http://fixture/", {
+        method: "POST",
+        body: JSON.stringify({ action, workspaceId }),
+      });
+      return response.json();
     };
     const request = async (path: string, init: RequestInit = {}, assertion?: string | null) => {
       const headers = new Headers(init.headers);
@@ -265,10 +289,23 @@ export async function startPreviewRuntime({
           .first();
       },
       async googleAlarm() {
-        const workspace = environment.WORKSPACES.getByName(workspaceId) as unknown as {
-          sheetsTestAlarm(): Promise<void>;
-        };
-        await workspace.sheetsTestAlarm();
+        await googleControl("alarm");
+      },
+      async gateGoogleConnection() {
+        await googleControl("gate");
+      },
+      async googleConnectionPending() {
+        return googleControl("pending") as Promise<boolean>;
+      },
+      async releaseGoogleConnection() {
+        await googleControl("release");
+      },
+      async googleSchedule() {
+        return googleControl("schedule") as Promise<{
+          jobs: { id: string; fire_at: string }[];
+          alarm: number | null;
+          activeAlarm: boolean;
+        }>;
       },
       async setGithubResponses(responses: GithubFixtureResponse[]) {
         if (!githubConfig && !slackConfig) throw new Error("GitHub provider was not configured");

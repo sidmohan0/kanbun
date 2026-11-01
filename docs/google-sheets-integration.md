@@ -62,6 +62,9 @@ one-use state consumption. Google integration authorization is separate from Kan
 and scheduled commands share the DO's serialized queue, so an in-flight refresh cannot recreate
 authorization after disconnect. Failed jobs remain durable and retry through Cloudflare alarms;
 status responses contain sanitized errors, never Google tokens or provider payloads.
+The refresh intent and alarm are persisted before the separate D1 connection commit. An interruption
+after that commit therefore retains an automatic wakeup without requiring another user request;
+an interrupted attempt that never stores a connection is safely cleaned up by the alarm.
 
 ## Scope and validation
 

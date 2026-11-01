@@ -273,16 +273,20 @@ export class WorkspaceDO extends DurableObject<Env> {
         const context = await this.authorizePrincipal(this.server!, hostedPrincipalSchema.parse(principal));
         if (context.role !== "owner") throw new RequestError("Workspace owner access required", 403);
         const command = sheetsCommandSchema.parse(input);
-        await sheetsCommand(this.env, context.workspaceId, command);
-        if (command.kind === "disconnect") {
-          this.driver.run("DELETE FROM scheduled_job WHERE kind=?", [SHEETS_JOB]);
-        } else {
+        if (command.kind !== "disconnect") {
+          // D1 and DO storage cannot commit atomically. Persist and arm the retry intent first,
+          // so interruption after the connection commit cannot lose automatic refresh forever.
           const now = new Date().toISOString();
           this.driver.run(
             "INSERT INTO scheduled_job (id,fire_at,kind,payload,dedup_key,created_at) VALUES (?,?,?,'{}',?,?) ON CONFLICT(dedup_key) DO UPDATE SET fire_at=excluded.fire_at",
             [uuidv7(), now, SHEETS_JOB, SHEETS_JOB, now],
           );
-          await this.armNextJob(true);
+          await this.armNextJob();
+        }
+        await sheetsCommand(this.env, context.workspaceId, command);
+        if (command.kind === "disconnect") {
+          this.driver.run("DELETE FROM scheduled_job WHERE kind=?", [SHEETS_JOB]);
+        } else {
           try {
             await syncSheets(this.env, context.workspaceId, this.server!.store, () => this.server!.currentSeq(), true);
             this.driver.run("UPDATE scheduled_job SET fire_at=? WHERE kind=?", [

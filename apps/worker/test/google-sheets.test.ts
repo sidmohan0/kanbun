@@ -171,3 +171,70 @@ it("serializes a delayed refresh before disconnect so authorization cannot reviv
     await r.close();
   }
 }, 30000);
+
+it("arms refresh before the D1 connection commits and retains it through interruption and reactivation", async () => {
+  const r = await runtime();
+  try {
+    const a = nativeAgent(r);
+    await login(r, a);
+    const bootstrap = (await (
+      await a.fetch("/sync/bootstrap?clientId=sheets-crash-window")
+    ).json()) as BootstrapResponse;
+    expect(
+      await (
+        await a.json("/sync/push", {
+          clientId: "sheets-crash-writer",
+          mutations: [
+            {
+              id: 1,
+              name: "issueCreate",
+              args: {
+                id: uuidv7(),
+                teamId: bootstrap.rows.team![0]!.id,
+                title: "Committed before interruption",
+                subscriptionId: uuidv7(),
+              },
+              ts: new Date().toISOString(),
+            },
+          ],
+        })
+      ).json(),
+    ).toMatchObject({ rejected: [] });
+    const state = await connect(a);
+    await r.gateGoogleConnection();
+    const completing = callback(a, state);
+    try {
+      await expect.poll(() => r.googleConnectionPending()).toBe(true);
+      // This must exist before the separate D1 write, not just after a later user request.
+      expect(await r.googleStoredConnection()).toBeNull();
+      const schedule = await r.googleSchedule();
+      expect(schedule.jobs).toHaveLength(1);
+      expect(schedule.alarm !== null || schedule.activeAlarm).toBe(true);
+    } finally {
+      // The fixture commits D1, then fails before the command can start its first export.
+      await r.releaseGoogleConnection();
+    }
+    const failed = await completing;
+    expect(failed.status).toBe(500);
+    await failed.text();
+    expect(await r.googleStoredConnection()).not.toBeNull();
+    await expect.poll(async () => (await r.googleSchedule()).activeAlarm).toBe(false);
+    await r.restart();
+    expect((await a.fetch("/api/context")).status).toBe(200);
+    await expect.poll(async () => (await r.googleSchedule()).jobs.length).toBe(1);
+    await expect.poll(async () => (await r.googleSchedule()).alarm).not.toBeNull();
+    await r.googleAlarm();
+    const writes = (await r.googleRequests()).filter((q) => q.url.endsWith(":batchUpdate"));
+    expect(writes.at(-1)!.body).toContain("Committed before interruption");
+    const schedule = await r.googleSchedule();
+    await r.restart();
+    expect((await a.fetch("/api/context")).status).toBe(200);
+    expect((await r.googleSchedule()).jobs).toEqual(schedule.jobs);
+    await a.json("/api/integrations/google-sheets/disconnect", {});
+    await r.restart();
+    expect((await a.fetch("/api/context")).status).toBe(200);
+    expect((await r.googleSchedule()).jobs).toEqual([]);
+  } finally {
+    await r.close();
+  }
+}, 30000);
