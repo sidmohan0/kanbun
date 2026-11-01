@@ -1,3 +1,5 @@
+import { Input } from "./components/ui/input";
+import { Button } from "./components/ui/button";
 import { useState, type FormEvent } from "react";
 import type { Row } from "@kanbun/model";
 import { issueIncarnation } from "@kanbun/sync";
@@ -137,9 +139,7 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
     <section className="issue-development" aria-label="Development">
       <header className="github-section-heading">
         <h3>Development</h3>
-        {links.length > 0 && <span>GitHub context</span>}
       </header>
-      {links.length > 0 && <p>Checks and reviews describe the current commit. GitHub controls merge requirements.</p>}
       {error && (
         <p className="notice" role="alert">
           {error}
@@ -191,8 +191,9 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
                     View commit
                   </a>
                 )}
-                <button
-                  className="button quiet compact"
+                <Button
+                  variant="ghost"
+                  size="sm"
                   disabled={Boolean(busy)}
                   aria-label={`Refresh PR #${pr.number}`}
                   onClick={() =>
@@ -202,9 +203,10 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
                   }
                 >
                   {busy === pr.id ? "Refreshing…" : "Refresh"}
-                </button>
-                <button
-                  className="button quiet compact"
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   disabled={Boolean(busy)}
                   aria-label={`Unlink PR #${pr.number}`}
                   onClick={() => {
@@ -217,7 +219,7 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
                   }}
                 >
                   Unlink
-                </button>
+                </Button>
               </div>
             </li>
           );
@@ -226,7 +228,7 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
       {repositories.length ? (
         <form className="github-link-form" onSubmit={link}>
           <label htmlFor="github-pr-url">Pull request URL</label>
-          <input
+          <Input
             id="github-pr-url"
             type="url"
             value={url}
@@ -234,14 +236,9 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
             onChange={(event) => setUrl(event.target.value)}
             disabled={Boolean(busy)}
           />
-          <button className="button" disabled={Boolean(busy) || !url.trim()}>
+          <Button variant="outline" disabled={Boolean(busy) || !url.trim()}>
             {busy === "link" ? "Linking pull request…" : "Link pull request"}
-          </button>
-          {links.length > 0 && (
-            <p>
-              Linking and refreshing require a connection. GitHub permissions still apply when opening source links.
-            </p>
-          )}
+          </Button>
         </form>
       ) : (
         snapshot.context?.mode === "hosted" &&

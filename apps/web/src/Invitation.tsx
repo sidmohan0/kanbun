@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { workspaceContextSchema } from "@kanbun/sync";
 import { Mark } from "./brand/Mark";
+import { Button } from "./components/ui/button";
 import { MembershipError, membershipRequest } from "./membership";
 import { EmailSignOut } from "./EmailSignIn";
 
@@ -96,8 +97,8 @@ export function Invitation({ token, nativeEmail = false }: { token: string; nati
           </>
         )}
         {error && (
-          <button
-            className="button"
+          <Button
+            variant="outline"
             disabled={loading || accepting}
             onClick={() => {
               if (signInRequired) location.reload();
@@ -112,7 +113,7 @@ export function Invitation({ token, nativeEmail = false }: { token: string; nati
             }}
           >
             {signInRequired ? "Sign in again" : "Check invitation again"}
-          </button>
+          </Button>
         )}
         {details && (
           <>
@@ -125,15 +126,13 @@ export function Invitation({ token, nativeEmail = false }: { token: string; nati
             {details.accepted ? (
               <>
                 <p>You have already accepted this invitation.</p>
-                <button className="button primary" onClick={enterWorkspace}>
-                  Open workspace
-                </button>
+                <Button onClick={enterWorkspace}>Open workspace</Button>
               </>
             ) : (
               !signInRequired && (
-                <button className="button primary" disabled={accepting} onClick={() => void accept()}>
+                <Button disabled={accepting} onClick={() => void accept()}>
                   {accepting ? "Joining workspace…" : "Accept invitation"}
-                </button>
+                </Button>
               )
             )}
           </>

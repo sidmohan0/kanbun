@@ -1,7 +1,7 @@
 /* Compact workspace layout. Semantic colors and controls remain shared with the app. */
 .workspace-shell {
   --sidebar-w: 224px;
-  background: var(--surface);
+  background: var(--workspace-background, var(--surface));
 }
 .workspace-sidebar {
   padding: 18px 12px;
@@ -39,7 +39,7 @@
   padding-bottom: 10px;
 }
 .issues-main {
-  background: var(--surface);
+  background: var(--workspace-background, var(--surface));
 }
 .workspace-topbar {
   min-height: 48px;
@@ -219,12 +219,13 @@
 }
 .issue-detail-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 250px;
-  gap: 32px;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 24px;
+  max-width: 1080px;
 }
 .issue-detail-content {
   min-width: 0;
-  max-width: 850px;
+  max-width: 100%;
 }
 .issue-detail-sidebar {
   border-left: 1px solid var(--border);
@@ -285,6 +286,8 @@
 .settings-team-section {
   display: grid;
   gap: 12px;
+  max-width: 760px;
+  min-width: 0;
 }
 .settings-team-section[hidden],
 .teams-settings [hidden] {
@@ -293,25 +296,55 @@
 .team-editor,
 .team-create,
 .github-settings {
-  padding: 18px 0;
-  border: 0;
-  border-radius: 0;
+  width: min(100%, 760px);
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
 }
 .team-form {
-  max-width: 640px;
+  max-width: 100%;
   margin: 16px 0;
+}
+.settings-team-section > select {
+  width: 100%;
+}
+.github-bind-form {
+  max-width: 540px;
+}
+.issue-development {
+  padding: 16px;
+}
+.github-pr-card {
+  padding: 12px;
+}
+.github-link-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+.github-link-form label {
+  grid-column: 1 / -1;
+}
+.github-link-form button {
+  width: auto;
+}
+.issue-discussion {
+  gap: 1.5rem;
+}
+.comment-reply {
+  max-width: 640px;
 }
 .team-editor > p,
 .team-create > p {
   display: none;
 }
 .auth-shell {
-  background: var(--surface);
+  background: var(--workspace-background, var(--surface));
 }
 .auth-card {
   width: min(100%, 380px);
   padding: 24px;
-  border: 0;
+  border: 1px solid var(--border);
   box-shadow: none;
 }
 .auth-card .brand-lockup {
@@ -341,6 +374,14 @@
     border-left: 0;
     border-top: 1px solid var(--border);
     padding: 16px 0;
+  }
+  .team-editor,
+  .team-create,
+  .github-settings {
+    padding: 16px;
+  }
+  .github-link-form {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -533,10 +574,11 @@
 }
 
 :root[data-theme="light"] {
-  --bg: #f7f7f8;
-  --surface: #fff;
-  --surface-raised: #fff;
-  --surface-sunken: #f5f5f6;
+  --bg: var(--paper);
+  --workspace-background: var(--paper);
+  --surface: var(--bone);
+  --surface-raised: var(--bone);
+  --surface-sunken: var(--paper-2);
   --text: #202124;
   --text-secondary: #686b72;
   --text-tertiary: #858890;
@@ -547,10 +589,11 @@
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
-    --bg: #f7f7f8;
-    --surface: #fff;
-    --surface-raised: #fff;
-    --surface-sunken: #f5f5f6;
+    --bg: var(--paper);
+    --workspace-background: var(--paper);
+    --surface: var(--bone);
+    --surface-raised: var(--bone);
+    --surface-sunken: var(--paper-2);
     --text: #202124;
     --text-secondary: #686b72;
     --text-tertiary: #858890;
@@ -577,11 +620,11 @@
 .invitation-card {
   width: min(100%, 380px);
   padding: 24px;
-  border: 0;
+  border: 1px solid var(--border);
   background: var(--surface);
 }
 .invitation-shell {
-  background: var(--surface);
+  background: var(--workspace-background, var(--surface));
 }
 .invitation-card h1 {
   font: 600 22px var(--font-ui);

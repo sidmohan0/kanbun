@@ -1,3 +1,5 @@
+import { Textarea } from "./components/ui/textarea";
+import { Button } from "./components/ui/button";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { DomainEvent } from "@kanbun/events";
 import type { Row } from "@kanbun/model";
@@ -139,7 +141,8 @@ function CommentCard({
           <label className="field-label" htmlFor={`edit-${comment.id}`}>
             Edit comment
           </label>
-          <textarea
+          <Textarea
+            className="w-full rounded-md border border-border bg-transparent text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
             id={`edit-${comment.id}`}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
@@ -153,51 +156,55 @@ function CommentCard({
             onChange={setDraftMentions}
           />
           <div className="comment-actions">
-            <button className="button compact" disabled={!draft.trim()}>
+            <Button variant="outline" size="sm" disabled={!draft.trim()}>
               Save comment
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="button quiet compact"
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setDraft(null);
                 setDraftMentions([]);
               }}
             >
               Cancel edit
-            </button>
+            </Button>
           </div>
         </form>
       )}
       <div className="comment-actions">
         {comment.userId === context.actor.id && draft === null && (
-          <button
-            className="button quiet compact"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => {
               setDraft(comment.body);
               setDraftMentions(comment.mentionedUserIds);
             }}
           >
             Edit comment
-          </button>
+          </Button>
         )}
         {!comment.parentId && (
           <>
-            <button
-              className="button quiet compact"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setReply(reply === null ? "" : null);
                 setReplyMentions([]);
               }}
             >
               {reply === null ? "Reply" : "Cancel reply"}
-            </button>
-            <button
-              className="button quiet compact"
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => change(() => workspace.resolveComment(comment.id, !comment.resolvedAt))}
             >
               {comment.resolvedAt ? "Reopen thread" : "Resolve thread"}
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -214,7 +221,8 @@ function CommentCard({
           <label className="field-label" htmlFor={`reply-${comment.id}`}>
             Reply to {name}
           </label>
-          <textarea
+          <Textarea
+            className="w-full rounded-md border border-border bg-transparent text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
             id={`reply-${comment.id}`}
             value={reply}
             onChange={(event) => setReply(event.target.value)}
@@ -227,9 +235,9 @@ function CommentCard({
             selected={replyMentions}
             onChange={setReplyMentions}
           />
-          <button className="button compact" disabled={!reply.trim()}>
+          <Button variant="outline" size="sm" disabled={!reply.trim()}>
             Post reply
-          </button>
+          </Button>
         </form>
       )}
     </article>
@@ -352,8 +360,9 @@ export function IssueDiscussion({
           </p>
         )}
         {commentStatus && (
-          <button
-            className="button quiet compact"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => {
               void workspace.loadComments(issue.id).then(
                 () => setCommentStatus(""),
@@ -362,7 +371,7 @@ export function IssueDiscussion({
             }}
           >
             Retry comments
-          </button>
+          </Button>
         )}
         {comments
           .filter((comment) => !comment.parentId)
@@ -379,12 +388,13 @@ export function IssueDiscussion({
           <label className="field-label" htmlFor="new-comment">
             Add a comment
           </label>
-          <textarea
+          <Textarea
+            className="w-full rounded-md border border-border bg-transparent text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
             id="new-comment"
             value={body}
             onChange={(event) => setBody(event.target.value)}
             maxLength={20_000}
-            placeholder="Share context, a decision, or a question."
+            placeholder="Add a comment…"
           />
           <MentionPicker
             id={`new-${issue.id}`}
@@ -393,9 +403,9 @@ export function IssueDiscussion({
             selected={mentionedUserIds}
             onChange={setMentionedUserIds}
           />
-          <button className="button compact" disabled={!body.trim() || issue.number <= 0}>
+          <Button variant="outline" size="sm" disabled={!body.trim() || issue.number <= 0}>
             Post comment
-          </button>
+          </Button>
           {issue.number <= 0 && (
             <p className="description-help">Comments become available after this issue finishes syncing.</p>
           )}
@@ -441,8 +451,9 @@ export function IssueDiscussion({
           </p>
         )}
         {(hasOlder || activityError) && (
-          <button
-            className="button quiet compact"
+          <Button
+            variant="ghost"
+            size="sm"
             disabled={loadingOlder}
             onClick={() => {
               void older();
@@ -453,7 +464,7 @@ export function IssueDiscussion({
               : activityError && !events.length
                 ? "Retry activity"
                 : "Load older activity"}
-          </button>
+          </Button>
         )}
       </section>
     </div>

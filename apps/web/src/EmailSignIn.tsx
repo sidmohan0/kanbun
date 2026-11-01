@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Mark } from "./brand/Mark";
+import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
 import { AuthenticationError, authenticationRequest, returnDestination, type SignInRoute } from "./authentication";
 import { Turnstile } from "./Turnstile";
 import { workspace } from "./workspace";
@@ -7,8 +9,8 @@ import "./styles/auth.css";
 
 export function AuthenticationCard({ children }: { children: ReactNode }) {
   return (
-    <main className="auth-shell">
-      <div className="auth-card">
+    <main className="auth-shell grid min-h-screen place-items-center bg-muted p-6 max-sm:p-4">
+      <div className="auth-card w-full rounded-lg border border-border bg-popover p-8 max-sm:p-6">
         <div className="brand-lockup">
           <Mark size={28} />
           <span>kanbun</span>
@@ -39,9 +41,9 @@ export function EmailSignOut({ returnTo = "#issues", label = "Sign out" }: { ret
   }
   return (
     <div className="auth-sign-out">
-      <button className="button quiet compact" disabled={busy} onClick={() => void signOut()}>
+      <Button variant="ghost" size="sm" disabled={busy} onClick={() => void signOut()}>
         {busy ? "Signing out…" : label}
-      </button>
+      </Button>
       {error && <p role="alert">{error}</p>}
     </div>
   );
@@ -77,15 +79,15 @@ export function EmailSignIn({ siteKey, returnTo }: { siteKey: string; returnTo: 
         <>
           <p>If eligible, you’ll receive a sign-in link. Open it in this browser.</p>
           {returnTo.startsWith("#invite/") && <p>Use your invitation link to join after signing in.</p>}
-          <button
-            className="button"
+          <Button
+            variant="outline"
             onClick={() => {
               setSent(false);
               setError(null);
             }}
           >
             Request another link
-          </button>
+          </Button>
         </>
       ) : (
         <>
@@ -93,7 +95,7 @@ export function EmailSignIn({ siteKey, returnTo }: { siteKey: string; returnTo: 
           {returnTo.startsWith("#invite/") && <p>Your invitation will reopen after you sign in.</p>}
           <form className="auth-form" onSubmit={(event) => void request(event)}>
             <label htmlFor="sign-in-email">Email address</label>
-            <input
+            <Input
               id="sign-in-email"
               type="email"
               autoComplete="email"
@@ -104,9 +106,9 @@ export function EmailSignIn({ siteKey, returnTo }: { siteKey: string; returnTo: 
               autoFocus
             />
             <Turnstile key={verification} siteKey={siteKey} onToken={setTurnstileToken} />
-            <button className="button primary" disabled={sending || !email.trim() || !turnstileToken}>
+            <Button type="submit" disabled={sending || !email.trim() || !turnstileToken}>
               {sending ? "Sending sign-in link…" : "Email me a sign-in link"}
-            </button>
+            </Button>
           </form>
           {error && (
             <p className="notice" role="alert">
@@ -157,7 +159,7 @@ export function EmailSignInCallback({
         setRetryable(!unavailable);
         setError(
           unavailable
-            ? "This sign-in link is unavailable. It may have expired, already been used, or been opened in a different browser. Request a new link in this browser."
+            ? "This link is unavailable. It may have expired, been used, or opened in a different browser. Request a new link here."
             : failure instanceof Error
               ? failure.message
               : "The sign-in link could not be checked. Please try again.",
@@ -213,24 +215,20 @@ export function EmailSignInCallback({
             You’re signing in as <strong>{details.email}</strong>.
           </p>
           <p>Link expires {new Date(details.expiresAt).toLocaleString()}.</p>
-          <button className="button primary" disabled={busy} onClick={() => void consume()}>
+          <Button disabled={busy} onClick={() => void consume()}>
             {busy ? "Signing in…" : `Sign in as ${details.email}`}
-          </button>
+          </Button>
         </>
       )}
       {retryable && (
-        <button className="button" onClick={() => location.reload()}>
+        <Button variant="outline" onClick={() => location.reload()}>
           Check link again
-        </button>
+        </Button>
       )}
       <p>Only continue if you requested this link in this browser.</p>
-      <button
-        className={invalid || error ? "button primary" : "button quiet"}
-        disabled={busy}
-        onClick={() => requestNew(returnTo)}
-      >
+      <Button variant={invalid || error ? "default" : "ghost"} disabled={busy} onClick={() => requestNew(returnTo)}>
         Request a new link
-      </button>
+      </Button>
     </AuthenticationCard>
   );
 }

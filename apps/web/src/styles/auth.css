@@ -3,7 +3,7 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: var(--surface-sunken);
+  background: var(--workspace-background, var(--surface-sunken));
 }
 .auth-card {
   width: min(100%, 460px);
@@ -13,7 +13,7 @@
   border-radius: var(--radius-lg);
   animation: auth-appear 160ms ease-out;
 }
-.auth-card .button {
+.auth-card [data-slot="button"] {
   transition:
     background-color 140ms ease,
     border-color 140ms ease;
@@ -32,7 +32,7 @@
   .auth-card {
     animation: none;
   }
-  .auth-card .button {
+  .auth-card [data-slot="button"] {
     transition: none;
   }
 }
@@ -73,8 +73,11 @@
 .auth-verification p {
   margin: 8px 0;
 }
-.auth-card > .button {
+.auth-card > [data-slot="button"] {
   margin: 8px 8px 0 0;
+}
+.invitation-card > [data-slot="button"] {
+  margin-top: 16px;
 }
 @media (max-width: 620px) {
   .auth-shell {

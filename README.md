@@ -118,11 +118,12 @@ With the local development stack running, capture the local workspace at a 1920 
 
 ```sh
 ./scripts/devcontainer.sh exec pnpm --filter @kanbun/verifier capture:ui
+./scripts/devcontainer.sh exec pnpm --filter @kanbun/verifier capture:hosted
 ```
 
 Screenshots are saved in `output/ui-capture`. Issue detail captures require an existing local issue;
-hosted-only screens require a separate authenticated session. Set `KANBUN_CAPTURE_DIR` to choose
-a different output directory.
+hosted-only screens are captured separately using a disposable local Worker and fixture accounts,
+without accessing hosted data. Set `KANBUN_CAPTURE_DIR` to choose a different output directory.
 
 ## Architecture
 

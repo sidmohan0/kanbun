@@ -1,3 +1,5 @@
+import { Button } from "./components/ui/button";
+import { NativeSelect } from "./components/ui/native-select";
 import { useEffect, useState, type FormEvent } from "react";
 import { workspace, type WorkspaceSnapshot } from "./workspace";
 import { membershipRequest } from "./membership";
@@ -85,16 +87,16 @@ function OwnerGitHubSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
     <section className="github-settings" aria-label="GitHub connection">
       <header className="github-section-heading">
         <h2>GitHub</h2>
-        <button className="button quiet compact" disabled={busy} onClick={() => setAttempt((value) => value + 1)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="button quiet compact"
+          disabled={busy}
+          onClick={() => setAttempt((value) => value + 1)}
+        >
           Refresh repositories
-        </button>
+        </Button>
       </header>
-      {connection && (connection.catalog.length > 0 || connection.repositories.length > 0) && (
-        <p>
-          Bring pull requests, branches, reviews and checks into the issues they belong to. Connecting GitHub does not
-          sign anyone in to Kanbun.
-        </p>
-      )}
       {error && (
         <p className="notice" role="alert">
           {error}
@@ -112,22 +114,24 @@ function OwnerGitHubSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
           {!connection.authorizationRequired && <p>Connected to {connection.appName ?? "the GitHub App"}.</p>}
           <div className="github-connection-actions">
             {installUrl && (
-              <a className="button" href={installUrl} target="_blank" rel="noreferrer">
-                Install on GitHub
-              </a>
+              <Button variant="outline" asChild>
+                <a className="button" href={installUrl} target="_blank" rel="noreferrer">
+                  Install on GitHub
+                </a>
+              </Button>
             )}
-            <button className="button" disabled={busy} onClick={() => void connect()}>
+            <Button variant="outline" className="button" disabled={busy} onClick={() => void connect()}>
               {busy
                 ? "Please wait…"
                 : connection.authorizationRequired
                   ? "Connect GitHub"
                   : "Update GitHub authorization"}
-            </button>
+            </Button>
           </div>
           <form className="github-bind-form" onSubmit={bind}>
             <h3>Share a repository with a team</h3>
             <label htmlFor="github-repository">GitHub repository</label>
-            <select
+            <NativeSelect
               id="github-repository"
               value={repository}
               disabled={busy}
@@ -143,9 +147,9 @@ function OwnerGitHubSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
                   {source.private ? " (private repository)" : ""}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
             <label htmlFor="github-team">Kanbun team</label>
-            <select
+            <NativeSelect
               id="github-team"
               value={selectedTeam}
               disabled={busy}
@@ -158,16 +162,13 @@ function OwnerGitHubSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
                   {team.visibility === "private" ? " (private team)" : " (all workspace members)"}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
             {connection.catalog.length > 0 && (
-              <p>
-                Linked pull-request metadata will be visible to people who can access issues in this team. This does not
-                grant access to GitHub source code.
-              </p>
+              <p>Team members can see linked pull requests, but do not gain access to the source code.</p>
             )}
-            <button className="button primary" disabled={busy || !repository || !selectedTeam}>
+            <Button className="button primary" disabled={busy || !repository || !selectedTeam}>
               Connect repository to team
-            </button>
+            </Button>
           </form>
           <h3>Connected repositories</h3>
           <ul className="github-binding-list">
@@ -188,7 +189,9 @@ function OwnerGitHubSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
                     {binding.private ? " · Private repository" : ""}
                   </span>
                 </div>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   className="button quiet compact"
                   disabled={busy}
                   aria-label={`Disconnect ${binding.owner}/${binding.name} from ${snapshot.teams.find((team) => team.id === binding.teamId)?.name ?? "team"}`}
@@ -201,7 +204,7 @@ function OwnerGitHubSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
                   }
                 >
                   Disconnect
-                </button>
+                </Button>
               </li>
             ))}
           </ul>

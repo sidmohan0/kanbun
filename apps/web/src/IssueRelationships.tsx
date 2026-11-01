@@ -1,3 +1,6 @@
+import { NativeSelect } from "./components/ui/native-select";
+import { Input } from "./components/ui/input";
+import { Button } from "./components/ui/button";
 import { useState, type FormEvent } from "react";
 import type { Row } from "@kanbun/model";
 import { issueIdentifier } from "@kanbun/mutators";
@@ -85,7 +88,7 @@ export function IssueRelationships({ issue, snapshot }: { issue: Row<"issue">; s
         </p>
       )}
       <label htmlFor="issue-parent">Parent issue</label>
-      <select
+      <NativeSelect
         id="issue-parent"
         value={issue.parentId ?? ""}
         onChange={(event) => change(() => workspace.setIssueParent(issue.id, event.target.value || null))}
@@ -101,7 +104,7 @@ export function IssueRelationships({ issue, snapshot }: { issue: Row<"issue">; s
             {label(row)}
           </option>
         ))}
-      </select>
+      </NativeSelect>
       {parent && <a href={`#issues/${parent.id}`}>Open parent: {label(parent)}</a>}
       <h4>Sub-issues</h4>
       {children.length > 0 && (
@@ -109,28 +112,29 @@ export function IssueRelationships({ issue, snapshot }: { issue: Row<"issue">; s
           {children.map((child) => (
             <li key={child.id}>
               <a href={`#issues/${child.id}`}>{label(child)}</a>
-              <button
-                className="button quiet compact"
+              <Button
+                variant="ghost"
+                size="sm"
                 aria-label={`Detach sub-issue ${label(child)}`}
                 onClick={() => change(() => workspace.setIssueParent(child.id, null))}
               >
                 Detach
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
       )}
       <form className="relationship-create" onSubmit={createChild}>
         <label htmlFor="sub-issue-title">New sub-issue title</label>
-        <input
+        <Input
           id="sub-issue-title"
           value={childTitle}
           maxLength={500}
           onChange={(event) => setChildTitle(event.target.value)}
         />
-        <button className="button quiet compact" disabled={!childTitle.trim()}>
+        <Button variant="ghost" size="sm" disabled={!childTitle.trim()}>
           Create sub-issue
-        </button>
+        </Button>
       </form>
       <h4>Dependencies and related work</h4>
       {relations.length > 0 && (
@@ -139,26 +143,31 @@ export function IssueRelationships({ issue, snapshot }: { issue: Row<"issue">; s
             <li key={link.id}>
               <span>{text} </span>
               <a href={`#issues/${target.id}`}>{label(target)}</a>
-              <button
-                className="button quiet compact"
+              <Button
+                variant="ghost"
+                size="sm"
                 aria-label={`Remove ${text.toLowerCase()} ${label(target)}`}
                 onClick={() => change(() => workspace.removeIssueRelation(link.id))}
               >
                 Remove
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
       )}
       <form className="relationship-create" onSubmit={addRelation}>
         <label htmlFor="relationship-kind">Relationship</label>
-        <select id="relationship-kind" value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}>
+        <NativeSelect
+          id="relationship-kind"
+          value={kind}
+          onChange={(event) => setKind(event.target.value as typeof kind)}
+        >
           <option value="blocks">Blocks</option>
           <option value="blockedBy">Blocked by</option>
           <option value="related">Related to</option>
-        </select>
+        </NativeSelect>
         <label htmlFor="related-issue">Link issue</label>
-        <select id="related-issue" value={relatedId} onChange={(event) => setRelatedId(event.target.value)}>
+        <NativeSelect id="related-issue" value={relatedId} onChange={(event) => setRelatedId(event.target.value)}>
           <option value="">Choose an issue</option>
           {issues
             .filter((row) => row.id !== issue.id)
@@ -167,10 +176,10 @@ export function IssueRelationships({ issue, snapshot }: { issue: Row<"issue">; s
                 {label(row)}
               </option>
             ))}
-        </select>
-        <button className="button quiet compact" disabled={!relatedId}>
+        </NativeSelect>
+        <Button variant="ghost" size="sm" disabled={!relatedId}>
           Add relationship
-        </button>
+        </Button>
       </form>
     </section>
   );

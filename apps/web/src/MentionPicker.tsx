@@ -1,3 +1,5 @@
+import { NativeSelect } from "./components/ui/native-select";
+import { Button } from "./components/ui/button";
 import { useState } from "react";
 import type { WorkspaceSnapshot } from "./workspace";
 
@@ -36,7 +38,7 @@ export function MentionPicker({
     <details className="mention-picker" open={selected.length > 0 || undefined}>
       <summary>Mention teammates{selected.length ? ` (${selected.length})` : ""}</summary>
       <div className="mention-controls">
-        <select
+        <NativeSelect
           id={`mention-${id}`}
           aria-label="Mention teammate"
           value={candidate}
@@ -48,10 +50,11 @@ export function MentionPicker({
               {member.displayName || member.name}
             </option>
           ))}
-        </select>
-        <button
+        </NativeSelect>
+        <Button
           type="button"
-          className="button quiet compact"
+          variant="ghost"
+          size="sm"
           disabled={!available.some((member) => member.id === candidate)}
           onClick={() => {
             onChange([...selected, candidate]);
@@ -59,7 +62,7 @@ export function MentionPicker({
           }}
         >
           Add mention
-        </button>
+        </Button>
       </div>
       {selected.length > 0 && (
         <ul className="mention-recipients" aria-label="Mention recipients">
@@ -73,14 +76,15 @@ export function MentionPicker({
                   {name}
                   {unavailable ? " (unavailable)" : ""}
                 </span>
-                <button
+                <Button
                   type="button"
-                  className="button quiet compact"
+                  variant="ghost"
+                  size="sm"
                   aria-label={`Remove mention of ${name}`}
                   onClick={() => onChange(selected.filter((id) => id !== userId))}
                 >
                   ×
-                </button>
+                </Button>
               </li>
             );
           })}

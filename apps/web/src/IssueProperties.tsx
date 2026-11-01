@@ -1,3 +1,4 @@
+import { NativeSelect } from "./components/ui/native-select";
 import { useState } from "react";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
@@ -53,7 +54,7 @@ export function IssueProperties({
       <div className="property-fields">
         <label className="property-field" htmlFor="issue-state">
           Status
-          <select
+          <NativeSelect
             id="issue-state"
             value={issue.stateId}
             onChange={(event) => change(() => workspace.updateIssue(issue.id, { stateId: event.target.value }))}
@@ -68,11 +69,11 @@ export function IssueProperties({
                 {state.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         <label className="property-field" htmlFor="issue-priority">
           Priority
-          <select
+          <NativeSelect
             id="issue-priority"
             value={issue.priority}
             onChange={(event) =>
@@ -86,11 +87,11 @@ export function IssueProperties({
                 {name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         <label className="property-field" htmlFor="issue-assignee">
           Assignee
-          <select
+          <NativeSelect
             id="issue-assignee"
             value={issue.assigneeId ?? ""}
             onChange={(event) =>
@@ -108,13 +109,18 @@ export function IssueProperties({
                 {member.displayName || member.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
       </div>
       {issue.assertedStateId && (
-        <button className="button quiet compact" onClick={() => change(() => workspace.clearIssueStatus(issue.id))}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="button quiet compact"
+          onClick={() => change(() => workspace.clearIssueStatus(issue.id))}
+        >
           Clear status override
-        </button>
+        </Button>
       )}
       <div className="property-labels">
         <span className="property-label-title">Labels</span>
@@ -122,14 +128,15 @@ export function IssueProperties({
           {labels
             .filter((label) => applied.has(label.id))
             .map((label) => (
-              <button
+              <Button
+                variant="outline"
                 key={label.id}
                 className="label-chip"
                 aria-label={`Remove label ${label.name}`}
                 onClick={() => change(() => workspace.setIssueLabel(issue.id, label.id, false))}
               >
                 {label.name} <span aria-hidden="true">×</span>
-              </button>
+              </Button>
             ))}
           <Popover>
             <PopoverTrigger asChild>
@@ -145,7 +152,7 @@ export function IssueProperties({
                 value={labelSearch}
                 onChange={(event) => setLabelSearch(event.target.value)}
               />
-              <select
+              <NativeSelect
                 className="add-label"
                 aria-label="Add label"
                 value=""
@@ -164,10 +171,12 @@ export function IssueProperties({
                       {label.name}
                     </option>
                   ))}
-              </select>
+              </NativeSelect>
             </PopoverContent>
           </Popover>
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             className="button quiet compact"
             onClick={() => {
               setCreatingLabel(true);
@@ -175,7 +184,7 @@ export function IssueProperties({
             }}
           >
             Create label
-          </button>
+          </Button>
         </div>
         {creatingLabel && (
           <form
@@ -190,17 +199,19 @@ export function IssueProperties({
           >
             <label htmlFor="new-label-name">New label name</label>
             <div className="new-label-controls">
-              <input
+              <Input
                 id="new-label-name"
                 value={newLabel}
                 maxLength={60}
                 onChange={(event) => setNewLabel(event.target.value)}
                 autoFocus
               />
-              <button className="button compact" type="submit" disabled={!newLabel.trim()}>
+              <Button variant="outline" size="sm" className="button compact" type="submit" disabled={!newLabel.trim()}>
                 Create and apply label
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 className="button quiet compact"
                 type="button"
                 onClick={() => {
@@ -209,7 +220,7 @@ export function IssueProperties({
                 }}
               >
                 Cancel label creation
-              </button>
+              </Button>
             </div>
           </form>
         )}
@@ -220,7 +231,9 @@ export function IssueProperties({
         </p>
       )}
       <div className="issue-archive-action">
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           className="button quiet compact"
           onClick={() =>
             change(() => {
@@ -230,7 +243,7 @@ export function IssueProperties({
           }
         >
           Archive issue
-        </button>
+        </Button>
         <span>Archived issues leave the active list.</span>
       </div>
     </section>

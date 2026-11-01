@@ -1,3 +1,7 @@
+import { Textarea } from "./components/ui/textarea";
+import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { NativeSelect } from "./components/ui/native-select";
 import { useEffect, useState, type FormEvent } from "react";
 import { WORKFLOW_STATE_TYPES, type Row, type WorkflowStateType } from "@kanbun/model";
 import { DEFAULT_STATES } from "@kanbun/mutators";
@@ -41,34 +45,43 @@ function StateRow({
     <li className="workflow-state-row">
       <form onSubmit={save}>
         <label htmlFor={`state-${state.id}`}>Name for {state.name}</label>
-        <input
+        <Input
           id={`state-${state.id}`}
           value={name}
           maxLength={40}
           required
           onChange={(event) => setName(event.target.value)}
         />
-        <button className="button quiet compact" disabled={!name.trim() || name.trim() === state.name}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="button quiet compact"
+          disabled={!name.trim() || name.trim() === state.name}
+        >
           Save status
-        </button>
+        </Button>
       </form>
       <div className="workflow-order">
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           className="button quiet compact"
           aria-label={`Move ${state.name} up`}
           disabled={first}
           onClick={() => move(-1)}
         >
           ↑
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           className="button quiet compact"
           aria-label={`Move ${state.name} down`}
           disabled={last}
           onClick={() => move(1)}
         >
           ↓
-        </button>
+        </Button>
       </div>
     </li>
   );
@@ -139,9 +152,9 @@ function TeamEditor({
       </p>
       <form className="team-form" hidden={section !== "teams"} onSubmit={save}>
         <label htmlFor="team-name">Team name</label>
-        <input id="team-name" value={name} required maxLength={80} onChange={(event) => setName(event.target.value)} />
+        <Input id="team-name" value={name} required maxLength={80} onChange={(event) => setName(event.target.value)} />
         <label htmlFor="team-key">Team key</label>
-        <input
+        <Input
           id="team-key"
           value={key}
           required
@@ -154,25 +167,25 @@ function TeamEditor({
           Changing the key updates existing issue identifiers. Issue links and numbers stay the same.
         </p>
         <label htmlFor="team-description">Team description</label>
-        <textarea id="team-description" value={description} onChange={(event) => setDescription(event.target.value)} />
+        <Textarea id="team-description" value={description} onChange={(event) => setDescription(event.target.value)} />
         <label htmlFor="default-status">Default status for new issues</label>
-        <select id="default-status" value={defaultState} onChange={(event) => setDefaultState(event.target.value)}>
+        <NativeSelect
+          id="default-status"
+          value={defaultState}
+          onChange={(event) => setDefaultState(event.target.value)}
+        >
           {states.map((state) => (
             <option key={state.id} value={state.id}>
               {state.name}
             </option>
           ))}
-        </select>
-        <button className="button primary" disabled={!name.trim() || !key.trim()}>
+        </NativeSelect>
+        <Button className="button primary" disabled={!name.trim() || !key.trim()}>
           Save team settings
-        </button>
+        </Button>
       </form>
       <div hidden={section !== "workflow"}>
         <h3>Workflow statuses</h3>
-        <p>
-          Categories keep their meaning. Rename statuses or change their order within a category without changing
-          existing issues.
-        </p>
         {WORKFLOW_STATE_TYPES.map((type) => {
           const category = states.filter((state) => state.type === type);
           return category.length ? (
@@ -196,7 +209,7 @@ function TeamEditor({
         <form className="team-form" onSubmit={createState}>
           <h3>Add a status</h3>
           <label htmlFor="new-status-name">New status name</label>
-          <input
+          <Input
             id="new-status-name"
             value={stateName}
             required
@@ -204,7 +217,7 @@ function TeamEditor({
             onChange={(event) => setStateName(event.target.value)}
           />
           <label htmlFor="status-category">Status category</label>
-          <select
+          <NativeSelect
             id="status-category"
             value={stateType}
             onChange={(event) => setStateType(event.target.value as WorkflowStateType)}
@@ -214,10 +227,10 @@ function TeamEditor({
                 {categoryName[type]}
               </option>
             ))}
-          </select>
-          <button className="button primary" disabled={!stateName.trim()}>
+          </NativeSelect>
+          <Button className="button primary" disabled={!stateName.trim()}>
             Add status
-          </button>
+          </Button>
         </form>
       </div>
     </section>
@@ -243,12 +256,12 @@ function WorkspaceName({ name }: { name: string }) {
   return (
     <form className="team-form team-create" onSubmit={(event) => void save(event)} aria-label="Workspace name settings">
       <h2>Workspace</h2>
-      <p>Rename this workspace without changing its address, people or issues. An internet connection is required.</p>
+      <p>An internet connection is required to rename the workspace.</p>
       <label htmlFor="workspace-name">Workspace name</label>
-      <input id="workspace-name" value={draft} required onChange={(event) => setDraft(event.target.value)} />
-      <button className="button primary" disabled={busy || !draft.trim() || draft.trim() === name}>
+      <Input id="workspace-name" value={draft} required onChange={(event) => setDraft(event.target.value)} />
+      <Button className="button primary" disabled={busy || !draft.trim() || draft.trim() === name}>
         {busy ? "Saving workspace name…" : "Save workspace name"}
-      </button>
+      </Button>
       {error && (
         <p className="notice" role="alert">
           {error}
@@ -309,37 +322,45 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
     <section className="teams-settings" aria-label="Team and workflow settings">
       <nav className="settings-nav" aria-label="Settings sections">
         {snapshot.context?.mode === "hosted" && (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             className="button quiet compact"
             aria-pressed={section === "workspace"}
             onClick={() => selectSection("workspace")}
           >
             Workspace
-          </button>
+          </Button>
         )}
         {snapshot.context?.mode === "hosted" && (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             className="button quiet compact"
             aria-pressed={section === "integrations"}
             onClick={() => selectSection("integrations")}
           >
             Integrations
-          </button>
+          </Button>
         )}
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           className="button quiet compact"
           aria-pressed={section === "teams"}
           onClick={() => selectSection("teams")}
         >
           Teams
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           className="button quiet compact"
           aria-pressed={section === "workflow"}
           onClick={() => selectSection("workflow")}
         >
           Workflow
-        </button>
+        </Button>
       </nav>
       {error && (
         <p className="notice" role="alert">
@@ -357,7 +378,7 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
       <div hidden={section !== "teams" && section !== "workflow"} className="settings-team-section">
         <h2>Teams</h2>
         <label htmlFor="settings-team">Choose a team</label>
-        <select
+        <NativeSelect
           id="settings-team"
           value={team?.id ?? ""}
           onChange={(event) => {
@@ -370,7 +391,7 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
               {candidate.name} ({candidate.key})
             </option>
           ))}
-        </select>
+        </NativeSelect>
         {team && (
           <TeamEditor
             key={team.id}
@@ -382,11 +403,9 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
         )}
         <form className="team-form team-create" hidden={section !== "teams"} onSubmit={create}>
           <h2>Create a team</h2>
-          <p>
-            New teams are available to everyone in this workspace. Their key becomes the prefix of issue identifiers.
-          </p>
+          <p>New teams are available to everyone in this workspace.</p>
           <label htmlFor="new-team-name">New team name</label>
-          <input
+          <Input
             id="new-team-name"
             value={name}
             required
@@ -394,7 +413,7 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
             onChange={(event) => setName(event.target.value)}
           />
           <label htmlFor="new-team-key">New team key</label>
-          <input
+          <Input
             id="new-team-key"
             value={key}
             required
@@ -402,9 +421,9 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
             pattern="[A-Za-z][A-Za-z0-9]{0,6}"
             onChange={(event) => setKey(event.target.value.toUpperCase())}
           />
-          <button className="button primary" disabled={!name.trim() || !key.trim()}>
+          <Button className="button primary" disabled={!name.trim() || !key.trim()}>
             Create team
-          </button>
+          </Button>
         </form>
       </div>
     </section>
