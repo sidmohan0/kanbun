@@ -1,6 +1,7 @@
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { randomUUID } from "node:crypto";
 import { createRuntimeHarness, localWorkerConfig } from "./harness";
+import { connectTestSocket } from "./socket-client";
 import type { D1Database, R2Bucket, DurableObjectNamespace } from "@cloudflare/workers-types";
 import type { BootstrapResponse, WorkspaceContext } from "@kanbun/sync";
 import type { BodyBackup, StoredDocumentBackup } from "../src/backup-format";
@@ -301,34 +302,10 @@ export async function startPreviewRuntime({
           .run();
       },
       async nativeConnect(clientId: string, cookie: string, origin: string | null = appOrigin) {
-        const response = await harness.getWorker().fetch(`/sync/connect?clientId=${encodeURIComponent(clientId)}`, {
-          headers: { Upgrade: "websocket", Cookie: cookie, ...(origin === null ? {} : { Origin: origin }) },
+        return connectTestSocket(url.origin, `/sync/connect?clientId=${encodeURIComponent(clientId)}`, {
+          Cookie: cookie,
+          ...(origin === null ? {} : { Origin: origin }),
         });
-        if (response.status !== 101 || !response.webSocket) return { status: response.status, connection: null };
-        const socket = response.webSocket;
-        const messages: unknown[] = [];
-        const closed = new Promise<{ code: number; reason: string }>((resolve) =>
-          socket.addEventListener("close", (event) => resolve({ code: event.code, reason: event.reason }), {
-            once: true,
-          }),
-        );
-        socket.addEventListener("message", (event) => {
-          try {
-            messages.push(JSON.parse(String(event.data)));
-          } catch {
-            messages.push(event.data);
-          }
-        });
-        socket.accept();
-        return {
-          status: 101,
-          connection: {
-            messages,
-            closed,
-            send: (message: string) => socket.send(message),
-            close: () => socket.close(),
-          },
-        };
       },
       backup: () => backupRpc("backup"),
       restoreBackup: (key: string) => backupRpc("restore", key),
@@ -502,44 +479,12 @@ export async function startPreviewRuntime({
         assertion?: string,
         origin: string | null = appOrigin,
       ): Promise<PreviewConnection> {
-        const response = await harness.getWorker().fetch(`/sync/connect?clientId=${encodeURIComponent(clientId)}`, {
-          headers: {
-            Upgrade: "websocket",
-            ...(origin === null ? {} : { Origin: origin }),
-            "Cf-Access-Jwt-Assertion": assertion ?? (await token()),
-          },
+        const response = await connectTestSocket(url.origin, `/sync/connect?clientId=${encodeURIComponent(clientId)}`, {
+          ...(origin === null ? {} : { Origin: origin }),
+          "Cf-Access-Jwt-Assertion": assertion ?? (await token()),
         });
-        if (response.status !== 101 || !response.webSocket)
-          throw new Error(`Preview socket failed (${response.status}): ${await response.text()}`);
-        const socket = response.webSocket;
-        const messages: unknown[] = [];
-        let finished = false;
-        const closed = new Promise<{ code: number }>((resolve) =>
-          socket.addEventListener(
-            "close",
-            (event) => {
-              finished = true;
-              resolve({ code: event.code });
-            },
-            { once: true },
-          ),
-        );
-        socket.addEventListener("message", (event) => {
-          try {
-            messages.push(JSON.parse(String(event.data)));
-          } catch {
-            messages.push(event.data);
-          }
-        });
-        socket.accept();
-        return {
-          messages,
-          closed,
-          send: (value) => socket.send(value),
-          close: () => {
-            if (!finished) socket.close();
-          },
-        };
+        if (!response.connection) throw new Error(`Preview socket failed (${response.status})`);
+        return response.connection;
       },
       async revokeMember() {
         await environment.ACCOUNTS.prepare("UPDATE workspace_members SET removed_at = ? WHERE workspace_id = ?")
