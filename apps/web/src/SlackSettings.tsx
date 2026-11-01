@@ -4,7 +4,10 @@ import { membershipRequest } from "./membership";
 import type { WorkspaceSnapshot } from "./workspace";
 import { DesktopIntegrationSettings, isDesktopApplication } from "./DesktopIntegrationSettings";
 
-type Connection = { configured: boolean; connection: { teamId: string; teamName: string } | null };
+type Connection = {
+  configured: boolean;
+  connection: { teamId: string; teamName: string; unfurlsEnabled: boolean; reauthorizationRequired: boolean } | null;
+};
 function OwnerSlackSettings() {
   const [value, setValue] = useState<Connection | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +45,20 @@ function OwnerSlackSettings() {
       setBusy(false);
     }
   }
+  async function unfurls(enabled: boolean) {
+    const previous = value;
+    if (value?.connection) setValue({ ...value, connection: { ...value.connection, unfurlsEnabled: enabled } });
+    setBusy(true);
+    setError(null);
+    try {
+      setValue((await membershipRequest("/api/integrations/slack/unfurls", { enabled })) as Connection);
+    } catch (failure) {
+      setValue(previous);
+      setError(failure instanceof Error ? failure.message : "Slack previews could not be changed.");
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <section className="github-settings" aria-label="Slack connection">
       <h2>Slack</h2>
@@ -53,6 +70,21 @@ function OwnerSlackSettings() {
       {!value && !error && <p role="status">Loading Slack connection…</p>}
       {value && !value.configured && <p>Slack is not configured.</p>}
       {value?.connection && <p>Connected to {value.connection.teamName}.</p>}
+      {value?.connection && (
+        <>
+          <label>
+            <input
+              type="checkbox"
+              checked={value.connection.unfurlsEnabled}
+              disabled={busy}
+              onChange={(event) => void unfurls(event.target.checked)}
+            />{" "}
+            Preview public issue links in Slack
+          </label>
+          <p>Only issues in public teams are shared. Existing previews remain in Slack after disabling.</p>
+          {value.connection.reauthorizationRequired && <p>Update Slack authorization to enable link previews.</p>}
+        </>
+      )}
       {value?.configured && (
         <Button variant="outline" disabled={busy} onClick={() => void action(false)}>
           {busy ? "Please wait…" : value.connection ? "Update Slack authorization" : "Connect Slack"}
@@ -63,7 +95,9 @@ function OwnerSlackSettings() {
           Disconnect Slack
         </Button>
       )}
-      {value?.configured && <p>This connection authorizes Kanbun to post messages in Slack.</p>}
+      {value?.configured && (
+        <p>This connection authorizes Kanbun to post messages and preview public issue links in Slack.</p>
+      )}
     </section>
   );
 }

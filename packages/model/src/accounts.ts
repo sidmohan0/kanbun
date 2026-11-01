@@ -181,6 +181,8 @@ export const slackConnections = sqliteTable(
     scopes: text("scopes").notNull(),
     connectedBy: text("connected_by").notNull(),
     updatedAt: text("updated_at").notNull(),
+    unfurlsEnabled: bool("unfurls_enabled").notNull().default(true),
+    unfurlGeneration: text("unfurl_generation").notNull().default(""),
   },
   (t) => [uniqueIndex("slack_connections_team").on(t.teamId)],
 );

@@ -60,6 +60,7 @@ export async function startPreviewRuntime({
   const githubProviderWorker = `preview-test-github-provider-${instance}`;
   const googleProviderWorker = `preview-test-google-provider-${instance}`;
   const googleControlWorker = `preview-test-google-control-${instance}`;
+  const slackControlWorker = `preview-test-slack-control-${instance}`;
   const local = await localWorkerConfig();
   const issuer = "https://test-access.cloudflareaccess.com";
   const audience = "protected-preview-test-audience";
@@ -87,6 +88,7 @@ export async function startPreviewRuntime({
           name: `kanbun-preview-test-${instance}`,
           ...(backups ? { main: "test/backup-runtime-worker.mjs" } : {}),
           ...(sheetsConfig ? { main: "test/google-sheets-runtime-worker.mjs" } : {}),
+          ...(slackConfig && !sheetsConfig && !backups ? { main: "test/slack-runtime-worker.mjs" } : {}),
           vars: {
             LOCAL_DEV: localDev ? "true" : "false",
             AUTH_MODE: initialAuthMode ?? (emailAuth ? "email" : "preview"),
@@ -145,6 +147,22 @@ export async function startPreviewRuntime({
         },
       },
       { config: { name: assetWorker, main: "test/assets-worker.ts", compatibility_date: "2026-10-29" } },
+      ...(slackConfig
+        ? [
+            {
+              config: {
+                name: slackControlWorker,
+                main: "test/slack-control-worker.ts",
+                compatibility_date: "2026-10-29",
+                durable_objects: {
+                  bindings: [
+                    { name: "WORKSPACES", class_name: "WorkspaceDO", script_name: `kanbun-preview-test-${instance}` },
+                  ],
+                },
+              },
+            },
+          ]
+        : []),
       ...(sheetsConfig
         ? [
             {
@@ -356,6 +374,18 @@ export async function startPreviewRuntime({
       },
       async slackCredentials() {
         return (await environment.ACCOUNTS.prepare("SELECT * FROM slack_connections").all()).results;
+      },
+      async slackControl(action: "alarm" | "snapshot" | "gate" | "pending" | "release") {
+        const response = await harness
+          .getWorker(slackControlWorker)
+          .fetch("http://fixture/", { method: "POST", body: JSON.stringify({ action, workspaceId }) });
+        if (!response.ok) throw new Error("Slack test control failed");
+        return response.json();
+      },
+      async slackLegacyScopes() {
+        await environment.ACCOUNTS.prepare("UPDATE slack_connections SET scopes='chat:write' WHERE workspace_id=?")
+          .bind(workspaceId)
+          .run();
       },
       async authRows() {
         return {

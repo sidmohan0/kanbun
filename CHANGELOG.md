@@ -5,6 +5,8 @@ preparation moves them to a dated version heading.
 
 ## [Unreleased]
 
+- Add owner-controlled Slack previews for public-team issue links, with durable retry delivery, permission refresh, and private-team protection.
+
 - Security: Reject Slack and Google Sheets token encryption keys in public installation variables.
 
 - Added owner-only Slack workspace connection settings with encrypted credentials, disconnect, and signed uninstall handling.

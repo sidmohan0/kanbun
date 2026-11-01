@@ -15,7 +15,7 @@ const grant = {
   access_token: "xoxb-fixture-private-token",
   token_type: "bot",
   app_id: "A123",
-  scope: "chat:write",
+  scope: "chat:write,links:read,links:write",
   team: { id: "T123", name: "Example team" },
   bot_user_id: "U123",
   is_enterprise_install: false,
@@ -60,7 +60,7 @@ it("connects Slack only through a browser/session-bound owner grant and keeps to
     expect(begin.status).toBe(200);
     const url = new URL(((await begin.json()) as { url: string }).url);
     expect(url.origin).toBe("https://slack.com");
-    expect(url.searchParams.get("scope")).toBe("chat:write");
+    expect(url.searchParams.get("scope")).toBe("chat:write,links:read,links:write");
     expect(begin.headers.getSetCookie().join(";")).toContain("HttpOnly");
     other.cookies.set("__Host-kanbun-slack", owner.cookies.get("__Host-kanbun-slack")!);
     const callback = "/api/integrations/slack/callback?code=fixture-code&state=" + url.searchParams.get("state");

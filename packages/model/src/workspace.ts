@@ -982,6 +982,13 @@ export const githubDelivery = sqliteTable("github_delivery", {
   completedAt: text("completed_at"),
 });
 
+/** Private delivery receipts keep Slack retries from creating new unfurl work after completion. */
+export const slackDelivery = sqliteTable("slack_delivery", {
+  id: text("id").primaryKey(),
+  createdAt: text("created_at").notNull(),
+  completedAt: text("completed_at"),
+});
+
 /** Monotonic request-start ordering, independent of wall-clock ties across Edge isolates. */
 export const githubObservationCursor = sqliteTable("github_observation_cursor", {
   id: text("id").primaryKey(),
