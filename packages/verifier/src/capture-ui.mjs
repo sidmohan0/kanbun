@@ -20,7 +20,7 @@ const page = await browser.newPage({
 });
 const captured = [];
 async function capture(name) {
-  await page.screenshot({ path: resolve(output, `${name}.png`), fullPage: false });
+  await page.screenshot({ path: resolve(output, `${name}.png`), fullPage: false, animations: "disabled" });
   captured.push(name);
 }
 try {

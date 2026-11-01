@@ -59,11 +59,13 @@
 }
 .create-panel {
   position: fixed;
-  z-index: 10;
+  z-index: 51;
   top: 16%;
   left: 50%;
+  translate: none;
   transform: translateX(-50%);
   width: min(560px, calc(100vw - 32px));
+  max-width: none;
   margin: 0;
   padding: 20px;
   background: var(--surface-raised);
@@ -432,7 +434,7 @@
 }
 
 .label-picker {
-  position: relative;
+  border: 1px solid var(--border);
 }
 .label-picker > summary {
   cursor: pointer;

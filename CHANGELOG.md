@@ -7,6 +7,7 @@ preparation moves them to a dated version heading.
 
 ### Changed
 
+- Add shared UI controls and improve issue creation and label picker keyboard interactions.
 - Streamline workspace navigation, issue details, settings, and sign-in screens, and add repeatable local UI captures.
 
 ### Added

@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover";
 import type { Row } from "@kanbun/model";
 import { workspace, type WorkspaceSnapshot } from "./workspace";
 
@@ -128,36 +131,42 @@ export function IssueProperties({
                 {label.name} <span aria-hidden="true">×</span>
               </button>
             ))}
-          <details className="label-picker">
-            <summary>+ Add label</summary>
-            <input
-              type="search"
-              aria-label="Search labels"
-              placeholder="Search labels"
-              value={labelSearch}
-              onChange={(event) => setLabelSearch(event.target.value)}
-            />
-            <select
-              className="add-label"
-              aria-label="Add label"
-              value=""
-              disabled={!available.length}
-              onChange={(event) => {
-                if (event.target.value) change(() => workspace.setIssueLabel(issue.id, event.target.value, true));
-              }}
-            >
-              <option value="">
-                {available.length ? "+ Add label" : labels.length ? "All labels applied" : "No labels available"}
-              </option>
-              {available
-                .filter((label) => label.name.toLowerCase().includes(labelSearch.toLowerCase().trim()))
-                .map((label) => (
-                  <option key={label.id} value={label.id}>
-                    {label.name}
-                  </option>
-                ))}
-            </select>
-          </details>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="sm">
+                + Add label
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="label-picker" align="start">
+              <Input
+                type="search"
+                aria-label="Search labels"
+                placeholder="Search labels"
+                value={labelSearch}
+                onChange={(event) => setLabelSearch(event.target.value)}
+              />
+              <select
+                className="add-label"
+                aria-label="Add label"
+                value=""
+                disabled={!available.length}
+                onChange={(event) => {
+                  if (event.target.value) change(() => workspace.setIssueLabel(issue.id, event.target.value, true));
+                }}
+              >
+                <option value="">
+                  {available.length ? "+ Add label" : labels.length ? "All labels applied" : "No labels available"}
+                </option>
+                {available
+                  .filter((label) => label.name.toLowerCase().includes(labelSearch.toLowerCase().trim()))
+                  .map((label) => (
+                    <option key={label.id} value={label.id}>
+                      {label.name}
+                    </option>
+                  ))}
+              </select>
+            </PopoverContent>
+          </Popover>
           <button
             className="button quiet compact"
             onClick={() => {
