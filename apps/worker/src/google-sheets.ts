@@ -165,17 +165,12 @@ export async function syncSheets(env: Env, workspaceId: string, store: Store, se
     });
     let spreadsheetId = row.spreadsheet_id;
     if (!spreadsheetId) {
-      const file = z
-        .object({ spreadsheetId: z.string().regex(/^[A-Za-z0-9_-]+$/) })
-        .parse(
-          await google(env, token.access_token, "", {
-            properties: { title: "Kanbun Issues", timeZone: "Etc/UTC" },
-            sheets: [
-              { properties: { sheetId: 0, title: "Issues" } },
-              { properties: { sheetId: 1, title: "Projects" } },
-            ],
-          }),
-        );
+      const file = z.object({ spreadsheetId: z.string().regex(/^[A-Za-z0-9_-]+$/) }).parse(
+        await google(env, token.access_token, "", {
+          properties: { title: "Kanbun Issues", timeZone: "Etc/UTC" },
+          sheets: [{ properties: { sheetId: 0, title: "Issues" } }, { properties: { sheetId: 1, title: "Projects" } }],
+        }),
+      );
       spreadsheetId = file.spreadsheetId;
       // Retain the ID before export so a failed update never creates duplicate files on retry.
       await database(env)
