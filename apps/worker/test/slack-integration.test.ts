@@ -43,6 +43,7 @@ it("connects Slack only through a browser/session-bound owner grant and keeps to
       { host: "slack.com", method: "POST", path: "/api/oauth.v2.access", body: grant },
       { host: "slack.com", method: "POST", path: "/api/auth.revoke", body: { ok: false, error: "token_revoked" } },
       { host: "slack.com", method: "POST", path: "/api/auth.test", body: { ok: true }, once: true },
+      { host: "slack.com", method: "POST", path: "/api/auth.test", body: { ok: true }, once: true },
       { host: "slack.com", method: "POST", path: "/api/auth.test", body: { ok: false, error: "token_revoked" } },
     ]);
     const owner = nativeAgent(runtime),
@@ -206,7 +207,8 @@ it("removes deleted Slack credentials while retaining connections during provide
               type: "event_callback",
               api_app_id: "A123",
               team_id: "T123",
-              event_time: Math.floor(Date.now() / 1000),
+              // A valid signed retry or skewed provider clock can predate our local write.
+              event_time: Math.floor(Date.now() / 1000) - 60,
               event: { type: "app_uninstalled" },
             });
 

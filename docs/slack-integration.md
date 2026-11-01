@@ -48,9 +48,9 @@ OAuth state is one-use and bound to the browser cookie, native owner session and
 credentials are encrypted with AES-GCM and workspace-bound associated data in accounts D1; the
 browser receives only the connection name and identifier. Credentials are never synced to members.
 Disconnect revokes the bot token before deleting the connection. Signed uninstall events remove
-connections only after checking that the stored token is revoked; timestamp and credential checks
-prevent delayed events from deleting a valid reconnection. Provider failures leave the connection
-intact and cause Slack to retry delivery.
+connections only after checking that the stored token is inactive; credential checks prevent delayed
+events from deleting a valid reconnection without relying on local and provider clocks agreeing.
+Provider failures leave the connection intact and cause Slack to retry delivery.
 
 Isolated recovery targets cannot manage Slack or receive events. Restoring a directory leaves
 Slack connections and pending OAuth states empty: reconnect explicitly after recovery activation.

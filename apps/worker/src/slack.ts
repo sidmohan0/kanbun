@@ -289,20 +289,19 @@ export async function slackEventRoute(request: Request, env: Env): Promise<Respo
       challenge: z.string().optional(),
       api_app_id: z.string().optional(),
       team_id: z.string().optional(),
-      event_time: z.number().int().positive().optional(),
       event: z.object({ type: z.string() }).optional(),
     })
     .parse(JSON.parse(raw));
   if (input.type === "url_verification" && input.challenge) return json({ challenge: input.challenge });
   if (input.api_app_id !== env.SLACK_APP_ID) throw new RequestError("Slack app does not match", 403);
-  if (input.type === "event_callback" && input.event?.type === "app_uninstalled" && input.team_id && input.event_time) {
+  if (input.type === "event_callback" && input.event?.type === "app_uninstalled" && input.team_id) {
     const connection = await database(env)
-      .prepare("SELECT workspace_id,token_ciphertext,updated_at FROM slack_connections WHERE team_id=?")
+      .prepare("SELECT workspace_id,token_ciphertext FROM slack_connections WHERE team_id=?")
       .bind(input.team_id)
-      .first<{ workspace_id: string; token_ciphertext: string; updated_at: string }>();
-    if (connection && Date.parse(connection.updated_at) <= input.event_time * 1000 + 999) {
-      // Slack event timestamps have second precision. Probe the stored token so an old
-      // uninstall cannot remove a valid reconnection from the same second.
+      .first<{ workspace_id: string; token_ciphertext: string }>();
+    if (connection) {
+      // Provider token validity decides cleanup, not the ordering of clocks or deliveries.
+      // A delayed uninstall cannot remove a valid reconnection, even after clock skew.
       const token = await openSlackToken(env, connection.workspace_id, connection.token_ciphertext);
       const status = z.object({ ok: z.boolean() }).parse(await api(env, "auth.test", { token }));
       if (!status.ok)
