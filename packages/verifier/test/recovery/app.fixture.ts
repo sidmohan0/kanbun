@@ -17,8 +17,10 @@ export type AppHarness = {
   runtime: Runtime;
 };
 
+type ProxyTarget = { protocol: string; host: string; port: number };
+
 export async function startProductServer(
-  origin: string,
+  origin: string | ProxyTarget,
   cacheDir: string,
   authenticated?: { token?(request?: import("node:http").IncomingMessage): string; appOrigin: string },
 ) {
@@ -66,7 +68,7 @@ export async function startProductServer(
               });
           },
         },
-        "/__local": origin,
+        "/__local": typeof origin === "string" ? origin : { target: origin },
       },
     },
   });
@@ -96,17 +98,34 @@ export async function readWorkspaceState(page: Page, key: string): Promise<Persi
   }, key);
 }
 
-export const test = base.extend<{ app: AppHarness; seedWorkspace: boolean }>({
+export const test = base.extend<
+  { app: AppHarness; seedWorkspace: boolean },
+  { product: { origin: string; target: ProxyTarget } }
+>({
+  product: [
+    async ({}, use) => {
+      const temporary = await mkdtemp(path.join(tmpdir(), "kanbun-product-ui-"));
+      const target = { protocol: "http:", host: "127.0.0.1", port: 0 };
+      let product: Awaited<ReturnType<typeof startProductServer>> | undefined;
+      try {
+        product = await startProductServer(target, path.join(temporary, "vite-cache"));
+        await use({ origin: product.origin, target });
+      } finally {
+        await product?.server.close();
+        await rm(temporary, { recursive: true, force: true });
+      }
+    },
+    { scope: "worker" },
+  ],
   seedWorkspace: [true, { option: true }],
-  app: async ({ seedWorkspace }, use, testInfo) => {
+  app: async ({ seedWorkspace, product }, use, testInfo) => {
     const runtime = await startWorkspaceRuntime({ localDev: true });
-    const temporary = await mkdtemp(path.join(tmpdir(), "kanbun-product-ui-"));
-    let vite: Awaited<ReturnType<typeof createServer>> | undefined;
     try {
       const { teamId, issueId } = seedWorkspace ? await runtime.seed() : { teamId: "", issueId: "" };
-      // Load the product's own React configuration, index.html, and entry point.
-      const product = await startProductServer(runtime.origin, path.join(temporary, "vite-cache"));
-      vite = product.server;
+      const url = new URL(runtime.origin);
+      product.target.protocol = url.protocol;
+      product.target.host = url.hostname;
+      product.target.port = Number(url.port);
       await use({ origin: product.origin, teamId, issueId, runtime });
     } finally {
       try {
@@ -123,9 +142,7 @@ export const test = base.extend<{ app: AppHarness; seedWorkspace: boolean }>({
           });
         }
       } finally {
-        await vite?.close();
         await runtime.close();
-        await rm(temporary, { recursive: true, force: true });
       }
     }
   },
