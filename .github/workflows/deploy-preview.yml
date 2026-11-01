@@ -6,6 +6,7 @@ on:
     types: [completed]
 permissions:
   contents: read
+  packages: read
 concurrency:
   group: kanbun-preview-deployment
   cancel-in-progress: false
@@ -31,6 +32,8 @@ jobs:
           if [ "$current" = "$RELEASE_SHA" ]; then echo 'deploy=true' >> "$GITHUB_OUTPUT"; fi
       - uses: ./.github/actions/devcontainer
         if: steps.current.outputs.deploy == 'true'
+        with:
+          profile: deps
       - name: Deploy and check preview
         if: steps.current.outputs.deploy == 'true'
         env:

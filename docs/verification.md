@@ -227,3 +227,17 @@ transitive override is configured. Review these findings when the parent tools p
 updates, or when commands, glob settings or loader usage change. A passing production audit does
 not resolve the development-tool findings, and the audit results can change as advisories are
 published.
+
+## CI image and setup profiles
+
+Changes to the devcontainer image inputs on `main` publish an amd64 and arm64 image to GHCR,
+tagged by the content hash of those inputs. Repository CI uses that exact tag as a build cache when
+available. A missing or inaccessible image, including on a fork or a pull request changing image
+inputs, falls back to a normal build from the checked-out Dockerfile. First publication can race a
+main run; trigger the image workflow manually to seed the cache if necessary. The optional cache
+does not replace source or runtime qualification checks. Only the image workflow has package-write
+permission; CI uses read-only access.
+
+The CI setup action has three profiles: `full` installs frozen dependencies and Chromium; `deps`
+installs dependencies without downloading Chromium for the preview deployment; `policy` skips
+dependency setup for the standalone Node policy checks. Local setup remains `full` by default.
