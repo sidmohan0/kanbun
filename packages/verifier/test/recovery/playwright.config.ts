@@ -22,11 +22,7 @@ export default defineConfig({
     ? { testIgnore: "**/app-scale.spec.ts" }
     : {}),
   fullyParallel: true,
-  ...(requestedWorkers === undefined
-    ? process.env["CI"] === "true"
-      ? { workers: 3 }
-      : {}
-    : { workers: Number(requestedWorkers) }),
+  workers: requestedWorkers === undefined ? (process.env["CI"] === "true" ? 3 : 1) : Number(requestedWorkers),
   outputDir: path.join(artifacts, "test-results"),
   reporter: [
     ["list"],
