@@ -37,6 +37,10 @@ must approve installation; local authorization does not override Slack administr
 Only one Slack workspace can be connected to a Kanbun workspace. Disconnect before switching.
 Update Slack authorization reconnects the same workspace.
 
+In the desktop app, choose **Manage Slack in browser** and sign in there before connecting.
+The handoff opens only integration settings; authorization starts in the browser so its session
+and OAuth state remain together. Reload the desktop app after updating the connection.
+
 OAuth state is one-use and bound to the browser cookie, native owner session and workspace. Bot
 credentials are encrypted with AES-GCM and workspace-bound associated data in accounts D1; the
 browser receives only the connection name and identifier. Credentials are never synced to members.

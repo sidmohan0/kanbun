@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "./components/ui/button";
 import { membershipRequest } from "./membership";
 import type { WorkspaceSnapshot } from "./workspace";
+import { DesktopIntegrationSettings, isDesktopApplication } from "./DesktopIntegrationSettings";
 
 type Connection = { configured: boolean; connection: { teamId: string; teamName: string } | null };
 function OwnerSlackSettings() {
@@ -67,5 +68,6 @@ function OwnerSlackSettings() {
   );
 }
 export function SlackSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
-  return snapshot.context?.mode === "hosted" && snapshot.context.role === "owner" ? <OwnerSlackSettings /> : null;
+  if (snapshot.context?.mode !== "hosted" || snapshot.context.role !== "owner") return null;
+  return isDesktopApplication() ? <DesktopIntegrationSettings name="Slack" /> : <OwnerSlackSettings />;
 }
