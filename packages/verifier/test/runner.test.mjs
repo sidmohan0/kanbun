@@ -81,9 +81,9 @@ const args=invocation.filter(argument=>argument!=="--reporter=append-only");
 if(args[0]==="--version")console.log(process.env.FIXTURE_PNPM_VERSION || "10.28.0");
 else {
   if(process.env.FIXTURE_OVERLAP) {
-    fs.appendFileSync('.pnpm-events',JSON.stringify({name:args[0],event:'start',time:Date.now()})+'\\n');
+    fs.appendFileSync('.pnpm-events',JSON.stringify({name:args[0],args,event:'start',time:Date.now(),vitestWorkers:process.env.VITEST_MAX_WORKERS,workspaceConcurrency:process.env.KANBUN_TEST_WORKSPACE_CONCURRENCY,recoveryWorkers:process.env.KANBUN_RECOVERY_WORKERS})+'\\n');
     await new Promise(resolve=>setTimeout(resolve,150));
-    fs.appendFileSync('.pnpm-events',JSON.stringify({name:args[0],event:'end',time:Date.now()})+'\\n');
+    fs.appendFileSync('.pnpm-events',JSON.stringify({name:args[0],args,event:'end',time:Date.now()})+'\\n');
   }
   console.log("stdout from "+args.join(" "));
   console.error("stderr from "+args.join(" "));
@@ -96,7 +96,7 @@ else {
     const parent=path.resolve("artifacts/verification"),run=path.join(parent,fs.readdirSync(parent).at(-1));
     fs.rmSync(run,{recursive:true});fs.writeFileSync(run,"blocks exported artifacts");
   }
-  if(process.env.FIXTURE_FAIL===args[0])process.exitCode=7;
+  if(process.env.FIXTURE_FAIL===args[0] || (process.env.FIXTURE_FAIL_REMAINING && args[0]==="test:recovery" && args[1]==="--remaining"))process.exitCode=7;
 }
 `,
     { mode: 0o755 },
@@ -168,16 +168,66 @@ test("independent groups overlap while the receipt retains its planned order", (
   const when = (name, event) => events.find((item) => item.name === name && item.event === event).time;
   assert.ok(when("lint", "start") < when("format:check", "end"));
   assert.ok(when("seed", "start") < when("build:verified", "end"));
-  assert.ok(when("build:verified", "start") >= when("test", "end"));
-  assert.ok(
-    events.findLast((item) => item.name === "test:recovery" && item.event === "start").time >= when("test", "end"),
+  const recoveryStart = events.findLast(
+    (item) => item.name === "test:recovery" && item.args[1] === "--remaining" && item.event === "start",
+  ).time;
+  const recoveryEnd = events.findLast(
+    (item) => item.name === "test:recovery" && item.args[1] === "--remaining" && item.event === "end",
+  ).time;
+  assert.ok(recoveryStart < when("test", "end"));
+  assert.ok(when("build:verified", "start") >= Math.max(when("test", "end"), recoveryEnd));
+  const testStart = events.find((item) => item.name === "test" && item.event === "start");
+  const browserStart = events.findLast(
+    (item) => item.name === "test:recovery" && item.args[1] === "--remaining" && item.event === "start",
   );
+  assert.equal(testStart.vitestWorkers, "1");
+  assert.equal(testStart.workspaceConcurrency, "1");
+  assert.equal(browserStart.recoveryWorkers, "1");
   assert.deepEqual(
     report.steps
       .filter((step) => ["check-tests", "build", "smoke", "recovery"].includes(step.name))
       .map((step) => step.name),
     ["check-tests", "build", "smoke", "recovery"],
   );
+});
+
+test("parallel failures retain both test results and skip dependent stages", (t) => {
+  const f = fixture(t);
+  const { report, status } = f.run(["all"], { FIXTURE_FAIL: "test" });
+  assert.notEqual(status, 0);
+  assert.equal(report.steps.find((step) => step.name === "check-tests").pass, false);
+  assert.equal(report.steps.find((step) => step.name === "recovery").pass, true);
+  assert.equal(report.steps.find((step) => step.name === "build").executed, false);
+  assert.equal(report.steps.find((step) => step.name === "scale").executed, false);
+});
+
+test("CI runs the bounded test and recovery pair while omitting PR scale", (t) => {
+  const f = fixture(t);
+  const { report, status } = f.run(["all"], {
+    CI: "true",
+    GITHUB_EVENT_NAME: "pull_request",
+    FIXTURE_OVERLAP: "1",
+  });
+  assert.equal(status, 0);
+  const events = readFileSync(path.join(f.root, ".pnpm-events"), "utf8").trim().split("\n").map(JSON.parse);
+  const packages = events.find((event) => event.name === "test" && event.event === "start");
+  const browser = events.find((event) => event.args?.[1] === "--remaining" && event.event === "start");
+  const packagesEnd = events.find((event) => event.name === "test" && event.event === "end");
+  assert.equal(packages.workspaceConcurrency, "1");
+  assert.equal(packages.vitestWorkers, "1");
+  assert.equal(browser.recoveryWorkers, "1");
+  assert.ok(browser.time < packagesEnd.time);
+  assert.ok(!report.steps.some((step) => step.name === "scale"));
+});
+
+test("a parallel browser failure retains package results and skips dependent stages", (t) => {
+  const f = fixture(t);
+  const { report, status } = f.run(["all"], { FIXTURE_FAIL_REMAINING: "1" });
+  assert.notEqual(status, 0);
+  assert.equal(report.steps.find((step) => step.name === "check-tests").pass, true);
+  assert.equal(report.steps.find((step) => step.name === "recovery").pass, false);
+  assert.equal(report.steps.find((step) => step.name === "build").executed, false);
+  assert.equal(report.steps.find((step) => step.name === "scale").executed, false);
 });
 
 test("a silent pnpm parent preserves concurrent recursive diagnostics while emitting only JSON", (t) => {

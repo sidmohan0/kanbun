@@ -203,7 +203,7 @@ function plan(command, root, metadata, outputDirectory, evidenceFile) {
     steps.push({
       name: "check-tests",
       command: ["pnpm", "--reporter=append-only", "test"],
-      ...(process.env.CI === "true" ? {} : { env: { KANBUN_TEST_WORKSPACE_CONCURRENCY: "1" } }),
+      ...(command === "all" ? { env: { KANBUN_TEST_WORKSPACE_CONCURRENCY: "1", VITEST_MAX_WORKERS: "1" } } : {}),
     });
   }
   if (command === "launch") {
@@ -229,7 +229,7 @@ function plan(command, root, metadata, outputDirectory, evidenceFile) {
     steps.push({
       name: "recovery",
       command: ["pnpm", "--reporter=append-only", "test:recovery", ...(command === "all" ? ["--remaining"] : [])],
-      ...(command === "all" ? { env: { KANBUN_SKIP_SCALE: "1" } } : {}),
+      ...(command === "all" ? { env: { KANBUN_SKIP_SCALE: "1", KANBUN_RECOVERY_WORKERS: "1" } } : {}),
     });
   if (
     command === "scale" ||
@@ -390,7 +390,23 @@ export async function runVerification({
       reason: "A prerequisite or earlier step failed.",
     });
     let failed = false;
+    let parallelRecovery;
     for (let index = 0; index < steps.length;) {
+      if (command === "all" && steps[index].name === "check-tests" && !failed) {
+        const recoveryIndex = steps.findIndex((step) => step.name === "recovery");
+        if (recoveryIndex < 0) throw new Error("The complete verifier requires browser recovery.");
+        const [tests, recovery] = await Promise.all([perform(index), perform(recoveryIndex)]);
+        report.steps.push(tests);
+        parallelRecovery = recovery;
+        failed = !tests.pass || !recovery.pass;
+        index++;
+        continue;
+      }
+      if (steps[index].name === "recovery" && parallelRecovery) {
+        report.steps.push(parallelRecovery);
+        index++;
+        continue;
+      }
       const group = cheap.has(steps[index].name)
         ? cheap
         : command === "all" && buildAndSmoke.has(steps[index].name)
