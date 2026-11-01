@@ -10,6 +10,7 @@ describe("email sign-in destinations", () => {
       "#my-issues",
       "#inbox",
       "#settings",
+      "#settings/integrations",
       "#members",
       `#invite/${token}`,
     ]) {

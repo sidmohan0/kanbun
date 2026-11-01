@@ -17,6 +17,7 @@ test("sub-issues and inverse dependencies converge in another browser and reject
     for (const page of [first, second]) {
       await page.goto(`${app.origin}/#issues/${app.issueId}`);
       await expect(page.locator(".sync-indicator")).toContainText("Saved");
+      await page.getByText("Structure and dependencies", { exact: true }).first().click();
     }
     await region(first).getByRole("textbox", { name: "New sub-issue title", exact: true }).fill("Release checklist");
     await region(first).getByRole("button", { name: "Create sub-issue", exact: true }).click();
@@ -28,6 +29,7 @@ test("sub-issues and inverse dependencies converge in another browser and reject
     await region(first).getByRole("button", { name: "Add relationship", exact: true }).click();
     await expect(region(second)).toContainText("Blocks");
     await first.goto(`${app.origin}/#issues/${child.id}`);
+    await first.getByText("Structure and dependencies", { exact: true }).first().click();
     await expect(region(first).getByRole("combobox", { name: "Parent issue", exact: true })).toHaveValue(app.issueId);
     await expect(region(first)).toContainText("Blocked by");
     await region(first).getByRole("combobox", { name: "Link issue", exact: true }).selectOption(app.issueId);
@@ -40,6 +42,7 @@ test("sub-issues and inverse dependencies converge in another browser and reject
     await region(first).getByRole("combobox", { name: "Parent issue", exact: true }).selectOption("");
     await expect(region(second).getByRole("button", { name: /^Detach sub-issue / })).toHaveCount(0);
     await first.reload();
+    await first.getByText("Structure and dependencies", { exact: true }).first().click();
     await expect(region(first).getByRole("combobox", { name: "Parent issue", exact: true })).toHaveValue("");
     await expect(region(first).getByRole("button", { name: /^Remove / })).toHaveCount(0);
     // Fractional keys are case-sensitive: aZ precedes aa even when locale sorting disagrees.
@@ -115,6 +118,7 @@ test("parent and related-issue edits survive offline reload and publish once aft
   expect((await result.json()) as PushResponse).toMatchObject({ ok: true, rejected: [] });
   await page.goto(`${app.origin}/#issues/${app.issueId}`);
   await expect(page.locator(".sync-indicator")).toContainText("Saved");
+  await page.getByText("Structure and dependencies", { exact: true }).first().click();
   await page.route("**/sync/push", (route) => route.abort("internetdisconnected"));
   await region(page).getByRole("combobox", { name: "Parent issue", exact: true }).selectOption(target);
   await region(page).getByRole("combobox", { name: "Relationship", exact: true }).selectOption("related");
@@ -123,12 +127,14 @@ test("parent and related-issue edits survive offline reload and publish once aft
   const key = "local:user-alice:main";
   await expect.poll(async () => (await readWorkspaceState(page, key))?.pending.length).toBe(2);
   await page.reload();
+  await page.getByText("Structure and dependencies", { exact: true }).first().click();
   await expect(region(page).getByRole("combobox", { name: "Parent issue", exact: true })).toHaveValue(target);
   await expect(region(page)).toContainText("Related to");
   await page.unroute("**/sync/push");
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect.poll(async () => (await readWorkspaceState(page, key))?.pending.length).toBe(0);
   await page.reload();
+  await page.getByText("Structure and dependencies", { exact: true }).first().click();
   await expect(region(page).getByRole("combobox", { name: "Parent issue", exact: true })).toHaveValue(target);
   await expect(region(page)).toContainText("Related to");
   const final = await app.runtime.inspect();

@@ -46,6 +46,8 @@ test("native sign-in needs the requesting browser and explicit confirmation, and
     const session = (await ownerContext.cookies()).find((cookie) => cookie.name === SESSION_COOKIE)!;
     expect(session).toMatchObject({ httpOnly: true, secure: true, sameSite: "Lax", path: "/" });
     expect(await owner.evaluate(() => document.cookie)).not.toContain(SESSION_COOKIE);
+    if (!(await owner.getByRole("textbox", { name: "Issue title", exact: true }).isVisible()))
+      await owner.getByRole("button", { name: "New issue" }).click();
     await owner.getByRole("textbox", { name: "Issue title", exact: true }).fill("Native owner work");
     await owner.getByRole("button", { name: "Create issue", exact: true }).click();
     await expect(owner.getByRole("button", { name: /Edit title for KAN-1/ })).toContainText("Native owner work");
@@ -77,6 +79,7 @@ test("an email-only invite preserves its destination through sign-in and opens t
   try {
     await loginEmail(owner, emailApp);
     await owner.getByRole("link", { name: "Members", exact: true }).click();
+    await owner.getByText("Invite member", { exact: true }).click();
     await owner.getByRole("textbox", { name: "Invite by email", exact: true }).fill(memberEmail);
     await owner.getByRole("button", { name: "Create invitation", exact: true }).click();
     const invitationLink = owner.getByRole("textbox", { name: "Invitation link", exact: true });
@@ -148,6 +151,8 @@ test("native expiry hides cached work while the same person can sign in again an
   try {
     await loginEmail(page, emailApp);
     const identity = (await (await context.request.get(`${emailApp.origin}/api/context`)).json()) as WorkspaceContext;
+    if (!(await page.getByRole("textbox", { name: "Issue title", exact: true }).isVisible()))
+      await page.getByRole("button", { name: "New issue" }).click();
     await page.getByRole("textbox", { name: "Issue title", exact: true }).fill("Offline native task");
     await page.getByRole("button", { name: "Create issue", exact: true }).click();
     await expect(page.getByRole("button", { name: /Edit title for KAN-1/ })).toContainText("Offline native task");
@@ -180,7 +185,7 @@ test("native expiry hides cached work while the same person can sign in again an
       return result;
     };
     await changeFromPeer(1, 1);
-    await expect(page.getByRole("button", { name: /Edit title for KAN-1/ })).toContainText("Priority: Urgent");
+    await expect(page.getByRole("button", { name: /Edit title for KAN-1/ })).toContainText("Urgent");
     await expect(page.locator(".sync-indicator")).toContainText("Saved");
     await page.route("**/sync/push", (route) => route.abort("internetdisconnected"));
     // With all HTTP synchronization blocked, only the real server's WebSocket close can show sign-in.

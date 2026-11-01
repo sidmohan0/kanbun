@@ -31,38 +31,48 @@ export function IssueDetail({
         ← {backLabel}
       </a>
       <h2>{issue.title}</h2>
-      <IssueProperties issue={issue} snapshot={workspaceSnapshot} onArchive={onArchive} />
-      <IssueRelationships issue={issue} snapshot={workspaceSnapshot} />
-      <IssueDevelopment issue={issue} snapshot={workspaceSnapshot} />
-      <div className="description-heading">
-        <label htmlFor="issue-description">Description</label>
-        <span role="status" aria-label="Description status" aria-live="polite">
-          {snapshot.status}
-        </span>
-      </div>
-      <textarea
-        id="issue-description"
-        className="description-editor"
-        value={snapshot.text}
-        onChange={(event) => session.edit(event.target.value)}
-        disabled={!snapshot.ready || snapshot.blocked}
-        placeholder="Describe the work, decisions, and what done looks like."
-        aria-describedby={snapshot.error ? "description-error" : "description-help"}
-      />
-      <p id="description-help" className="description-help">
-        Changes save automatically and merge with your teammates’ edits.
-      </p>
-      {snapshot.error && (
-        <div className="notice" role="alert" id="description-error">
-          <span>{snapshot.error}</span>
-          {!snapshot.blocked && (
-            <button className="button quiet compact" onClick={session.refresh}>
-              Retry description sync
-            </button>
+      <div className="issue-detail-layout">
+        <div className="issue-detail-content">
+          <div className="description-heading">
+            <label htmlFor="issue-description">Description</label>
+            <span role="status" aria-label="Description status" aria-live="polite">
+              {snapshot.status}
+            </span>
+          </div>
+          <textarea
+            id="issue-description"
+            className="description-editor"
+            value={snapshot.text}
+            onChange={(event) => session.edit(event.target.value)}
+            disabled={!snapshot.ready || snapshot.blocked}
+            placeholder="Describe the work, decisions, and what done looks like."
+            aria-describedby={snapshot.error ? "description-error" : "description-help"}
+          />
+          <span id="description-help" className="visually-hidden">
+            Changes save automatically.
+          </span>
+          {snapshot.error && (
+            <div className="notice" role="alert" id="description-error">
+              <span>{snapshot.error}</span>
+              {!snapshot.blocked && (
+                <button className="button quiet compact" onClick={session.refresh}>
+                  Retry description sync
+                </button>
+              )}
+            </div>
           )}
+          <details className="relationships-disclosure">
+            <summary>Structure and dependencies</summary>
+            <IssueRelationships issue={issue} snapshot={workspaceSnapshot} />
+          </details>
+          <IssueDevelopment issue={issue} snapshot={workspaceSnapshot} />
+          <IssueDiscussion issue={issue} context={context} snapshot={workspaceSnapshot} />
         </div>
-      )}
-      <IssueDiscussion issue={issue} context={context} snapshot={workspaceSnapshot} />
+        <aside className="issue-detail-sidebar">
+          <h3>Properties</h3>
+          <IssueProperties issue={issue} snapshot={workspaceSnapshot} onArchive={onArchive} />
+        </aside>
+      </div>
     </section>
   );
 }

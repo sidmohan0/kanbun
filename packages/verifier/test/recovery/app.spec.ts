@@ -45,6 +45,9 @@ test(
       second.on("pageerror", (error) => errors.push(error.message));
       await Promise.all([openApp(first, app.origin), openApp(second, app.origin)]);
 
+      if (!(await first.getByRole("textbox", { name: "Issue title", exact: true }).isVisible()))
+        await first.getByRole("button", { name: "New issue" }).click();
+
       await first.getByRole("textbox", { name: "Issue title", exact: true }).fill("Created through the issue form");
       await first.getByRole("button", { name: "Create issue", exact: true }).click();
       await expect(first.getByRole("row", { name: "REC-2", exact: true })).toContainText(
@@ -333,6 +336,7 @@ test("the issue UI displays an actual authority rejection and replaces the optim
       await pausedPushResponse;
       await route.fulfill({ response });
     });
+    await page.getByRole("button", { name: "New issue" }).click();
     await page
       .getByRole("textbox", { name: "Issue title", exact: true })
       .fill("An optimistic creation that loses the race");
@@ -419,9 +423,7 @@ test("a second tab waits for the workspace writer and recovers its offline queue
       second.getByRole("heading", { name: "Close the other kanbun tab to continue", exact: true }),
     ).toBeVisible();
     expect(secondSockets).toHaveLength(0);
-    await expect(
-      second.getByRole("button", { name: "Create issue", exact: true }).and(second.locator(":enabled")),
-    ).toHaveCount(0);
+    await expect(second.getByRole("button", { name: "New issue" }).and(second.locator(":enabled"))).toHaveCount(0);
     await first.close();
     await expect(second.getByRole("row", { name: "REC-1", exact: true })).toContainText(
       "The next tab recovers this offline draft",
@@ -466,9 +468,7 @@ test("unavailable browser storage shows a startup error and keeps issue editing 
     await expect(
       page.getByRole("textbox", { name: "Issue title", exact: true }).and(page.locator(":enabled")),
     ).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Create issue", exact: true }).and(page.locator(":enabled")),
-    ).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "New issue" }).and(page.locator(":enabled"))).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Edit title for / }).and(page.locator(":enabled"))).toHaveCount(0);
     expect((await app.runtime.inspect()).issues).toMatchObject([{ id: app.issueId, title: "Shared issue" }]);
     expect(sockets).toHaveLength(0);

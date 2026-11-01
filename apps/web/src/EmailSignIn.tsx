@@ -75,17 +75,8 @@ export function EmailSignIn({ siteKey, returnTo }: { siteKey: string; returnTo: 
       <h1>{sent ? "Check your email" : "Sign in to kanbun"}</h1>
       {sent ? (
         <>
-          <p>
-            If this email is eligible to access Kanbun, a sign-in link is on its way. Check your inbox and spam folder.
-          </p>
-          <p>
-            Open the link in this same browser, then confirm your email to finish signing in. You can close this page
-            while you check your email.
-          </p>
-          <p>
-            A sign-in link does not replace a workspace invitation. If you have not joined yet, use the invitation your
-            workspace owner shared.
-          </p>
+          <p>If eligible, you’ll receive a sign-in link. Open it in this browser.</p>
+          {returnTo.startsWith("#invite/") && <p>Use your invitation link to join after signing in.</p>}
           <button
             className="button"
             onClick={() => {
@@ -98,10 +89,7 @@ export function EmailSignIn({ siteKey, returnTo }: { siteKey: string; returnTo: 
         </>
       ) : (
         <>
-          <p>
-            Enter the email your workspace owner invited. We’ll email you a sign-in link. No password or Cloudflare
-            account is needed.
-          </p>
+          <p>Enter your invited email to receive a sign-in link.</p>
           {returnTo.startsWith("#invite/") && <p>Your invitation will reopen after you sign in.</p>}
           <form className="auth-form" onSubmit={(event) => void request(event)}>
             <label htmlFor="sign-in-email">Email address</label>
@@ -125,7 +113,6 @@ export function EmailSignIn({ siteKey, returnTo }: { siteKey: string; returnTo: 
               {error}
             </p>
           )}
-          <p>Pending changes stay saved in this browser while you sign in again.</p>
         </>
       )}
     </AuthenticationCard>
@@ -237,7 +224,11 @@ export function EmailSignInCallback({
         </button>
       )}
       <p>Only continue if you requested this link in this browser.</p>
-      <button className="button quiet" disabled={busy} onClick={() => requestNew(returnTo)}>
+      <button
+        className={invalid || error ? "button primary" : "button quiet"}
+        disabled={busy}
+        onClick={() => requestNew(returnTo)}
+      >
         Request a new link
       </button>
     </AuthenticationCard>

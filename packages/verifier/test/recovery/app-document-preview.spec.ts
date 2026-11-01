@@ -15,6 +15,8 @@ test("an expired hosted session hides the description while retaining its privat
     await page.goto(preview.origin);
     const identity = (await (await contextResponse).json()) as WorkspaceContext;
     await expect(page.getByRole("status")).toContainText("Saved");
+    if (!(await page.getByRole("textbox", { name: "Issue title", exact: true }).isVisible()))
+      await page.getByRole("button", { name: "New issue" }).click();
     await page.getByRole("textbox", { name: "Issue title", exact: true }).fill("An authenticated description");
     await page.getByRole("button", { name: "Create issue", exact: true }).click();
     await expect(page.getByRole("row", { name: "KAN-1", exact: true })).toBeVisible();

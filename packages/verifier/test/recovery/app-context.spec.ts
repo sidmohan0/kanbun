@@ -27,7 +27,7 @@ test.describe("local workspace context before initialization", () => {
         actor: { id: "user-alice", type: "user" },
       });
       expect((await uninitialized).status()).toBe(403);
-      await expect(page.getByText("Local fixture identity", { exact: true })).toBeVisible();
+      await expect(page.locator(".local-person")).toContainText("Alice");
       await expect(page.getByRole("button", { name: "Initialize local workspace", exact: true })).toBeVisible();
       expect(seeds).toEqual([]);
       await page.getByRole("button", { name: "Initialize local workspace", exact: true }).click();
@@ -93,9 +93,7 @@ test("rejected or invalid context never reveals a cached workspace or discards i
       await expect(page.getByRole("alert")).toContainText(/Sign.in|context/i);
       await expect(page.getByRole("row", { name: "REC-1", exact: true })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Initialize local workspace", exact: true })).toHaveCount(0);
-      await expect(
-        page.getByRole("button", { name: "Create issue", exact: true }).and(page.locator(":enabled")),
-      ).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "New issue" }).and(page.locator(":enabled"))).toHaveCount(0);
       expect((await readWorkspaceState(page, "local:user-alice:main"))?.pending).toEqual(saved?.pending);
     }
     // An explicit denial also invalidates the older local descriptor for a later network failure.

@@ -33,8 +33,8 @@ export function MentionPicker({
     (member) => member.id !== snapshot.context?.actor.id && !selected.includes(member.id),
   );
   return (
-    <fieldset className="mention-picker">
-      <legend>Mention teammates</legend>
+    <details className="mention-picker" open={selected.length > 0 || undefined}>
+      <summary>Mention teammates{selected.length ? ` (${selected.length})` : ""}</summary>
       <div className="mention-controls">
         <select
           id={`mention-${id}`}
@@ -89,6 +89,6 @@ export function MentionPicker({
       <p className="description-help">
         Selected people receive a mention. Typing a name in the text alone does not notify them.
       </p>
-    </fieldset>
+    </details>
   );
 }

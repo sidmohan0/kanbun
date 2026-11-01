@@ -56,6 +56,9 @@ async function open(page: Page, app: MembershipHarness, hash: string) {
   await expect(page.locator(".sync-indicator")).toContainText("Saved");
 }
 async function mention(form: Locator, userId: string) {
+  const disclosure = form.locator("details.mention-picker");
+  if (!(await disclosure.evaluate((element) => (element as HTMLDetailsElement).open)))
+    await disclosure.locator("summary").click();
   await form.getByRole("combobox", { name: "Mention teammate", exact: true }).selectOption(userId);
   await form.getByRole("button", { name: "Add mention", exact: true }).click();
 }

@@ -11,6 +11,7 @@ test("owner team settings create usable teams and custom workflow states and pre
   await page.getByRole("textbox", { name: "New team key", exact: true }).fill("ENG");
   await page.getByRole("button", { name: "Create team", exact: true }).click();
   await expect(page.getByRole("region", { name: "Settings for Engineering", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Workflow", exact: true }).click();
   await page.getByRole("textbox", { name: "New status name", exact: true }).fill("Review");
   await page.getByRole("button", { name: "Add status", exact: true }).click();
   await page.getByRole("textbox", { name: "Name for In Progress", exact: true }).fill("Doing");
@@ -22,6 +23,7 @@ test("owner team settings create usable teams and custom workflow states and pre
   await expect(page.getByRole("button", { name: "Move Review up", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Move Review up", exact: true }).click();
   await expect(page.getByRole("button", { name: "Move Review up", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Teams", exact: true }).click();
   await page
     .getByRole("combobox", { name: "Default status for new issues", exact: true })
     .selectOption({ label: "Review" });
@@ -42,7 +44,10 @@ test("owner team settings create usable teams and custom workflow states and pre
     .getByRole("navigation")
     .getByRole("link", { name: /^All issues/ })
     .click();
+  await page.getByRole("button", { name: "New issue" }).click();
   await page.getByRole("combobox", { name: "Team", exact: true }).selectOption({ label: "ENG" });
+  if (!(await page.getByRole("textbox", { name: "Issue title", exact: true }).isVisible()))
+    await page.getByRole("button", { name: "New issue" }).click();
   await page.getByRole("textbox", { name: "Issue title", exact: true }).fill("Platform first issue");
   await page.getByRole("button", { name: "Create issue", exact: true }).click();
   await expect(page.getByRole("row", { name: "ENG-1", exact: true })).toContainText("Review");
@@ -66,7 +71,10 @@ test("owner team settings create usable teams and custom workflow states and pre
   await expect(page.getByRole("row", { name: "PLAT-1", exact: true })).toContainText("Platform first issue");
   await expect(page.getByRole("link", { name: "Open PLAT-1", exact: true })).toHaveAttribute("href", originalLink!);
   await expect(page.getByRole("row", { name: "ENG-1", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "New issue" }).click();
   await page.getByRole("combobox", { name: "Team", exact: true }).selectOption({ label: "PLAT" });
+  if (!(await page.getByRole("textbox", { name: "Issue title", exact: true }).isVisible()))
+    await page.getByRole("button", { name: "New issue" }).click();
   await page.getByRole("textbox", { name: "Issue title", exact: true }).fill("Platform next issue");
   await page.getByRole("button", { name: "Create issue", exact: true }).click();
   await expect(page.getByRole("row", { name: "PLAT-2", exact: true })).toContainText("Platform next issue");

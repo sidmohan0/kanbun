@@ -48,7 +48,7 @@ test("invitation retry checks a corrected identity and expired sign-in preserves
   try {
     await page.goto(`${membership.origin}/#invite/${encodeURIComponent(grant.token)}`);
     await expect(page.getByRole("alert")).toBeVisible();
-    await expect(page.getByText(/No separate Kanbun registration is needed/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Check invitation again", exact: true })).toBeVisible();
     await selectPrincipal(context, membership.origin, "member");
     await page.getByRole("button", { name: "Check invitation again", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Join Private preview", exact: true })).toBeVisible();
@@ -131,6 +131,7 @@ async function acceptDirect(app: MembershipHarness, grant: Grant): Promise<Works
 async function inviteThroughUi(page: Page, app: MembershipHarness): Promise<Grant> {
   await page.getByRole("link", { name: "Members", exact: true }).click();
   await expect(page.getByRole("heading", { name: "People with access", exact: true })).toBeVisible();
+  await page.getByText("Invite member", { exact: true }).click();
   await page.getByRole("textbox", { name: "Invite by email", exact: true }).fill(app.memberEmail);
   const created = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/invitations" && response.request().method() === "POST",
@@ -206,6 +207,8 @@ test("the owner can invite a verified teammate who joins before workspace initia
     await expect(member.getByRole("link", { name: "Members", exact: true })).toHaveCount(0);
     await expect(member.locator(".sync-indicator")).toContainText("Saved");
     await owner.getByRole("link", { name: /^All issues(?: \d+)?$/ }).click();
+    if (!(await owner.getByRole("textbox", { name: "Issue title", exact: true }).isVisible()))
+      await owner.getByRole("button", { name: "New issue" }).click();
     await owner.getByRole("textbox", { name: "Issue title", exact: true }).fill("Shared team work");
     await owner.getByRole("button", { name: "Create issue", exact: true }).click();
     await expect(member.getByRole("row", { name: "KAN-1", exact: true })).toContainText("Shared team work");
@@ -264,6 +267,8 @@ test("switching between two admitted identities on one origin never opens or sub
   try {
     const ownerIdentity = await openWorkspace(page, membership);
     await page.route(syncApi, (route) => route.abort("internetdisconnected"));
+    if (!(await page.getByRole("textbox", { name: "Issue title", exact: true }).isVisible()))
+      await page.getByRole("button", { name: "New issue" }).click();
     await page.getByRole("textbox", { name: "Issue title", exact: true }).fill("Owner's private pending queue");
     await page.getByRole("button", { name: "Create issue", exact: true }).click();
     const ownerKey = stateKey(ownerIdentity);
@@ -345,6 +350,8 @@ test("removal hides idle browser caches and a fresh admission preserves but neve
     await expect.poll(async () => (await readDescriptionRecord(member, oldDescriptionKey))?.pending).toBe(true);
     const oldDocument = await readDescriptionRecord(member, oldDescriptionKey);
     await member.getByRole("link", { name: /^All issues(?: \d+)?$/ }).click();
+    if (!(await member.getByRole("textbox", { name: "Issue title", exact: true }).isVisible()))
+      await member.getByRole("button", { name: "New issue" }).click();
     await member.getByRole("textbox", { name: "Issue title", exact: true }).fill("Prior admission pending issue");
     await member.getByRole("button", { name: "Create issue", exact: true }).click();
     const oldKey = stateKey(firstAdmission);

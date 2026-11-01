@@ -20,7 +20,9 @@ const SESSION_LIFETIME_MS = 60 * 60 * 1000;
 const tokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 const returnToSchema = z
   .string()
-  .regex(/^#(?:issues(?:\/[A-Za-z0-9_-]+)?|invite\/[A-Za-z0-9_-]{43}|settings|members|inbox|my-issues)$/);
+  .regex(
+    /^#(?:issues(?:\/[A-Za-z0-9_-]+)?|invite\/[A-Za-z0-9_-]{43}|settings(?:\/integrations)?|members|inbox|my-issues)$/,
+  );
 const signInUnavailable = () =>
   new RequestError("This sign-in link is unavailable. Request a new one in this browser.", 401);
 

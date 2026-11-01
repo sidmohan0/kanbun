@@ -96,13 +96,6 @@ export function Members() {
           Refresh members
         </button>
       </div>
-      <p className="members-description">
-        Each person signs in with their own account. Owners manage access; members work on issues.
-      </p>
-      <p className="members-description">
-        To invite someone, enter their work email, then copy and send them the invitation link. Kanbun does not send an
-        invitation email. They must open that link and sign in with the same email to accept.
-      </p>
       {error && (
         <p className="notice" role="alert">
           {error}
@@ -141,25 +134,28 @@ export function Members() {
                 </li>
               ))}
             </ul>
-            <form className="invite-form" onSubmit={invite}>
-              <label htmlFor="invite-email">Invite by email</label>
-              <div className="invite-controls">
-                <input
-                  id="invite-email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="teammate@example.com"
-                  disabled={Boolean(busy)}
-                />
-                <button className="button primary" disabled={Boolean(busy) || !email.trim()} type="submit">
-                  {busy === "invite" ? "Creating invitation…" : "Create invitation"}
-                </button>
-              </div>
-              <p>The invitation only works for this email. Share its link directly with that person.</p>
-            </form>
+            <details className="invite-disclosure">
+              <summary className="button compact">Invite member</summary>
+              <form className="invite-form" onSubmit={invite}>
+                <label htmlFor="invite-email">Invite by email</label>
+                <div className="invite-controls">
+                  <input
+                    id="invite-email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="teammate@example.com"
+                    disabled={Boolean(busy)}
+                  />
+                  <button className="button primary" disabled={Boolean(busy) || !email.trim()} type="submit">
+                    {busy === "invite" ? "Creating invitation…" : "Create invitation"}
+                  </button>
+                </div>
+                <p>The invitation only works for this email. Share its link directly with that person.</p>
+              </form>
+            </details>
             {createdIsPending && (
               <div className="created-invitation">
                 <label htmlFor="invitation-link">Invitation link</label>

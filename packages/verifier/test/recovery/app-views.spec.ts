@@ -88,6 +88,8 @@ test("combined filters and My Issues retain their state across details, and crea
     await expect(page.getByRole("heading", { name: "My Issues", exact: true })).toBeVisible();
     await expect(page.getByRole("searchbox", { name: "Search issues", exact: true })).toHaveValue("Zebra");
     await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+    if (!(await page.getByRole("textbox", { name: "Issue title", exact: true }).isVisible()))
+      await page.getByRole("button", { name: "New issue" }).click();
     await page.getByRole("textbox", { name: "Issue title", exact: true }).fill("Owned from My Issues");
     await page.getByRole("button", { name: "Create issue", exact: true }).click();
     await expect(page.getByRole("row", { name: "REC-4", exact: true })).toContainText("Owned from My Issues");

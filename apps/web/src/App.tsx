@@ -16,6 +16,7 @@ import { EmailSignOut } from "./EmailSignIn";
 import { emptyIssueFilters, visibleIssues, type IssueFilters, type IssueView } from "./issueViews";
 import { refreshDescriptions } from "./description";
 import "./styles/issues.css";
+import "./styles/redesign.css";
 
 type Theme = "light" | "dark" | "system";
 const noPullRequests: Row<"issuePullRequest">[] = [];
@@ -146,7 +147,11 @@ function IssueRow({
           >
             <span>{issue.title}</span>
             <span className="row-properties" id={`issue-properties-${issue.id}`}>
-              {`Status: ${stateName} · Priority: ${["None", "Urgent", "High", "Medium", "Low"][issue.priority]} · Assignee: ${assigneeName}`}
+              <span aria-label={`Status: ${stateName}`}>◌ {stateName}</span>
+              <span aria-label={`Priority: ${["None", "Urgent", "High", "Medium", "Low"][issue.priority]}`}>
+                ≡ {["None", "Urgent", "High", "Medium", "Low"][issue.priority]}
+              </span>
+              <span aria-label={`Assignee: ${assigneeName}`}>○ {assigneeName}</span>
             </span>
             <span className="edit-hint" aria-hidden="true">
               Edit
@@ -186,6 +191,7 @@ function selectedIssueId(): string | null {
 
 export function App() {
   const snapshot = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
+  const [creatingIssue, setCreatingIssue] = useState(false);
   const [view, setView] = useState<IssueView>(() => (location.hash === "#my-issues" ? "mine" : "all"));
   const [viewFilters, setViewFilters] = useState<Record<IssueView, IssueFilters>>(() => ({
     all: emptyIssueFilters(),
@@ -193,7 +199,7 @@ export function App() {
   }));
   const [viewLayouts, setViewLayouts] = useState<Record<IssueView, "list" | "board">>({ all: "list", mine: "list" });
   const [inboxView, setInboxView] = useState(() => location.hash === "#inbox");
-  const [teamsView, setTeamsView] = useState(() => location.hash === "#settings");
+  const [teamsView, setTeamsView] = useState(() => ["#settings", "#settings/integrations"].includes(location.hash));
   const [membersView, setMembersView] = useState(() => location.hash === "#members");
   const [issueId, setIssueId] = useState(selectedIssueId);
   const [theme, setTheme] = useState<Theme>(initialTheme);
@@ -208,7 +214,7 @@ export function App() {
     const changeRoute = () => {
       setIssueId(selectedIssueId());
       setMembersView(location.hash === "#members");
-      setTeamsView(location.hash === "#settings");
+      setTeamsView(["#settings", "#settings/integrations"].includes(location.hash));
       setInboxView(location.hash === "#inbox");
       if (location.hash === "#my-issues") setView("mine");
       else if (location.hash === "#issues" || location.hash === "") setView("all");
@@ -243,25 +249,6 @@ export function App() {
     view,
     filters,
   });
-  const pageDescription = !ready
-    ? null
-    : teamsView
-      ? canManageTeams
-        ? "Manage your workspace, teams and workflow statuses."
-        : null
-      : inboxView
-        ? snapshot.notifications.length
-          ? "Your personal workspace updates."
-          : null
-        : membersView
-          ? context?.mode === "hosted" && context.role === "owner"
-            ? "Manage who can access this workspace."
-            : null
-          : selectedIssue
-            ? identifier(selectedIssue, snapshot.teams)
-            : !issueId && issues.length
-              ? "A place for the work ahead."
-              : null;
   const stateNames = new Map(snapshot.workflowStates.map((state) => [state.id, state.name]));
   const memberNames = new Map(snapshot.members.map((member) => [member.id, member.displayName || member.name]));
   const myIssueCount = snapshot.issues.filter((issue) => issue.assigneeId === context?.actor.id).length;
@@ -285,6 +272,7 @@ export function App() {
       if (!title.trim()) throw new Error("Enter an issue title.");
       if (!selectedTeam) throw new Error("Choose an active team.");
       workspace.createIssue(selectedTeam, title.trim(), view === "mine" ? context?.actor.id : undefined);
+      setCreatingIssue(false);
       setTitle("");
       setFormError(null);
     } catch (error) {
@@ -459,9 +447,12 @@ export function App() {
           </div>
         </header>
         <div className="issues-content">
-          <div className="page-heading">
+          <div
+            className={
+              issueId && !teamsView && !membersView && !inboxView ? "page-heading issue-page-heading" : "page-heading"
+            }
+          >
             <div>
-              <p className="eyebrow">YOUR WORKSPACE</p>
               <h1>
                 {teamsView
                   ? "Settings"
@@ -475,9 +466,17 @@ export function App() {
                           ? "My Issues"
                           : "Issues"}
               </h1>
-              {pageDescription && <p className="page-description">{pageDescription}</p>}
             </div>
-            {context && <span className="local-badge">{local ? "Local development" : "Private workspace"}</span>}
+            {!teamsView &&
+              !membersView &&
+              !inboxView &&
+              !issueId &&
+              snapshot.phase !== "waiting" &&
+              snapshot.phase !== "failed" && (
+                <button className="button primary compact" onClick={() => setCreatingIssue(true)} disabled={!canCreate}>
+                  + New issue
+                </button>
+              )}
           </div>
           {snapshot.phase === "waiting" ? (
             <section className="empty-state" aria-labelledby="waiting-title">
@@ -618,52 +617,72 @@ export function App() {
                 )
               ) : (
                 <>
-                  <section className="create-panel" aria-labelledby="create-heading">
-                    <h2 id="create-heading">What needs to get done?</h2>
-                    <form className="create-form" onSubmit={create}>
-                      <div className="title-field">
-                        <label htmlFor="new-issue-title">Issue title</label>
-                        <input
-                          id="new-issue-title"
-                          placeholder="Give the work a clear title"
-                          value={title}
-                          onChange={(event) => setTitle(event.target.value)}
-                          maxLength={500}
-                          disabled={!canCreate}
-                          aria-invalid={Boolean(formError)}
-                          aria-describedby={formError ? "create-error" : undefined}
-                        />
-                      </div>
-                      <div className="team-field">
-                        <label htmlFor="new-issue-team">Team</label>
-                        <select
-                          id="new-issue-team"
-                          value={selectedTeam}
-                          onChange={(event) => setTeamId(event.target.value)}
-                          disabled={!canCreate}
+                  {creatingIssue && (
+                    <section
+                      className="create-panel"
+                      role="dialog"
+                      aria-labelledby="create-heading"
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") setCreatingIssue(false);
+                      }}
+                    >
+                      <div className="create-panel-heading">
+                        <h2 id="create-heading">New issue</h2>
+                        <button
+                          className="button quiet compact"
+                          type="button"
+                          onClick={() => setCreatingIssue(false)}
+                          aria-label="Close new issue"
                         >
-                          {!snapshot.teams.length && <option value="">No active team</option>}
-                          {snapshot.teams.map((team) => (
-                            <option key={team.id} value={team.id}>
-                              {team.key}
-                            </option>
-                          ))}
-                        </select>
+                          ×
+                        </button>
                       </div>
-                      <button
-                        className="button primary create-button"
-                        type="submit"
-                        disabled={!canCreate || !title.trim()}
-                      >
-                        <span aria-hidden="true">+</span> Create issue
-                      </button>
-                    </form>
-                    {formError && (
-                      <p className="field-error" id="create-error" role="alert">
-                        {formError}
-                      </p>
-                    )}
-                  </section>
+                      <form className="create-form" onSubmit={create}>
+                        <div className="title-field">
+                          <label htmlFor="new-issue-title">Issue title</label>
+                          <input
+                            autoFocus
+                            id="new-issue-title"
+                            placeholder="Give the work a clear title"
+                            value={title}
+                            onChange={(event) => setTitle(event.target.value)}
+                            maxLength={500}
+                            disabled={!canCreate}
+                            aria-invalid={Boolean(formError)}
+                            aria-describedby={formError ? "create-error" : undefined}
+                          />
+                        </div>
+                        <div className="team-field">
+                          <label htmlFor="new-issue-team">Team</label>
+                          <select
+                            id="new-issue-team"
+                            value={selectedTeam}
+                            onChange={(event) => setTeamId(event.target.value)}
+                            disabled={!canCreate}
+                          >
+                            {!snapshot.teams.length && <option value="">No active team</option>}
+                            {snapshot.teams.map((team) => (
+                              <option key={team.id} value={team.id}>
+                                {team.key}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <button
+                          className="button primary create-button"
+                          type="submit"
+                          disabled={!canCreate || !title.trim()}
+                        >
+                          <span aria-hidden="true">+</span> Create issue
+                        </button>
+                      </form>
+                      {formError && (
+                        <p className="field-error" id="create-error" role="alert">
+                          {formError}
+                        </p>
+                      )}
+                    </section>
+                  )}
                   <IssueViewToolbar
                     view={view}
                     filters={filters}
@@ -698,6 +717,9 @@ export function App() {
                       </div>
                     ) : issues.length === 0 ? (
                       <div className="empty-state">
+                        <span className="empty-icon" aria-hidden="true">
+                          ◇
+                        </span>
                         <h3>
                           {filtersActive
                             ? "No matching issues"
@@ -752,13 +774,6 @@ export function App() {
               )}
             </>
           )}
-          <p className="local-footnote">
-            {local
-              ? "This workspace uses local fixture data."
-              : context
-                ? `Signed in to ${workspaceName}.`
-                : "Connect to open your workspace."}
-          </p>
         </div>
       </main>
     </div>

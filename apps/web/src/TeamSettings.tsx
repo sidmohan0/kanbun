@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { WORKFLOW_STATE_TYPES, type Row, type WorkflowStateType } from "@kanbun/model";
 import { DEFAULT_STATES } from "@kanbun/mutators";
 import { workspace, type WorkspaceSnapshot } from "./workspace";
@@ -78,7 +78,9 @@ function TeamEditor({
   team,
   states,
   failed,
+  section,
 }: {
+  section: "teams" | "workflow";
   team: Row<"team">;
   states: Row<"workflowState">[];
   failed(failure: unknown): void;
@@ -135,7 +137,7 @@ function TeamEditor({
           ? "Private team. Existing membership restrictions still apply."
           : "Available to everyone in this workspace."}
       </p>
-      <form className="team-form" onSubmit={save}>
+      <form className="team-form" hidden={section !== "teams"} onSubmit={save}>
         <label htmlFor="team-name">Team name</label>
         <input id="team-name" value={name} required maxLength={80} onChange={(event) => setName(event.target.value)} />
         <label htmlFor="team-key">Team key</label>
@@ -165,57 +167,59 @@ function TeamEditor({
           Save team settings
         </button>
       </form>
-      <h3>Workflow statuses</h3>
-      <p>
-        Categories keep their meaning. Rename statuses or change their order within a category without changing existing
-        issues.
-      </p>
-      {WORKFLOW_STATE_TYPES.map((type) => {
-        const category = states.filter((state) => state.type === type);
-        return category.length ? (
-          <section className="workflow-category" key={type} aria-label={`${categoryName[type]} statuses`}>
-            <h4>{categoryName[type]}</h4>
-            <ol>
-              {category.map((state, index) => (
-                <StateRow
-                  key={`${state.id}:${state.name}`}
-                  state={state}
-                  first={index === 0}
-                  last={index === category.length - 1}
-                  failed={failed}
-                  move={(direction) => move(type, state.id, direction)}
-                />
-              ))}
-            </ol>
-          </section>
-        ) : null;
-      })}
-      <form className="team-form" onSubmit={createState}>
-        <h3>Add a status</h3>
-        <label htmlFor="new-status-name">New status name</label>
-        <input
-          id="new-status-name"
-          value={stateName}
-          required
-          maxLength={40}
-          onChange={(event) => setStateName(event.target.value)}
-        />
-        <label htmlFor="status-category">Status category</label>
-        <select
-          id="status-category"
-          value={stateType}
-          onChange={(event) => setStateType(event.target.value as WorkflowStateType)}
-        >
-          {WORKFLOW_STATE_TYPES.map((type) => (
-            <option key={type} value={type}>
-              {categoryName[type]}
-            </option>
-          ))}
-        </select>
-        <button className="button primary" disabled={!stateName.trim()}>
-          Add status
-        </button>
-      </form>
+      <div hidden={section !== "workflow"}>
+        <h3>Workflow statuses</h3>
+        <p>
+          Categories keep their meaning. Rename statuses or change their order within a category without changing
+          existing issues.
+        </p>
+        {WORKFLOW_STATE_TYPES.map((type) => {
+          const category = states.filter((state) => state.type === type);
+          return category.length ? (
+            <section className="workflow-category" key={type} aria-label={`${categoryName[type]} statuses`}>
+              <h4>{categoryName[type]}</h4>
+              <ol>
+                {category.map((state, index) => (
+                  <StateRow
+                    key={`${state.id}:${state.name}`}
+                    state={state}
+                    first={index === 0}
+                    last={index === category.length - 1}
+                    failed={failed}
+                    move={(direction) => move(type, state.id, direction)}
+                  />
+                ))}
+              </ol>
+            </section>
+          ) : null;
+        })}
+        <form className="team-form" onSubmit={createState}>
+          <h3>Add a status</h3>
+          <label htmlFor="new-status-name">New status name</label>
+          <input
+            id="new-status-name"
+            value={stateName}
+            required
+            maxLength={40}
+            onChange={(event) => setStateName(event.target.value)}
+          />
+          <label htmlFor="status-category">Status category</label>
+          <select
+            id="status-category"
+            value={stateType}
+            onChange={(event) => setStateType(event.target.value as WorkflowStateType)}
+          >
+            {WORKFLOW_STATE_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {categoryName[type]}
+              </option>
+            ))}
+          </select>
+          <button className="button primary" disabled={!stateName.trim()}>
+            Add status
+          </button>
+        </form>
+      </div>
     </section>
   );
 }
@@ -255,6 +259,27 @@ function WorkspaceName({ name }: { name: string }) {
 }
 
 export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
+  const [section, setSection] = useState<"workspace" | "integrations" | "teams" | "workflow">(() => {
+    try {
+      if (snapshot.context?.mode !== "hosted") return "teams";
+      if (location.hash === "#settings/integrations") return "integrations";
+      const saved = sessionStorage.getItem("kanbun:settings-section");
+      return saved === "workspace" || saved === "integrations" || saved === "workflow" ? saved : "teams";
+    } catch {
+      return "teams";
+    }
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("kanbun:settings-section", section);
+    } catch {
+      /* Optional preference. */
+    }
+  }, [section]);
+  function selectSection(next: "workspace" | "integrations" | "teams" | "workflow") {
+    setSection(next);
+    history.replaceState(null, "", next === "integrations" ? "#settings/integrations" : "#settings");
+  }
   const [selected, setSelected] = useState("");
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
@@ -282,58 +307,106 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
   }
   return (
     <section className="teams-settings" aria-label="Team and workflow settings">
-      <p>
-        Team and status changes save on this device and sync when connected. The workspace sync indicator confirms when
-        they are saved on the server.
-      </p>
+      <nav className="settings-nav" aria-label="Settings sections">
+        {snapshot.context?.mode === "hosted" && (
+          <button
+            className="button quiet compact"
+            aria-pressed={section === "workspace"}
+            onClick={() => selectSection("workspace")}
+          >
+            Workspace
+          </button>
+        )}
+        {snapshot.context?.mode === "hosted" && (
+          <button
+            className="button quiet compact"
+            aria-pressed={section === "integrations"}
+            onClick={() => selectSection("integrations")}
+          >
+            Integrations
+          </button>
+        )}
+        <button
+          className="button quiet compact"
+          aria-pressed={section === "teams"}
+          onClick={() => selectSection("teams")}
+        >
+          Teams
+        </button>
+        <button
+          className="button quiet compact"
+          aria-pressed={section === "workflow"}
+          onClick={() => selectSection("workflow")}
+        >
+          Workflow
+        </button>
+      </nav>
       {error && (
         <p className="notice" role="alert">
           {error}
         </p>
       )}
-      {snapshot.context?.mode === "hosted" && <WorkspaceName name={snapshot.context.workspaceName} />}
-      <GitHubSettings snapshot={snapshot} />
-      <h2>Teams</h2>
-      <label htmlFor="settings-team">Choose a team</label>
-      <select
-        id="settings-team"
-        value={team?.id ?? ""}
-        onChange={(event) => {
-          setSelected(event.target.value);
-          setError(null);
-        }}
-      >
-        {teams.map((candidate) => (
-          <option key={candidate.id} value={candidate.id}>
-            {candidate.name} ({candidate.key})
-          </option>
-        ))}
-      </select>
-      {team && <TeamEditor key={team.id} team={team} states={states} failed={failed} />}
-      <form className="team-form team-create" onSubmit={create}>
-        <h2>Create a team</h2>
-        <p>New teams are available to everyone in this workspace. Their key becomes the prefix of issue identifiers.</p>
-        <label htmlFor="new-team-name">New team name</label>
-        <input
-          id="new-team-name"
-          value={name}
-          required
-          maxLength={80}
-          onChange={(event) => setName(event.target.value)}
-        />
-        <label htmlFor="new-team-key">New team key</label>
-        <input
-          id="new-team-key"
-          value={key}
-          required
-          maxLength={7}
-          pattern="[A-Za-z][A-Za-z0-9]{0,6}"
-          onChange={(event) => setKey(event.target.value.toUpperCase())}
-        />
-        <button className="button primary" disabled={!name.trim() || !key.trim()}>
-          Create team
-        </button>
-      </form>
+      {snapshot.context?.mode === "hosted" && (
+        <div hidden={section !== "workspace"}>
+          <WorkspaceName name={snapshot.context.workspaceName} />
+        </div>
+      )}
+      <div hidden={section !== "integrations"}>
+        <GitHubSettings snapshot={snapshot} />
+      </div>
+      <div hidden={section !== "teams" && section !== "workflow"} className="settings-team-section">
+        <h2>Teams</h2>
+        <label htmlFor="settings-team">Choose a team</label>
+        <select
+          id="settings-team"
+          value={team?.id ?? ""}
+          onChange={(event) => {
+            setSelected(event.target.value);
+            setError(null);
+          }}
+        >
+          {teams.map((candidate) => (
+            <option key={candidate.id} value={candidate.id}>
+              {candidate.name} ({candidate.key})
+            </option>
+          ))}
+        </select>
+        {team && (
+          <TeamEditor
+            key={team.id}
+            team={team}
+            states={states}
+            failed={failed}
+            section={section === "workflow" ? "workflow" : "teams"}
+          />
+        )}
+        <form className="team-form team-create" hidden={section !== "teams"} onSubmit={create}>
+          <h2>Create a team</h2>
+          <p>
+            New teams are available to everyone in this workspace. Their key becomes the prefix of issue identifiers.
+          </p>
+          <label htmlFor="new-team-name">New team name</label>
+          <input
+            id="new-team-name"
+            value={name}
+            required
+            maxLength={80}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <label htmlFor="new-team-key">New team key</label>
+          <input
+            id="new-team-key"
+            value={key}
+            required
+            maxLength={7}
+            pattern="[A-Za-z][A-Za-z0-9]{0,6}"
+            onChange={(event) => setKey(event.target.value.toUpperCase())}
+          />
+          <button className="button primary" disabled={!name.trim() || !key.trim()}>
+            Create team
+          </button>
+        </form>
+      </div>
     </section>
   );
 }

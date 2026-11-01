@@ -17,11 +17,7 @@ export function Inbox({ snapshot }: { snapshot: WorkspaceSnapshot }) {
         <h2>Your updates</h2>
         <span>{snapshot.unreadNotificationCount} unread</span>
       </div>
-      {snapshot.notifications.length > 0 && (
-        <p className="description-help">
-          Assignments, mentions, replies, and comments on issues you follow appear here.
-        </p>
-      )}
+
       {error && (
         <p className="notice" role="alert">
           {error}
@@ -29,6 +25,9 @@ export function Inbox({ snapshot }: { snapshot: WorkspaceSnapshot }) {
       )}
       {!snapshot.notifications.length ? (
         <div className="empty-state">
+          <span className="empty-icon" aria-hidden="true">
+            ▱
+          </span>
           <h3>You’re caught up.</h3>
         </div>
       ) : (
@@ -70,9 +69,6 @@ export function Inbox({ snapshot }: { snapshot: WorkspaceSnapshot }) {
             );
           })}
         </ol>
-      )}
-      {snapshot.notifications.length > 0 && (
-        <p className="description-help">Read changes save in this browser and sync when connected.</p>
       )}
     </section>
   );

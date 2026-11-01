@@ -219,8 +219,12 @@ test("properties offer only eligible assignees and active labels from the issue'
     await openIssue(page, app);
     await expect(control(page, "Assignee").getByRole("option", { name: "Bob", exact: true })).toHaveCount(0);
     await expect(control(page, "Assignee").getByRole("option", { name: "Alice", exact: true })).toHaveCount(1);
+    await page.locator(".label-picker summary").click();
     for (const name of ["Workspace label", "Team label"])
       await expect(control(page, "Add label").getByRole("option", { name, exact: true })).toHaveCount(1);
+    await page.getByRole("searchbox", { name: "Search labels" }).fill("Workspace");
+    await expect(control(page, "Add label").getByRole("option", { name: "Team label", exact: true })).toHaveCount(0);
+    await page.getByRole("searchbox", { name: "Search labels" }).clear();
     for (const name of ["Retired label", "Group label", "Other team label"])
       await expect(control(page, "Add label").getByRole("option", { name, exact: true })).toHaveCount(0);
     await expect(control(page, "Status").getByRole("option")).toHaveCount(5);

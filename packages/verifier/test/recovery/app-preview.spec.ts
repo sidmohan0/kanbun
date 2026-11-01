@@ -88,6 +88,8 @@ test("verified owner context isolates the local queue and preserves hosted work 
     await expect.poll(() => sockets.length).toBe(1);
 
     await page.route(syncApi, (route) => route.abort("internetdisconnected"));
+    if (!(await page.getByRole("textbox", { name: "Issue title", exact: true }).isVisible()))
+      await page.getByRole("button", { name: "New issue" }).click();
     await page.getByRole("textbox", { name: "Issue title", exact: true }).fill("Hosted draft remains private");
     await page.getByRole("button", { name: "Create issue", exact: true }).click();
     await expect(page.getByRole("status")).toContainText("Offline");
@@ -126,9 +128,7 @@ test("verified owner context isolates the local queue and preserves hosted work 
     await expect(page.getByRole("heading", { name: "Workspace access required", exact: true })).toBeVisible();
     await expect(page.getByRole("alert")).toContainText("Sign-in does not automatically grant workspace access");
     await expect(page.getByText("Hosted draft remains private", { exact: true })).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Create issue", exact: true }).and(page.locator(":enabled")),
-    ).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "New issue" }).and(page.locator(":enabled"))).toHaveCount(0);
     expect((await readWorkspaceState(page, hostedKey))?.pending).toEqual(saved?.pending);
 
     preview.setToken(await preview.runtime.token({ exp: 1 }));

@@ -5,6 +5,10 @@ preparation moves them to a dated version heading.
 
 ## [Unreleased]
 
+### Changed
+
+- Streamline workspace navigation, issue details, settings, and sign-in screens, and add repeatable local UI captures.
+
 ### Added
 
 - Add installer-owned Cloudflare setup, an official deployment button, and documented local persistence and recovery workflows.
