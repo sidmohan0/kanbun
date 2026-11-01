@@ -124,8 +124,6 @@ export async function slackConnection(env: Env, workspaceId: string) {
 }
 export const slackVersion = (row: SlackConnection) =>
   authTokenHash(JSON.stringify([row.team_id, row.token_ciphertext, row.unfurl_generation]));
-const slackCredentialVersion = (row: SlackConnection) =>
-  authTokenHash(JSON.stringify([row.team_id, row.token_ciphertext]));
 export const slackUnfurlsReady = (row: SlackConnection) =>
   ["links:read", "links:write"].every((scope) => row.scopes.split(",").includes(scope));
 export async function slackStatus(env: Env, workspaceId: string) {
@@ -212,9 +210,9 @@ async function rpcValue<T>(promise: Promise<SlackRpcResult<T>>) {
   if (!result.ok) throw new RequestError(result.error, result.status);
   return result.value;
 }
-export async function slackUninstall(env: Env, workspaceId: string, teamId: string, version: string) {
+export async function slackUninstall(env: Env, workspaceId: string, teamId: string) {
   const row = await slackConnection(env, workspaceId);
-  if (!row || row.team_id !== teamId || (await slackCredentialVersion(row)) !== version) return;
+  if (!row || row.team_id !== teamId) return;
   const token = await openSlackToken(env, workspaceId, row.token_ciphertext);
   const status = z.object({ ok: z.boolean() }).parse(await api(env, "auth.test", { token }));
   if (!status.ok)
@@ -439,11 +437,7 @@ export async function slackEventRoute(request: Request, env: Env): Promise<Respo
       .first<SlackConnection>();
     if (connection) {
       await rpcValue(
-        env.WORKSPACES.getByName(connection.workspace_id).slackUninstalled(
-          connection.workspace_id,
-          connection.team_id,
-          await slackCredentialVersion(connection),
-        ),
+        env.WORKSPACES.getByName(connection.workspace_id).slackUninstalled(connection.workspace_id, connection.team_id),
       );
     }
   }

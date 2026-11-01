@@ -192,6 +192,36 @@ it("acknowledges durable public-only candidates, escapes previews and deduplicat
   }
 });
 
+it("checks the current valid grant when a stale uninstall waits behind reauthorization", async () => {
+  const r = await setup();
+  try {
+    await r.fixture({ ok: true }, "posting");
+    await r.connect();
+    const previous = (await r.runtime.slackCredentials())[0]!["token_ciphertext"];
+    const id = await r.issue("Public issue");
+    await r.event("EvSTALEGRANT", [r.url(id)]);
+    const delivering = r.runtime.slackControl("alarm");
+    await expect.poll(async () => (await r.calls()).length).toBe(1);
+    const before = await r.snapshot();
+    const reconnecting = r.connect();
+    await expect.poll(async () => (await r.snapshot()).commands).toBe(before.commands + 1);
+    const uninstalling = r.event("EvOLDUNINSTALL", [], { type: "app_uninstalled" });
+    await expect.poll(async () => (await r.snapshot()).uninstalls).toBe(before.uninstalls + 1);
+    await r.runtime.releaseGithubResponse("posting");
+    await delivering;
+    await reconnecting;
+    expect((await uninstalling).status).toBe(200);
+    const current = await r.runtime.slackCredentials();
+    expect(current).toHaveLength(1);
+    expect(current[0]!["token_ciphertext"]).not.toBe(previous);
+    expect((await r.runtime.githubRequests()).filter((request) => request.url.endsWith("/api/auth.test"))).toHaveLength(
+      1,
+    );
+  } finally {
+    await r.runtime.close();
+  }
+});
+
 it("finishes an admitted post before acknowledging disable and still processes token revocation across preference changes", async () => {
   const r = await setup();
   try {

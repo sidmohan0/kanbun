@@ -298,13 +298,13 @@ export class WorkspaceDO extends DurableObject<Env> {
     );
   }
 
-  async slackUninstalled(workspaceId: string, teamId: string, version: string) {
+  async slackUninstalled(workspaceId: string, teamId: string) {
     return this.slackQueue(() =>
       slackRpc(async () => {
         await this.ready;
         this.requireWorkspace(workspaceId);
         if (!this.maintenanceEnabled()) throw new RequestError("Slack is unavailable", 503);
-        await slackUninstall(this.env, workspaceId, teamId, version);
+        await slackUninstall(this.env, workspaceId, teamId);
         return { ok: true };
       }),
     );
