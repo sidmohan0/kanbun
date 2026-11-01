@@ -20,6 +20,16 @@ import {
   consumeGitHubJob,
 } from "./github-observer";
 import { githubRoute, githubWebhookRoute, readGitHubPullRequest, type GithubEnvironment } from "./github";
+import {
+  googleSheetsRoute,
+  sheetsCommand,
+  sheetsCommandSchema,
+  sheetsStatus,
+  syncSheets,
+  SHEETS_JOB,
+  SHEETS_INTERVAL,
+  type GoogleSheetsEnvironment,
+} from "./google-sheets";
 import { mutators, requireIssue } from "@kanbun/mutators";
 import { issueIncarnation, MutationError, type Actor, type Poke, type WorkspaceContext } from "@kanbun/sync";
 import { durableObjectDriver, SyncServer, type SqlDriver } from "@kanbun/sync/server";
@@ -86,7 +96,7 @@ import {
 
 export { localActors } from "./local";
 
-export interface Env extends AuthEnvironment, DirectoryEnvironment, GithubEnvironment, SlackEnvironment {
+export interface Env extends AuthEnvironment, DirectoryEnvironment, GithubEnvironment, SlackEnvironment, GoogleSheetsEnvironment {
   WORKSPACES: DurableObjectNamespace<WorkspaceDO>;
   DOCUMENTS: DurableObjectNamespace<DocumentDO>;
   ASSETS?: Fetcher;
@@ -213,6 +223,7 @@ export class WorkspaceDO extends DurableObject<Env> {
   private backupTask: Promise<{ key: string; manifestHash: string; mainSeq: number; eventSeq: number }> | null = null;
   private alarmRunning = false;
   private notificationTask: Promise<void> | null = null;
+  private sheetsTask: Promise<unknown> = Promise.resolve();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -245,6 +256,52 @@ export class WorkspaceDO extends DurableObject<Env> {
 
   private maintenanceEnabled() {
     return mode(this.env) !== "disabled" && this.env.BACKUP_RESTORE_ISOLATED !== "true";
+  }
+
+  private sheetsQueue<T>(action: () => Promise<T>): Promise<T> {
+    const task = this.sheetsTask.catch(() => undefined).then(action);
+    this.sheetsTask = task.catch(() => undefined);
+    return task;
+  }
+
+  async googleSheetsCommand(principal: HostedPrincipal, input: unknown) {
+    return this.sheetsQueue(async () => {
+      try {
+        await this.ready;
+        if (!this.maintenanceEnabled()) throw new RequestError("Google Sheets is unavailable", 503);
+        const context = await this.authorizePrincipal(this.server!, hostedPrincipalSchema.parse(principal));
+        if (context.role !== "owner") throw new RequestError("Workspace owner access required", 403);
+        const command = sheetsCommandSchema.parse(input);
+        await sheetsCommand(this.env, context.workspaceId, command);
+        if (command.kind === "disconnect") {
+          this.driver.run("DELETE FROM scheduled_job WHERE kind=?", [SHEETS_JOB]);
+        } else {
+          const now = new Date().toISOString();
+          this.driver.run(
+            "INSERT INTO scheduled_job (id,fire_at,kind,payload,dedup_key,created_at) VALUES (?,?,?,'{}',?,?) ON CONFLICT(dedup_key) DO UPDATE SET fire_at=excluded.fire_at",
+            [uuidv7(), now, SHEETS_JOB, SHEETS_JOB, now],
+          );
+          await this.armNextJob(true);
+          try {
+            await syncSheets(this.env, context.workspaceId, this.server!.store, () => this.server!.currentSeq(), true);
+            this.driver.run("UPDATE scheduled_job SET fire_at=? WHERE kind=?", [
+              new Date(Date.now() + SHEETS_INTERVAL).toISOString(),
+              SHEETS_JOB,
+            ]);
+          } catch {
+            // Durable job retains the failed refresh; the status endpoint supplies a sanitized error.
+          }
+          await this.armNextJob(true);
+        }
+        return { ok: true as const, value: await sheetsStatus(this.env, context.workspaceId) };
+      } catch (error) {
+        return {
+          ok: false as const,
+          status: error instanceof RequestError ? error.status : 500,
+          error: error instanceof RequestError ? error.message : "Google Sheets could not be changed",
+        };
+      }
+    });
   }
 
   private async githubPerson(input: HostedPrincipal) {
@@ -407,7 +464,7 @@ export class WorkspaceDO extends DurableObject<Env> {
       !this.alarmRunning &&
       this.server &&
       (scheduleNotificationJob(this.driver, this.server) ||
-        this.driver.all("SELECT id FROM scheduled_job WHERE kind = ?", [GITHUB_JOB]).length)
+        this.driver.all("SELECT id FROM scheduled_job WHERE kind IN (?,?)", [GITHUB_JOB, SHEETS_JOB]).length)
     )
       await this.armNextJob(true);
   }
@@ -539,6 +596,29 @@ export class WorkspaceDO extends DurableObject<Env> {
       ]);
       let failure: Error | null = null;
       for (const job of due) {
+        if (job["kind"] === SHEETS_JOB) {
+          try {
+            await this.sheetsQueue(async () => {
+              const connected = await syncSheets(
+                this.env,
+                configuration(this.env).workspaceId,
+                this.server!.store,
+                () => this.server!.currentSeq(),
+                false,
+              );
+              if (connected)
+                this.driver.run("UPDATE scheduled_job SET fire_at=? WHERE id=?", [
+                  new Date(Date.now() + SHEETS_INTERVAL).toISOString(),
+                  String(job["id"]),
+                ]);
+              else this.driver.run("DELETE FROM scheduled_job WHERE id=?", [String(job["id"])]);
+            });
+          } catch {
+            console.error("workspace_google_sheets_sync_failed");
+            failure ??= new Error("Workspace Google Sheets sync failed");
+          }
+          continue;
+        }
         if (job["kind"] === GITHUB_JOB) {
           try {
             await consumeGitHubJob(this.driver, this.server!, job, (source, number) =>
@@ -1036,6 +1116,8 @@ export default {
         if (slack) return slack;
         const integration = await githubRoute(request, env, principal);
         if (integration) return integration;
+        const sheets = await googleSheetsRoute(request, env, principal);
+        if (sheets) return sheets;
         return env.WORKSPACES.getByName(principal.workspaceId).fetch(forwardedRequest(request, principal));
       }
       return env.ASSETS ? env.ASSETS.fetch(request) : json({ error: "Not found" }, 404);

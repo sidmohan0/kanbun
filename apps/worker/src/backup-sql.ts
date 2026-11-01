@@ -190,7 +190,7 @@ export async function restoreDirectory(database: D1Database, source: DatabaseSna
       // A historical cookie, link, or session-bound OAuth setup must not revive after a restore.
       // Keep these tables in the validated inventory, but leave them empty in the
       // same atomic transaction that imports accounts, identities and membership.
-      ...(["sessions", "magic_links", "oauth_states", "github_setups", "slack_connections"].includes(table.name)
+      ...(["sessions", "magic_links", "oauth_states", "github_setups", "slack_connections", "google_sheets_connections"].includes(table.name)
         ? []
         : table.rows
       ).map((row) =>

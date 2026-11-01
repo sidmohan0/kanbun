@@ -36,6 +36,7 @@ export async function startPreviewRuntime({
   resendApiKey = "fixture-resend-secret",
   githubConfig,
   slackConfig,
+  sheetsConfig,
 }: {
   ownerEmail?: string;
   subject?: string;
@@ -49,6 +50,7 @@ export async function startPreviewRuntime({
   resendApiKey?: string;
   githubConfig?: Record<string, string>;
   slackConfig?: Record<string, string>;
+  sheetsConfig?: Record<string, string>;
 } = {}) {
   const instance = randomUUID().slice(0, 8);
   const certWorker = `preview-test-certs-${instance}`;
@@ -56,6 +58,7 @@ export async function startPreviewRuntime({
   const backupWorker = `preview-test-backup-control-${instance}`;
   const authProviderWorker = `preview-test-auth-provider-${instance}`;
   const githubProviderWorker = `preview-test-github-provider-${instance}`;
+  const googleProviderWorker = `preview-test-google-provider-${instance}`;
   const local = await localWorkerConfig();
   const issuer = "https://test-access.cloudflareaccess.com";
   const audience = "protected-preview-test-audience";
@@ -82,6 +85,7 @@ export async function startPreviewRuntime({
           ...local,
           name: `kanbun-preview-test-${instance}`,
           ...(backups ? { main: "test/backup-runtime-worker.mjs" } : {}),
+          ...(sheetsConfig ? { main: "test/google-sheets-runtime-worker.mjs" } : {}),
           vars: {
             LOCAL_DEV: localDev ? "true" : "false",
             AUTH_MODE: initialAuthMode ?? (emailAuth ? "email" : "preview"),
@@ -102,6 +106,7 @@ export async function startPreviewRuntime({
             APP_ORIGIN: appOrigin,
             ...githubConfig,
             ...slackConfig,
+            ...sheetsConfig,
             ...(isolatedRestore ? { BACKUP_RESTORE_ISOLATED: "true" } : {}),
           },
           ...(backups ? { r2_buckets: [{ binding: "BACKUPS", bucket_name: `preview-test-backups-${instance}` }] } : {}),
@@ -118,6 +123,7 @@ export async function startPreviewRuntime({
             { binding: "ASSETS", service: assetWorker },
             ...(githubConfig ? [{ binding: "GITHUB_TRANSPORT", service: githubProviderWorker }] : []),
             ...(slackConfig ? [{ binding: "SLACK_TRANSPORT", service: githubProviderWorker }] : []),
+            ...(sheetsConfig ? [{ binding: "GOOGLE_SHEETS_TRANSPORT", service: googleProviderWorker }] : []),
             ...(emailAuth
               ? [
                   { binding: "AUTH_EMAIL_TRANSPORT", service: authProviderWorker },
@@ -138,6 +144,17 @@ export async function startPreviewRuntime({
         },
       },
       { config: { name: assetWorker, main: "test/assets-worker.ts", compatibility_date: "2026-10-29" } },
+      ...(sheetsConfig
+        ? [
+            {
+              config: {
+                name: googleProviderWorker,
+                main: "test/google-provider-worker.ts",
+                compatibility_date: "2026-10-29",
+              },
+            },
+          ]
+        : []),
       ...(githubConfig || slackConfig
         ? [
             {
@@ -227,6 +244,32 @@ export async function startPreviewRuntime({
       workspaceId,
       token,
       fetch: request,
+      async googleRequests() {
+        return (await (await harness.getWorker(googleProviderWorker).fetch("http://fixture/requests")).json()) as {
+          url: string;
+          body: string;
+          authorization: string | null;
+        }[];
+      },
+      async googleFixture(fail = false, blocked = false) {
+        await harness
+          .getWorker(googleProviderWorker)
+          .fetch("http://fixture/configure", { method: "POST", body: JSON.stringify({ fail, blocked }) });
+      },
+      async releaseGoogle() {
+        await harness.getWorker(googleProviderWorker).fetch("http://fixture/release");
+      },
+      async googleStoredConnection() {
+        return environment.ACCOUNTS.prepare("SELECT * FROM google_sheets_connections WHERE workspace_id=?")
+          .bind(workspaceId)
+          .first();
+      },
+      async googleAlarm() {
+        const workspace = environment.WORKSPACES.getByName(workspaceId) as unknown as {
+          sheetsTestAlarm(): Promise<void>;
+        };
+        await workspace.sheetsTestAlarm();
+      },
       async setGithubResponses(responses: GithubFixtureResponse[]) {
         if (!githubConfig && !slackConfig) throw new Error("GitHub provider was not configured");
         await harness.getWorker(githubProviderWorker).fetch("http://fixture/responses", {
