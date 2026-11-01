@@ -15,6 +15,9 @@ grant workspace access.
    for eligible and ineligible addresses. This message does not confirm membership or delivery.
 4. Open the emailed link in the same browser that requested it. If a mail client opens a different
    browser or profile, return to the requesting browser or request a new link in the browser to use.
+   If you requested the link in the desktop app, choose **Open in Kanbun** when the browser cannot
+   check that app's link. Alternatively copy the complete email link and use the desktop app's
+   **File → Open sign-in link from clipboard** command. The app must be the one that requested it.
 5. Review the email displayed on **Confirm your sign-in**, then explicitly choose **Sign in as…**.
    Opening or inspecting the link alone never creates a session.
 6. A successful confirmation removes the sign-in token from the current fragment and reloads the
@@ -75,6 +78,10 @@ sign-in callbacks are rejected. Emails are never query parameters. Session crede
 in Secure, HttpOnly, SameSite=Lax, host-only cookies; D1 retains credential hashes. No session bearer
 is put in localStorage, application context or a WebSocket URL. Authentication POSTs require JSON
 and the configured origin. Public assets and sign-in configuration reveal no workspace rows.
+
+Desktop handoff carries only the existing email callback through `kanbun://signin/...`; inspection
+and consumption still occur at the configured HTTPS origin in the requesting desktop session.
+Opening the app does not confirm the email, copy a browser session or bypass the request nonce.
 
 Verify the flow in the actual-runtime browser suite using private test email/verification transports
 and normal session cookies. Required proof covers email request, explicit confirmation, invitation

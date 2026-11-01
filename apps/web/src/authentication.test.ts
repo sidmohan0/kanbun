@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authenticationConfig, returnDestination, signInRoute } from "./authentication";
+import { authenticationConfig, desktopSignInLink, returnDestination, signInRoute } from "./authentication";
 
 const token = "a".repeat(43);
 describe("email sign-in destinations", () => {
@@ -15,6 +15,9 @@ describe("email sign-in destinations", () => {
       `#invite/${token}`,
     ]) {
       expect(signInRoute(`#signin/${token}/${encodeURIComponent(returnTo)}`)).toEqual({ token, returnTo });
+      expect(desktopSignInLink(`#signin/${token}/${encodeURIComponent(returnTo)}`)).toBe(
+        `kanbun://signin/${token}/${encodeURIComponent(returnTo)}`,
+      );
       expect(returnDestination(returnTo)).toBe(returnTo);
     }
     expect(signInRoute("#issues")).toBeNull();
@@ -30,6 +33,7 @@ describe("email sign-in destinations", () => {
       "#invite/short",
     ]) {
       expect(signInRoute(`#signin/${token}/${encodeURIComponent(returnTo)}`)).toEqual({ invalid: true });
+      expect(desktopSignInLink(`#signin/${token}/${encodeURIComponent(returnTo)}`)).toBeNull();
       expect(returnDestination(returnTo)).toBe("#issues");
     }
     for (const hash of [`#signin/${token}/%`, `#signin/${token}/%23issues/extra`, "#signin/short/%23issues"])

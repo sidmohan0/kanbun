@@ -48,6 +48,11 @@ export function signInRoute(hash: string): SignInRoute {
     return { invalid: true };
   }
 }
+
+export function desktopSignInLink(hash: string): string | null {
+  const route = signInRoute(hash);
+  return route && "token" in route ? `kanbun://signin/${route.token}/${encodeURIComponent(route.returnTo)}` : null;
+}
 export class AuthenticationError extends Error {
   constructor(
     message: string,

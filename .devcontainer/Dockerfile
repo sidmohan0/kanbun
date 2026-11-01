@@ -8,12 +8,15 @@ COPY packages/verifier/package.json /tmp/kanbun-toolchain/verifier.json
 RUN node -e 'const fs = require("node:fs"); const expected = fs.readFileSync("/tmp/kanbun-toolchain/.nvmrc", "utf8").trim(); if (process.version !== `v${expected}`) throw new Error("Update the devcontainer Node image to match .nvmrc");' \
     && npm install --global "$(node -p 'require("/tmp/kanbun-toolchain/package.json").packageManager')" \
     && npx --yes "playwright@$(node -p 'require("/tmp/kanbun-toolchain/verifier.json").devDependencies["@playwright/test"]')" install-deps chromium \
+    && apt-get install -y --no-install-recommends xauth libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/* /tmp/kanbun-toolchain
 
 COPY config/audit-tools.json /tmp/kanbun-tools/config/audit-tools.json
 COPY scripts/install-audit-tools.mjs /tmp/kanbun-tools/scripts/install-audit-tools.mjs
 RUN node /tmp/kanbun-tools/scripts/install-audit-tools.mjs /usr/local/bin \
     && rm -rf /tmp/kanbun-tools
+
+RUN mkdir -p /home/node/.cache && chown node:node /home/node/.cache
 
 RUN mkdir -p /var/lock/kanbun && chmod 1777 /var/lock/kanbun \
     && touch /var/lock/kanbun/verifier.lock && chmod 666 /var/lock/kanbun/verifier.lock

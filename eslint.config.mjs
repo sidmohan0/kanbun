@@ -10,6 +10,7 @@ export default defineConfig([
     "**/node_modules/",
     "**/.pnpm-store/",
     "**/dist/",
+    "apps/desktop/release/",
     "**/coverage/",
     "**/.wrangler/",
     "artifacts/recovery/",
@@ -42,8 +43,12 @@ export default defineConfig([
     languageOptions: { globals: globals.worker },
   },
   {
-    files: ["apps/worker/test/**/*.ts"],
+    files: ["apps/worker/test/**/*.ts", "apps/desktop/**/*.{ts,mjs}"],
     languageOptions: { globals: globals.node },
+  },
+  {
+    files: ["apps/desktop/test/**/*.mjs"],
+    languageOptions: { globals: globals.browser },
   },
   {
     files: ["apps/web/src/**/*.{js,jsx,ts,tsx}"],

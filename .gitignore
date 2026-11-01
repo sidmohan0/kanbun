@@ -13,6 +13,7 @@ dist/
 coverage/
 .turbo/
 *.tsbuildinfo
+apps/desktop/release/
 
 # Local scratch (transfer archives, superseded drafts); never part of the ledger
 _to_delete/

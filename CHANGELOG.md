@@ -22,10 +22,18 @@ preparation moves them to a dated version heading.
 
 ### Added
 
+- Added opt-in Codex and Claude Code hooks for local agent status with stale and unknown states.
+
+- Added a local read-only Codex and Claude Code session collector with a Kanbun-logo tray, background window lifecycle, and configurable start-at-login.
+
 - Add installer-owned Cloudflare setup, an official deployment button, and documented local persistence and recovery workflows.
 - Add public launch criteria with source-bound evidence, publication and writing audits, security/support policies, and adoption documentation.
 
 ### Added
+
+- Added desktop packaging targets for macOS 15+, Windows and Linux, with separate x64 and ARM64 artifacts.
+
+- Added an Electron desktop shell for the hosted web app with persistent sessions, native menus, restricted navigation, and container-run desktop smoke coverage.
 
 - Team settings now support editing the issue identifier key, preserving issue links and numbering while enforcing unique uppercase keys.
 
@@ -85,11 +93,17 @@ preparation moves them to a dated version heading.
 
 ### Fixed
 
+- Allow Electron to create its download cache when CI mounts the Playwright browser cache.
+
+- Prevented the macOS startup-removal command from hanging when another Kanbun instance exits during handoff.
+
 - Normalize the installer's repository path so command-line configuration and deployment accept root profiles while rejecting profiles in other directories.
 
 - Cloudflare's deploy wizard can submit the inert setup profile without blank required identity fields or prefilled sample credentials; installer deployments retain their committed source tag for recovery provenance.
 
 - Correct container deployment login, initial Worker secret setup, health-check environment forwarding, installer-owned GitHub callbacks, and public capability wording after launch review.
+
+- Desktop email sign-in can return from the default browser through a validated app link, with a clipboard-link command for existing emails and unchanged request-cookie confirmation.
 
 - GitHub authorization now accepts the provider's issuer parameter, rejects foreign issuers before consuming authorization state, and remains compatible with callbacks that omit the issuer.
 
