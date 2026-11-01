@@ -90,7 +90,8 @@ Integration settings offer **Manage in browser** before starting third-party aut
 An explicit settings-only link opens the configured app's integration page in the system browser;
 sign in there and start the connection in that browser. OAuth state and callbacks then remain in
 one browser session. Reload the desktop app after changing a connection. This requires an updated
-desktop build; older builds can open the integration page directly in a browser instead. No OAuth
+desktop build. Settings also shows a selectable integration-page address: older builds can copy it
+and paste it directly into a browser instead. No OAuth
 codes, credentials or session cookies are handed between the desktop app and browser.
 
 Other same-origin navigation remains inside the window. User-triggered HTTP, HTTPS and mail links to

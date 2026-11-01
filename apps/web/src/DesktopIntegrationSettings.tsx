@@ -19,6 +19,10 @@ export function DesktopIntegrationSettings({ name }: { name: string }) {
           Manage {name} in browser
         </a>
       </Button>
+      <p>If this opens in Kanbun, copy this address and paste it into your browser:</p>
+      <p>
+        <code className="break-all select-text">{new URL("/#settings/integrations", location.origin).href}</code>
+      </p>
       <p>Your browser and desktop sessions stay separate. Reload Kanbun after changing the connection.</p>
     </section>
   );

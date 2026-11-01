@@ -1,7 +1,7 @@
 import type { BootstrapResponse } from "@kanbun/sync";
 import { test, expect, loginEmail, nativeBrowser } from "./app-email.fixture";
 
-test("desktop integration settings hand off to browser setup before creating OAuth state", async ({
+test("legacy desktop integration settings expose a browser fallback before creating OAuth state", async ({
   browser,
   emailApp: app,
 }) => {
@@ -21,6 +21,9 @@ test("desktop integration settings hand off to browser setup before creating OAu
     );
     await expect(connection.getByRole("button", { name: "Connect GitHub", exact: true })).toHaveCount(0);
     await expect(connection).toContainText("Sign in there");
+    // Existing installed builds advertise this UA but cannot intercept the one-click marker.
+    await expect(connection).toContainText("copy this address and paste it into your browser");
+    await expect(connection.locator("code")).toHaveText(`${app.origin}/#settings/integrations`);
     expect(integrationRequests).toEqual([]);
   } finally {
     await context.close();
