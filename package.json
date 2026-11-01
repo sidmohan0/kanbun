@@ -16,7 +16,7 @@
     "deploy": "node scripts/install-cloudflare.mjs deploy",
     "build:cloudflare": "pnpm --filter @kanbun/web build",
     "audit:public": "node scripts/public-audit.mjs",
-    "test": "pnpm -r test",
+    "test": "pnpm -r --no-sort test",
     "test:changelog": "node --test scripts/check-changelog.test.mjs",
     "test:scripts": "node --test scripts/*.test.mjs",
     "test:verifier": "pnpm --filter @kanbun/verifier test",
