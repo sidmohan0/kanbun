@@ -103,6 +103,8 @@ export const test = base.extend<
   { product: { origin: string; target: ProxyTarget } }
 >({
   product: [
+    // Playwright requires the fixture callback's first argument to be an object pattern.
+    // eslint-disable-next-line no-empty-pattern
     async ({}, use) => {
       const temporary = await mkdtemp(path.join(tmpdir(), "kanbun-product-ui-"));
       const target = { protocol: "http:", host: "127.0.0.1", port: 0 };
