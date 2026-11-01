@@ -88,6 +88,13 @@ test("combined filters and My Issues retain their state across details, and crea
     await expect(page.getByRole("heading", { name: "My Issues", exact: true })).toBeVisible();
     await expect(page.getByRole("searchbox", { name: "Search issues", exact: true })).toHaveValue("Zebra");
     await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+    const newIssue = page.getByRole("button", { name: "New issue", exact: false });
+    await newIssue.click();
+    await expect(page.getByRole("dialog", { name: "New issue" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Issue title" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "New issue" })).toHaveCount(0);
+    await expect(newIssue).toBeFocused();
     if (!(await page.getByRole("textbox", { name: "Issue title", exact: true }).isVisible()))
       await page.getByRole("button", { name: "New issue" }).click();
     await page.getByRole("textbox", { name: "Issue title", exact: true }).fill("Owned from My Issues");

@@ -3,6 +3,9 @@ import type { Row } from "@kanbun/model";
 import { issueIncarnation } from "@kanbun/sync";
 import type { SyncStatus } from "@kanbun/sync/client";
 import { Mark } from "./brand/Mark";
+import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { Dialog, DialogContent, DialogTitle } from "./components/ui/dialog";
 import { workspace } from "./workspace";
 import { IssueDetail } from "./IssueDetail";
 import { Members } from "./Members";
@@ -192,6 +195,7 @@ function selectedIssueId(): string | null {
 export function App() {
   const snapshot = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
   const [creatingIssue, setCreatingIssue] = useState(false);
+  const newIssueButton = useRef<HTMLButtonElement>(null);
   const [view, setView] = useState<IssueView>(() => (location.hash === "#my-issues" ? "mine" : "all"));
   const [viewFilters, setViewFilters] = useState<Record<IssueView, IssueFilters>>(() => ({
     all: emptyIssueFilters(),
@@ -473,9 +477,9 @@ export function App() {
               !issueId &&
               snapshot.phase !== "waiting" &&
               snapshot.phase !== "failed" && (
-                <button className="button primary compact" onClick={() => setCreatingIssue(true)} disabled={!canCreate}>
+                <Button ref={newIssueButton} size="sm" onClick={() => setCreatingIssue(true)} disabled={!canCreate}>
                   + New issue
-                </button>
+                </Button>
               )}
           </div>
           {snapshot.phase === "waiting" ? (
@@ -617,17 +621,18 @@ export function App() {
                 )
               ) : (
                 <>
-                  {creatingIssue && (
-                    <section
+                  <Dialog open={creatingIssue} onOpenChange={setCreatingIssue}>
+                    <DialogContent
                       className="create-panel"
-                      role="dialog"
-                      aria-labelledby="create-heading"
-                      onKeyDown={(event) => {
-                        if (event.key === "Escape") setCreatingIssue(false);
+                      showCloseButton={false}
+                      aria-describedby={undefined}
+                      onCloseAutoFocus={(event) => {
+                        event.preventDefault();
+                        newIssueButton.current?.focus();
                       }}
                     >
                       <div className="create-panel-heading">
-                        <h2 id="create-heading">New issue</h2>
+                        <DialogTitle>New issue</DialogTitle>
                         <button
                           className="button quiet compact"
                           type="button"
@@ -640,7 +645,7 @@ export function App() {
                       <form className="create-form" onSubmit={create}>
                         <div className="title-field">
                           <label htmlFor="new-issue-title">Issue title</label>
-                          <input
+                          <Input
                             autoFocus
                             id="new-issue-title"
                             placeholder="Give the work a clear title"
@@ -681,8 +686,8 @@ export function App() {
                           {formError}
                         </p>
                       )}
-                    </section>
-                  )}
+                    </DialogContent>
+                  </Dialog>
                   <IssueViewToolbar
                     view={view}
                     filters={filters}

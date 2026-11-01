@@ -1,3 +1,5 @@
+import { Input } from "./components/ui/input";
+import { Button } from "./components/ui/button";
 import type { WorkspaceSnapshot } from "./workspace";
 import { emptyIssueFilters, type IssueFilters, type IssueOrder, type IssueView } from "./issueViews";
 
@@ -27,7 +29,7 @@ export function IssueViewToolbar({
     <section className="issue-view-toolbar" aria-label="Issue filters">
       <label className="view-search" htmlFor="issue-search">
         Search issues
-        <input
+        <Input
           id="issue-search"
           type="search"
           placeholder="Search identifier, title, or description"
@@ -142,13 +144,15 @@ export function IssueViewToolbar({
             <option value="title">Title</option>
           </select>
         </label>
-        <button
-          className="button quiet compact clear-view-filters"
+        <Button
+          variant="ghost"
+          size="sm"
+          className="clear-view-filters"
           disabled={!ready || !active}
           onClick={() => onChange(emptyIssueFilters())}
         >
           Clear filters
-        </button>
+        </Button>
       </div>
     </section>
   );
