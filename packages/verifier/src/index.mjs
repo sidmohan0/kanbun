@@ -399,8 +399,10 @@ export async function runVerification({
         // Execute each group with bounded concurrency, but retain the planned receipt order.
         const results = new Array(end - index);
         let next = index;
+        const capacity =
+          group === heavy && process.env.CI !== "true" && process.env.KANBUN_VERIFY_PARALLEL !== "1" ? 1 : 4;
         await Promise.all(
-          Array.from({ length: Math.min(4, end - index) }, async () => {
+          Array.from({ length: Math.min(capacity, end - index) }, async () => {
             while (next < end) {
               const current = next++;
               results[current - index] = await perform(current);

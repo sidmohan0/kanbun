@@ -162,7 +162,7 @@ test("all executes the required gates and emits one JSON receipt with retained l
 
 test("independent groups overlap while the receipt retains its planned order", (t) => {
   const f = fixture(t);
-  const { report, status } = f.run(["all"], { FIXTURE_OVERLAP: "1" });
+  const { report, status } = f.run(["all"], { FIXTURE_OVERLAP: "1", KANBUN_VERIFY_PARALLEL: "1" });
   assert.equal(status, 0);
   const events = readFileSync(path.join(f.root, ".pnpm-events"), "utf8").trim().split("\n").map(JSON.parse);
   const when = (name, event) => events.find((item) => item.name === name && item.event === event).time;
