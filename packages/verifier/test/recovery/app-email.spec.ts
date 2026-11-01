@@ -112,6 +112,7 @@ test("an email-only invite preserves its destination through sign-in and opens t
   const memberEmail = "invited-member@datafog.ai";
   try {
     await loginEmail(owner, emailApp);
+    await owner.getByRole("link", { name: "Settings", exact: true }).click();
     await owner.getByRole("link", { name: "Members", exact: true }).click();
     await owner.getByText("Invite member", { exact: true }).click();
     await owner.getByRole("textbox", { name: "Invite by email", exact: true }).fill(memberEmail);
@@ -219,7 +220,7 @@ test("native expiry hides cached work while the same person can sign in again an
       return result;
     };
     await changeFromPeer(1, 1);
-    await expect(page.getByRole("button", { name: /Edit title for KAN-1/ })).toContainText("Urgent");
+    await expect(page.getByRole("row", { name: "KAN-1", exact: true })).toContainText("Urgent");
     await expect(page.locator(".sync-indicator")).toContainText("Saved");
     await page.route("**/sync/push", (route) => route.abort("internetdisconnected"));
     // With all HTTP synchronization blocked, only the real server's WebSocket close can show sign-in.

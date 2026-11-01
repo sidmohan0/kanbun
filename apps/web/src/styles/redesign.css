@@ -633,3 +633,96 @@
 .invitation-card .brand-lockup {
   font: 600 18px var(--font-ui);
 }
+
+/* Keep navigation in view while the workspace content scrolls independently. */
+.workspace-shell {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.workspace-sidebar {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.workspace-sidebar::-webkit-scrollbar {
+  display: none;
+}
+.issues-main {
+  min-height: 0;
+  overflow: auto;
+}
+.workspace-topbar {
+  border-bottom-color: color-mix(in oklab, var(--accent) 28%, var(--border));
+}
+.navigation-item[aria-current="page"] {
+  box-shadow: inset 2px 0 var(--accent);
+}
+.issue-row:not(.editing) {
+  cursor: pointer;
+}
+.issue-title-cell .issue-title-button {
+  display: inline-flex;
+  width: auto;
+  min-height: 0;
+  padding: 3px 4px;
+  margin-left: -4px;
+  vertical-align: middle;
+}
+.issue-title-cell .row-properties {
+  display: inline-flex;
+  margin-left: 12px;
+  vertical-align: middle;
+}
+.board-column {
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-top: 2px solid color-mix(in oklab, var(--accent) 50%, var(--border));
+  border-radius: var(--radius-md);
+}
+.board-card {
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
+  box-shadow: 0 1px 3px color-mix(in oklab, var(--text) 10%, transparent);
+}
+.board-card.dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+.board-column.drop-target {
+  background: color-mix(in oklab, var(--accent) 10%, var(--surface-sunken));
+  border-color: var(--accent);
+}
+@media (max-width: 620px) {
+  .workspace-shell {
+    display: flex;
+    flex-direction: column;
+  }
+  .workspace-sidebar {
+    flex: none;
+    overflow: visible;
+  }
+  .issues-main {
+    flex: 1;
+  }
+}
+
+/* Nested issue context remains distinct from its surrounding row or card. */
+.issue-list td {
+  border-bottom-color: var(--border-strong);
+}
+.github-pr-chips a {
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+.github-pr-chips a:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.issue-relationships,
+.github-context,
+.issue-discussion {
+  border-top: 1px solid var(--border-strong);
+  padding-top: 16px;
+}

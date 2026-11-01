@@ -13,6 +13,7 @@ export default defineConfig([
     "**/coverage/",
     "**/.wrangler/",
     "artifacts/recovery/",
+    "artifacts/recovery-preflight/",
     "artifacts/deployment/",
     "artifacts/preview-health/",
     "artifacts/verification/",
