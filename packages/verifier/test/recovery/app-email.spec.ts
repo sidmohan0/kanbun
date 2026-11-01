@@ -112,6 +112,7 @@ test("an email-only invite preserves its destination through sign-in and opens t
   const memberEmail = "invited-member@datafog.ai";
   try {
     await loginEmail(owner, emailApp);
+    await owner.getByRole("link", { name: "Settings", exact: true }).click();
     await owner.getByRole("link", { name: "Members", exact: true }).click();
     await owner.getByText("Invite member", { exact: true }).click();
     await owner.getByRole("textbox", { name: "Invite by email", exact: true }).fill(memberEmail);

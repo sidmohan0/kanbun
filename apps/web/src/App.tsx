@@ -1,4 +1,4 @@
-import { Inbox as InboxIcon, ListTodo, CircleUserRound, Settings, UserRound } from "lucide-react";
+import { Inbox as InboxIcon, ListTodo, CircleUserRound, Settings } from "lucide-react";
 import { NativeSelect } from "./components/ui/native-select";
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import type { Row } from "@kanbun/model";
@@ -378,20 +378,11 @@ export function App() {
             <CircleUserRound className="navigation-symbol" size={16} aria-hidden="true" /> My Issues
             {ready && <span className="navigation-count">{myIssueCount}</span>}
           </a>
-          {context?.mode === "hosted" && context.role === "owner" && (
-            <a
-              className="navigation-item members-navigation"
-              href="#members"
-              aria-current={membersView ? "page" : undefined}
-            >
-              <UserRound className="navigation-symbol" size={16} aria-hidden="true" /> Members
-            </a>
-          )}
           {canManageTeams && (
             <a
               className="navigation-item teams-navigation"
               href="#settings"
-              aria-current={teamsView ? "page" : undefined}
+              aria-current={teamsView || membersView ? "page" : undefined}
             >
               <Settings className="navigation-symbol" size={16} aria-hidden="true" /> Settings
             </a>
@@ -601,7 +592,12 @@ export function App() {
                 )
               ) : membersView ? (
                 ready && context?.mode === "hosted" && context.role === "owner" ? (
-                  <Members />
+                  <div>
+                    <a href="#settings" className="back-to-issues">
+                      Back to settings
+                    </a>
+                    <Members />
+                  </div>
                 ) : (
                   <section className="empty-state">
                     <h2>{ready ? "Workspace owner access required" : "Opening members…"}</h2>

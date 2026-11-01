@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Changed
 
+- Move workspace member management into Settings.
+
 - Keep workspace navigation in view, improve board contrast and drag feedback, and make issue rows open on clicks outside their titles.
 
 - Give new email sessions a 30-day lifetime and 14-day inactivity timeout, with single-use sign-in links valid for 30 minutes.
