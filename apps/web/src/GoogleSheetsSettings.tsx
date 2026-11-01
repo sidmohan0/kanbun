@@ -46,6 +46,9 @@ export function GoogleSheetsSettings({ snapshot }: { snapshot: WorkspaceSnapshot
     };
   }, [owner]);
   async function action(name: "connect" | "sync" | "configure" | "disconnect", input: object = {}) {
+    const previous = state;
+    if (name === "configure" && state && "projectsEnabled" in input && typeof input.projectsEnabled === "boolean")
+      setState({ ...state, projectsEnabled: input.projectsEnabled });
     setBusy(true);
     setError(null);
     try {
@@ -64,6 +67,7 @@ export function GoogleSheetsSettings({ snapshot }: { snapshot: WorkspaceSnapshot
         window.location.assign(url.href);
       } else setState(connection(result));
     } catch (failure) {
+      if (name === "configure") setState(previous);
       setError(failure instanceof Error ? failure.message : "Google Sheets could not be changed.");
     } finally {
       setBusy(false);
