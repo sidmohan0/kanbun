@@ -8,9 +8,9 @@ preparation moves them to a dated version heading.
 ### Changed
 
 - Move workspace member management into Settings.
-
 - Keep workspace navigation in view, improve board contrast and drag feedback, and make issue rows open on clicks outside their titles.
-
+- Exclude generated browser preflight reports from lint so verification can be rerun after a failure.
+- Refresh the project README and support Git operations in linked-worktree devcontainers.
 - Give new email sessions a 30-day lifetime and 14-day inactivity timeout, with single-use sign-in links valid for 30 minutes.
 - Use shared controls across workspace, settings, discussion, and access screens, and add reproducible hosted-flow UI captures.
 - Use the brand's Paper and Bone colors to distinguish light-theme backgrounds and components.

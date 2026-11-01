@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 340" role="img" aria-labelledby="title desc">
+  <title id="title">How Kanbun connects clients and storage</title>
+  <desc id="desc">Browser clients connect to a Cloudflare Worker, which routes workspace and document changes to Durable Objects and uses D1 for accounts and R2 for backups.</desc>
+  <rect width="1000" height="340" rx="18" fill="#f8f6f1"/>
+  <g fill="none" stroke="#1c1b1a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M57 83 Q54 78 63 77 L250 79 Q257 80 256 87 L254 245 Q253 251 246 250 L60 248 Q53 247 55 240 Z" fill="#efebe2"/>
+    <path d="M377 83 Q375 77 384 78 L567 76 Q575 77 573 85 L575 246 Q573 252 566 250 L383 249 Q376 248 378 241 Z" fill="#efebe2"/>
+    <path d="M699 30 Q696 25 705 26 L933 28 Q941 29 939 36 L938 98 Q937 105 930 104 L704 103 Q697 102 699 96 Z" fill="#fff"/>
+    <path d="M699 128 Q697 123 705 124 L933 126 Q941 127 939 134 L938 196 Q937 203 930 202 L704 201 Q697 200 699 194 Z" fill="#fff"/>
+    <path d="M699 226 Q697 221 705 222 L933 224 Q941 225 939 232 L938 294 Q937 301 930 300 L704 299 Q697 298 699 292 Z" fill="#fff"/>
+    <path d="M258 163 C302 160 332 163 373 162 M363 155 L373 162 L363 169 M258 173 C301 177 332 174 373 173 M269 166 L258 173 L269 180" stroke="#c2321f"/>
+    <path d="M575 136 C632 136 640 65 694 65 M684 58 L694 65 L684 72 M576 165 L694 165 M684 158 L694 165 L684 172 M575 193 C630 193 642 261 694 261 M684 254 L694 261 L684 268" stroke="#c2321f"/>
+  </g>
+  <g fill="#1c1b1a" font-family="Inter, Arial, sans-serif" text-anchor="middle">
+    <text x="155" y="132" font-size="23" font-weight="700">Browser</text><text x="155" y="164" font-size="15">Optimistic changes</text><text x="155" y="187" font-size="15">IndexedDB queue</text>
+    <text x="476" y="132" font-size="23" font-weight="700">Cloudflare Worker</text><text x="476" y="164" font-size="15">App and authenticated</text><text x="476" y="187" font-size="15">request routing</text>
+    <text x="819" y="58" font-size="18" font-weight="700">Durable Objects</text><text x="819" y="80" font-size="14">Workspace writes and documents</text>
+    <text x="819" y="158" font-size="18" font-weight="700">D1</text><text x="819" y="180" font-size="14">Account directory</text>
+    <text x="819" y="256" font-size="18" font-weight="700">R2</text><text x="819" y="278" font-size="14">Private backup bundles</text>
+  </g>
+</svg>
