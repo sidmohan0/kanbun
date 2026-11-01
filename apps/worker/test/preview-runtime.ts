@@ -293,6 +293,13 @@ export async function startPreviewRuntime({
           .bind("2020-01-01T00:00:00.000Z", hash)
           .run();
       },
+      async setNativeSessionTimes(rawToken: string, lastSeenAt: string, expiresAt: string) {
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawToken));
+        const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+        await environment.ACCOUNTS.prepare("UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE id = ?")
+          .bind(lastSeenAt, expiresAt, hash)
+          .run();
+      },
       async nativeConnect(clientId: string, cookie: string, origin: string | null = appOrigin) {
         const response = await harness.getWorker().fetch(`/sync/connect?clientId=${encodeURIComponent(clientId)}`, {
           headers: { Upgrade: "websocket", Cookie: cookie, ...(origin === null ? {} : { Origin: origin }) },

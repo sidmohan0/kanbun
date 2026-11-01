@@ -20,9 +20,11 @@ owner or eligible active/invited people in the configured email domain. Eligible
 addresses receive the same generic `202` response; that response is not proof of email delivery.
 
 The link opens in the browser that requested it and requires an explicit confirmation. Inspecting
-it does not sign in, so a scanner cannot consume the link simply by following it. The link and its
-resulting session both expire one hour after the request; consuming the link does not extend the
-session. A single atomic claim can create a session. D1 stores hashes of link tokens, browser
+it does not sign in, so a scanner cannot consume the link simply by following it. The single-use
+link expires 30 minutes after the request. Confirmation creates a session lasting at most 30 days,
+with a 14-day inactivity timeout. User interaction updates activity; background sync does not.
+Previously issued sessions retain their existing absolute expiry. A single atomic claim can create
+a session. D1 stores hashes of link tokens, browser
 nonces, and session credentials rather than their raw bearer values. Browser cookies are Secure,
 HttpOnly, SameSite=Lax, and host-only. Authentication POST requests require the configured origin
 and JSON; tokens stay in request bodies or the link fragment, not query parameters or localStorage.

@@ -15,6 +15,6 @@ executing them on the host. Host Git operations, Docker lifecycle commands, and 
 for the pinned devcontainer CLI are expected. If Docker is unavailable, start the local runtime or
 report the setup failure instead of substituting host verification.
 
-Use feature branches and pull requests. Run the complete container verifier before publishing a PR;
+Use descriptive feature branches without the `codex/` prefix, and use pull requests. Run the complete container verifier before publishing a PR;
 the separate changelog and spec-lock checks remain required. Keep dependencies in their owning
 workspace manifest and commit the single root pnpm lockfile with manifest changes.

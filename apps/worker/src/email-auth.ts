@@ -14,9 +14,9 @@ import { body, RequestError } from "./requests";
 type Environment = AuthEnvironment & { ACCOUNTS?: D1Database };
 const SESSION_COOKIE = "__Host-kanbun-session";
 const LOGIN_COOKIE = "__Host-kanbun-login";
-// Preserve the hosted application's existing one-hour sign-in policy. Consuming a
-// link does not extend this expiry; the session ends one hour after the request.
-const SESSION_LIFETIME_MS = 60 * 60 * 1000;
+const LINK_LIFETIME_MS = 30 * 60 * 1000;
+const SESSION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+const SESSION_INACTIVITY_MS = 14 * 24 * 60 * 60 * 1000;
 const tokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 const returnToSchema = z
   .string()
@@ -129,7 +129,7 @@ async function sendLink(env: Environment, email: string, token: string, returnTo
       from: env.AUTH_FROM_EMAIL,
       to: [email],
       subject: "Sign in to Kanbun",
-      text: `Use this link to sign in to Kanbun in the browser where you requested it:\n\n${url}\n\nThe link and resulting session expire one hour after your request. If you did not request this email, you can ignore it.`,
+      text: `Use this link to sign in to Kanbun in the browser where you requested it:\n\n${url}\n\nThe link expires 30 minutes after your request and can be used once. If you did not request this email, you can ignore it.`,
     }),
   });
   try {
@@ -144,9 +144,9 @@ type SessionIdentity = { id: string; account_id: string; email: string; name: st
 async function sessionRow(env: Environment, sessionId: string): Promise<SessionIdentity | null> {
   return database(env)
     .prepare(
-      "SELECT s.id, s.account_id, a.email, a.name, s.expires_at FROM sessions s JOIN accounts a ON a.id = s.account_id JOIN auth_identities i ON i.account_id = a.id AND i.provider = 'email' AND i.provider_user_id = lower(a.email) WHERE s.id = ? AND s.expires_at > ?",
+      "SELECT s.id, s.account_id, a.email, a.name, s.expires_at FROM sessions s JOIN accounts a ON a.id = s.account_id JOIN auth_identities i ON i.account_id = a.id AND i.provider = 'email' AND i.provider_user_id = lower(a.email) WHERE s.id = ? AND s.expires_at > ? AND s.last_seen_at > ?",
     )
-    .bind(sessionId, new Date().toISOString())
+    .bind(sessionId, new Date().toISOString(), new Date(Date.now() - SESSION_INACTIVITY_MS).toISOString())
     .first<SessionIdentity>();
 }
 export async function verifyEmailSession(request: Request, env: Environment): Promise<AccessIdentity> {
@@ -208,6 +208,7 @@ async function consume(request: Request, env: Environment, token: string) {
   const sessionId = await authTokenHash(rawSession);
   const accountId = uuidv7();
   const now = new Date().toISOString();
+  const sessionExpiresAt = new Date(Date.parse(now) + SESSION_LIFETIME_MS).toISOString();
   const db = database(env);
   // D1 batches are atomic. Only the random winning claim can create its session;
   // concurrent claims cannot authenticate merely because another request consumed the link.
@@ -234,12 +235,12 @@ async function consume(request: Request, env: Environment, token: string) {
       .prepare(
         `INSERT INTO sessions (id,account_id,expires_at,created_at,last_seen_at) SELECT ?,a.id,?,?,? FROM accounts a JOIN auth_identities i ON i.account_id = a.id AND i.provider = 'email' AND i.provider_user_id = ? WHERE lower(a.email) = ? AND ${claim}`,
       )
-      .bind(sessionId, link.expires_at, now, now, link.email, link.email, link.token_hash, sessionId),
+      .bind(sessionId, sessionExpiresAt, now, now, link.email, link.email, link.token_hash, sessionId),
   ]);
   const session = await sessionRow(env, sessionId);
   if (!session) throw signInUnavailable();
   return json({ ok: true }, 200, [
-    setCookie(SESSION_COOKIE, rawSession, Date.parse(link.expires_at)),
+    setCookie(SESSION_COOKIE, rawSession, Date.parse(sessionExpiresAt)),
     clearCookie(LOGIN_COOKIE),
   ]);
 }
@@ -267,7 +268,11 @@ export async function authenticationRoute(request: Request, env: Environment): P
     });
   }
   if (env.AUTH_MODE !== "email") return json({ error: "Not found" }, 404);
-  if (!["/api/auth/request", "/api/auth/inspect", "/api/auth/consume", "/api/auth/logout"].includes(url.pathname))
+  if (
+    !["/api/auth/request", "/api/auth/inspect", "/api/auth/consume", "/api/auth/logout", "/api/auth/activity"].includes(
+      url.pathname,
+    )
+  )
     return json({ error: "Not found" }, 404);
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   requireHostedOrigin(request, env);
@@ -291,7 +296,7 @@ export async function authenticationRoute(request: Request, env: Environment): P
     if (!env.RESEND_API_KEY || !env.AUTH_FROM_EMAIL) throw new RequestError("Email sign-in is not configured", 503);
     const token = randomToken(),
       nonce = randomToken();
-    const expiresAt = requestedAt + SESSION_LIFETIME_MS;
+    const expiresAt = requestedAt + LINK_LIFETIME_MS;
     const tokenHash = await authTokenHash(token);
     const nonceHash = await authTokenHash(nonce);
     try {
@@ -332,6 +337,19 @@ export async function authenticationRoute(request: Request, env: Environment): P
         .bind(await authTokenHash(raw))
         .run();
     return json({ ok: true }, 200, [clearCookie(SESSION_COOKIE), clearCookie(LOGIN_COOKIE)]);
+  }
+  if (url.pathname === "/api/auth/activity") {
+    await body(z.strictObject({}), request);
+    const identity = await verifyEmailSession(request, env);
+    const now = new Date().toISOString();
+    const updated = await database(env)
+      .prepare(
+        "UPDATE sessions SET last_seen_at = CASE WHEN last_seen_at < ? THEN ? ELSE last_seen_at END WHERE id = ? AND expires_at > ? AND last_seen_at > ?",
+      )
+      .bind(now, now, identity.sessionId, now, new Date(Date.now() - SESSION_INACTIVITY_MS).toISOString())
+      .run();
+    if (!updated.meta.changes) throw new RequestError("Your Kanbun sign-in has expired. Sign in again.", 401);
+    return json({ ok: true });
   }
   const { token } = await body(z.strictObject({ token: tokenSchema }), request);
   if (url.pathname === "/api/auth/inspect") {
