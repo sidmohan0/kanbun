@@ -93,6 +93,8 @@ preparation moves them to a dated version heading.
 
 ### Fixed
 
+- Allow Electron to create its download cache when CI mounts the Playwright browser cache.
+
 - Prevented the macOS startup-removal command from hanging when another Kanbun instance exits during handoff.
 
 - Normalize the installer's repository path so command-line configuration and deployment accept root profiles while rejecting profiles in other directories.
