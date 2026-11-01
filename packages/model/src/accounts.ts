@@ -168,3 +168,19 @@ export const githubSetups = sqliteTable("github_setups", {
   >("catalog").notNull(),
   error: text("error"),
 });
+
+/** Private integration credentials. Never projected into workspace sync or restored from backups. */
+export const slackConnections = sqliteTable(
+  "slack_connections",
+  {
+    workspaceId: text("workspace_id").primaryKey(),
+    teamId: text("team_id").notNull(),
+    teamName: text("team_name").notNull(),
+    botUserId: text("bot_user_id").notNull(),
+    tokenCiphertext: text("token_ciphertext").notNull(),
+    scopes: text("scopes").notNull(),
+    connectedBy: text("connected_by").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("slack_connections_team").on(t.teamId)],
+);

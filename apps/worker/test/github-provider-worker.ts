@@ -1,7 +1,7 @@
 export type GithubFixtureResponse = {
   method: string;
   path: string;
-  host?: "api.github.com" | "github.com";
+  host?: "api.github.com" | "github.com" | "slack.com";
   status?: number;
   body: unknown;
   authorization?: string;
@@ -47,7 +47,7 @@ export default {
       }
       return new Response("Not found", { status: 404 });
     }
-    if (url.protocol !== "https:" || !["api.github.com", "github.com"].includes(url.hostname)) {
+    if (url.protocol !== "https:" || !["api.github.com", "github.com", "slack.com"].includes(url.hostname)) {
       return new Response("Unexpected provider origin", { status: 502 });
     }
     const authorization = request.headers.get("Authorization");

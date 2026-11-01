@@ -7,6 +7,7 @@ import { WORKFLOW_STATE_TYPES, type Row, type WorkflowStateType } from "@kanbun/
 import { DEFAULT_STATES } from "@kanbun/mutators";
 import { workspace, type WorkspaceSnapshot } from "./workspace";
 import "./styles/teams.css";
+import { SlackSettings } from "./SlackSettings";
 import { GitHubSettings } from "./GitHubSettings";
 import { GitBranchSettings } from "./GitBranchSettings";
 
@@ -379,6 +380,7 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
       <div hidden={section !== "integrations"}>
         <GitBranchSettings snapshot={snapshot} />
         <GitHubSettings snapshot={snapshot} />
+        <SlackSettings snapshot={snapshot} />
       </div>
       <div hidden={section !== "teams" && section !== "workflow"} className="settings-team-section">
         <h2>Teams</h2>

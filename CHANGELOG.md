@@ -5,6 +5,8 @@ preparation moves them to a dated version heading.
 
 ## [Unreleased]
 
+- Added owner-only Slack workspace connection settings with encrypted credentials, disconnect, and signed uninstall handling.
+
 ### Changed
 
 - Run package and browser recovery tests concurrently with bounded workers, and verify WebSocket close frames without waiting for development proxy TCP teardown.
