@@ -79,6 +79,8 @@ test("command shortcut preserves editor and modal shortcuts, focus and disconnec
     await loginEmail(page, app);
     const trigger = page.getByRole("button", { name: "Commands", exact: false });
     await trigger.focus();
+    await page.keyboard.press("Control+Shift+k");
+    await expect(page.getByRole("dialog", { name: "Commands", exact: true })).toHaveCount(0);
     await page.keyboard.press("Control+k");
     const dialog = page.getByRole("dialog", { name: "Commands", exact: true });
     await expect(dialog).toContainText("Connect Google Sheets in Settings before syncing");

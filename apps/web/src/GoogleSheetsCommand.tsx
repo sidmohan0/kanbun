@@ -95,6 +95,7 @@ export function GoogleSheetsCommand({ snapshot }: { snapshot: WorkspaceSnapshot 
         event.repeat ||
         event.isComposing ||
         event.altKey ||
+        event.shiftKey ||
         !(event.metaKey || event.ctrlKey) ||
         event.key.toLowerCase() !== "k"
       )
