@@ -57,6 +57,14 @@ When the Docker runtime is shared with other active work, set `KANBUN_RECOVERY_W
 limit concurrent browser test cases. This preserves every scenario and its assertions; it does
 not raise timeouts or enable retries. The default retains Playwright's normal worker selection.
 
+Full, preflight, and recovery verifier profiles acquire a shared Docker volume lock across Kanbun
+containers on the same Docker daemon, including containers for separate clones. Other profiles and
+focused commands may run concurrently. Waiting defaults to 900 seconds; set
+`KANBUN_VERIFY_LOCK_TIMEOUT` inside the container to change it. A timeout fails the run without
+skipping checks. The kernel releases the lock when its owning process exits. Rebuild
+older containers after updating the devcontainer configuration; different Docker daemons do not
+share the lock. Direct `pnpm test:recovery` does not acquire it and must be coordinated separately.
+
 ```sh
 ./scripts/devcontainer.sh exec --remote-env KANBUN_RECOVERY_WORKERS=1 pnpm --silent verify --json
 ```

@@ -11,6 +11,7 @@
   },
   "updateRemoteUserUID": true,
   "init": true,
+  "mounts": ["source=kanbun-verifier-lock,target=/var/lock/kanbun,type=volume"],
   "runArgs": ["--shm-size=1g", "--publish=127.0.0.1::5173"],
   "forwardPorts": [5173],
   "portsAttributes": {

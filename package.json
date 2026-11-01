@@ -29,7 +29,7 @@
     "db:generate": "pnpm --filter @kanbun/model run db:generate",
     "spec:check": "node scripts/check-spec-lock.mjs",
     "changelog:check": "node scripts/check-changelog.mjs",
-    "verify": "node packages/verifier/src/cli.mjs"
+    "verify": "bash .devcontainer/verify-entry.sh"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
