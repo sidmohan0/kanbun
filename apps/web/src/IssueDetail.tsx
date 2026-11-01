@@ -1,3 +1,5 @@
+import { Textarea } from "./components/ui/textarea";
+import { Button } from "./components/ui/button";
 import { useState, useSyncExternalStore } from "react";
 import type { Row } from "@kanbun/model";
 import type { WorkspaceContext } from "@kanbun/sync";
@@ -39,13 +41,13 @@ export function IssueDetail({
               {snapshot.status}
             </span>
           </div>
-          <textarea
+          <Textarea
+            className="description-editor w-full rounded-md border border-border bg-transparent text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
             id="issue-description"
-            className="description-editor"
             value={snapshot.text}
             onChange={(event) => session.edit(event.target.value)}
             disabled={!snapshot.ready || snapshot.blocked}
-            placeholder="Describe the work, decisions, and what done looks like."
+            placeholder="Add a description…"
             aria-describedby={snapshot.error ? "description-error" : "description-help"}
           />
           <span id="description-help" className="visually-hidden">
@@ -55,9 +57,9 @@ export function IssueDetail({
             <div className="notice" role="alert" id="description-error">
               <span>{snapshot.error}</span>
               {!snapshot.blocked && (
-                <button className="button quiet compact" onClick={session.refresh}>
+                <Button variant="ghost" size="sm" onClick={session.refresh}>
                   Retry description sync
-                </button>
+                </Button>
               )}
             </div>
           )}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { App } from "./App";
+import { Button } from "./components/ui/button";
 import { Invitation } from "./Invitation";
 import { AuthenticationCard, EmailSignIn, EmailSignInCallback } from "./EmailSignIn";
 import {
@@ -72,9 +73,7 @@ export function Entry() {
         <h1>Couldn’t open sign-in</h1>
         <p role="alert">{configError}</p>
         <p>Check your connection and reload. Your pending changes remain saved in this browser.</p>
-        <button className="button primary" onClick={() => location.reload()}>
-          Try again
-        </button>
+        <Button onClick={() => location.reload()}>Try again</Button>
       </AuthenticationCard>
     );
   if (!config && !localFallback)

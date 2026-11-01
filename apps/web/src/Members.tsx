@@ -1,3 +1,6 @@
+import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./components/ui/dialog";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { MembershipError, membershipList, membershipRequest, type MembershipList } from "./membership";
 import { workspace } from "./workspace";
@@ -10,6 +13,7 @@ export function Members() {
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ id: string; url: string } | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
+  const [inviteOpen, setInviteOpen] = useState(false);
   const load = useCallback(() => membershipRequest("/api/members").then(membershipList), []);
   const loaded = useCallback((value: MembershipList) => {
     setData(value);
@@ -74,6 +78,7 @@ export function Members() {
       setCreated({ id: result.invitation.id, url: result.url });
       setEmail("");
       setCopyStatus("");
+      setInviteOpen(false);
     });
   }
   const createdIsPending =
@@ -85,7 +90,9 @@ export function Members() {
     <section className="members-panel" aria-label="Workspace members">
       <div className="members-heading">
         <h2>People with access</h2>
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           className="button quiet compact"
           disabled={loading || Boolean(busy)}
           onClick={() => {
@@ -94,7 +101,7 @@ export function Members() {
           }}
         >
           Refresh members
-        </button>
+        </Button>
       </div>
       {error && (
         <p className="notice" role="alert">
@@ -118,7 +125,9 @@ export function Members() {
                     {!member.active && " · inactive"}
                   </span>
                   {member.role !== "owner" && (
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       className="button quiet compact"
                       disabled={Boolean(busy)}
                       aria-label={`Remove member ${member.email}`}
@@ -129,39 +138,53 @@ export function Members() {
                       }
                     >
                       Remove
-                    </button>
+                    </Button>
                   )}
                 </li>
               ))}
             </ul>
-            <details className="invite-disclosure">
-              <summary className="button compact">Invite member</summary>
-              <form className="invite-form" onSubmit={invite}>
-                <label htmlFor="invite-email">Invite by email</label>
-                <div className="invite-controls">
-                  <input
-                    id="invite-email"
-                    type="email"
-                    required
-                    autoComplete="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="teammate@example.com"
-                    disabled={Boolean(busy)}
-                  />
-                  <button className="button primary" disabled={Boolean(busy) || !email.trim()} type="submit">
-                    {busy === "invite" ? "Creating invitation…" : "Create invitation"}
-                  </button>
-                </div>
-                <p>The invitation only works for this email. Share its link directly with that person.</p>
-              </form>
-            </details>
+            <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="button compact">
+                  Invite member
+                </Button>
+              </DialogTrigger>
+              <DialogContent aria-describedby={undefined}>
+                <DialogTitle>Invite member</DialogTitle>
+                <form className="invite-form" onSubmit={invite}>
+                  <label htmlFor="invite-email">Invite by email</label>
+                  <div className="invite-controls">
+                    <Input
+                      id="invite-email"
+                      type="email"
+                      required
+                      autoComplete="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="teammate@example.com"
+                      disabled={Boolean(busy)}
+                    />
+                    <Button className="button primary" disabled={Boolean(busy) || !email.trim()} type="submit">
+                      {busy === "invite" ? "Creating invitation…" : "Create invitation"}
+                    </Button>
+                  </div>
+                  <p>The invitation only works for this email. Share its link directly with that person.</p>
+                  {error && (
+                    <p className="notice" role="alert">
+                      {error}
+                    </p>
+                  )}
+                </form>
+              </DialogContent>
+            </Dialog>
             {createdIsPending && (
               <div className="created-invitation">
                 <label htmlFor="invitation-link">Invitation link</label>
-                <input id="invitation-link" readOnly value={created!.url} />
+                <Input id="invitation-link" readOnly value={created!.url} />
                 <div className="invite-copy">
-                  <button
+                  <Button
+                    variant="outline"
+                    size="sm"
                     className="button compact"
                     onClick={() => {
                       if (!navigator.clipboard?.writeText) {
@@ -175,7 +198,7 @@ export function Members() {
                     }}
                   >
                     Copy invitation link
-                  </button>
+                  </Button>
                   <span role="status" aria-label="Invitation copy status">
                     {copyStatus}
                   </span>
@@ -201,7 +224,9 @@ export function Members() {
                       </span>
                     </div>
                     {!invitation.acceptedAt && !invitation.revokedAt && (
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         className="button quiet compact"
                         disabled={Boolean(busy)}
                         aria-label={`Revoke invitation for ${invitation.email}`}
@@ -212,7 +237,7 @@ export function Members() {
                         }
                       >
                         Revoke
-                      </button>
+                      </Button>
                     )}
                   </li>
                 ))}

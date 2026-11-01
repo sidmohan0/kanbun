@@ -1,3 +1,4 @@
+import { NativeSelect } from "./components/ui/native-select";
 import { useEffect, useRef, useState } from "react";
 import type { Row } from "@kanbun/model";
 import { issueIdentifier } from "./issueViews";
@@ -114,7 +115,7 @@ export function IssueBoard({ issues, snapshot }: { issues: Row<"issue">[]; snaps
                             </p>
                             <label>
                               Status
-                              <select
+                              <NativeSelect
                                 ref={(control) => {
                                   if (control) statusControls.current.set(issue.id, control);
                                   else statusControls.current.delete(issue.id);
@@ -136,7 +137,7 @@ export function IssueBoard({ issues, snapshot }: { issues: Row<"issue">[]; snaps
                                     {option.name}
                                   </option>
                                 ))}
-                              </select>
+                              </NativeSelect>
                             </label>
                             {(pullRequestsByIssue.get(issue.id)?.length ?? 0) > 0 && (
                               <GitHubPullRequestChips

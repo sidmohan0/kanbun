@@ -7,6 +7,8 @@ preparation moves them to a dated version heading.
 
 ### Changed
 
+- Use shared controls across workspace, settings, discussion, and access screens, and add reproducible hosted-flow UI captures.
+- Use the brand's Paper and Bone colors to distinguish light-theme backgrounds and components.
 - Add shared UI controls and improve issue creation and label picker keyboard interactions.
 - Streamline workspace navigation, issue details, settings, and sign-in screens, and add repeatable local UI captures.
 

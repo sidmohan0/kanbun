@@ -1,3 +1,4 @@
+import { Button } from "./components/ui/button";
 import { useState } from "react";
 import { issueIncarnation } from "@kanbun/sync";
 import { workspace, type WorkspaceSnapshot } from "./workspace";
@@ -51,7 +52,9 @@ export function Inbox({ snapshot }: { snapshot: WorkspaceSnapshot }) {
                   )}
                   <time dateTime={notification.createdAt}>{new Date(notification.createdAt).toLocaleString()}</time>
                 </div>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   className="button quiet compact"
                   disabled={snapshot.phase !== "ready"}
                   onClick={() => {
@@ -64,7 +67,7 @@ export function Inbox({ snapshot }: { snapshot: WorkspaceSnapshot }) {
                   }}
                 >
                   {notification.readAt ? "Mark unread" : "Mark read"}
-                </button>
+                </Button>
               </li>
             );
           })}

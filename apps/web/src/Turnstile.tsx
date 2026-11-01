@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Button } from "./components/ui/button";
 
 type TurnstileApi = {
   render(
@@ -93,8 +94,9 @@ export function Turnstile({ siteKey, onToken }: { siteKey: string; onToken(token
       {error && (
         <>
           <p role="alert">{error}</p>
-          <button
-            className="button quiet compact"
+          <Button
+            variant="ghost"
+            size="sm"
             type="button"
             onClick={() => {
               onToken("");
@@ -103,7 +105,7 @@ export function Turnstile({ siteKey, onToken }: { siteKey: string; onToken(token
             }}
           >
             Retry verification
-          </button>
+          </Button>
         </>
       )}
     </div>

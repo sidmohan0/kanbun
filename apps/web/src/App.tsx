@@ -1,3 +1,4 @@
+import { NativeSelect } from "./components/ui/native-select";
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import type { Row } from "@kanbun/model";
 import { issueIncarnation } from "@kanbun/sync";
@@ -115,7 +116,7 @@ function IssueRow({
           <form className="title-editor" onSubmit={save}>
             <label htmlFor={`title-${issue.id}`}>Title for {name}</label>
             <div className="title-editor-controls">
-              <input
+              <Input
                 id={`title-${issue.id}`}
                 value={title}
                 maxLength={500}
@@ -127,12 +128,12 @@ function IssueRow({
                 aria-invalid={Boolean(error)}
                 aria-describedby={error ? `error-${issue.id}` : undefined}
               />
-              <button className="button primary compact" type="submit">
+              <Button variant="default" size="sm" className="button primary compact" type="submit">
                 Save title
-              </button>
-              <button className="button quiet compact" type="button" onClick={finishEditing}>
+              </Button>
+              <Button variant="ghost" size="sm" className="button quiet compact" type="button" onClick={finishEditing}>
                 Cancel
-              </button>
+              </Button>
             </div>
             {error && (
               <p id={`error-${issue.id}`} className="field-error" role="alert">
@@ -141,7 +142,8 @@ function IssueRow({
             )}
           </form>
         ) : (
-          <button
+          <Button
+            variant="ghost"
             ref={editButton}
             className="issue-title-button"
             aria-label={`Edit title for ${name}`}
@@ -159,7 +161,7 @@ function IssueRow({
             <span className="edit-hint" aria-hidden="true">
               Edit
             </span>
-          </button>
+          </Button>
         )}
         {pullRequests.length > 0 && (
           <GitHubPullRequestChips pullRequests={pullRequests} repositories={githubRepositories} />
@@ -412,11 +414,15 @@ export function App() {
           </div>
           <label className="theme-control">
             Appearance
-            <select aria-label="Color theme" value={theme} onChange={(event) => setTheme(event.target.value as Theme)}>
+            <NativeSelect
+              aria-label="Color theme"
+              value={theme}
+              onChange={(event) => setTheme(event.target.value as Theme)}
+            >
               <option value="system">System</option>
               <option value="light">Light</option>
               <option value="dark">Dark</option>
-            </select>
+            </NativeSelect>
           </label>
           {context?.authentication === "email" && <EmailSignOut />}
         </div>
@@ -441,13 +447,15 @@ export function App() {
               {status}
               {snapshot.status === "offline" && snapshot.pending > 0 && <span> · {snapshot.pending} pending</span>}
             </span>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               className="button quiet compact"
               onClick={retryWorkspace}
               disabled={snapshot.phase === "starting" || snapshot.phase === "waiting"}
             >
               Refresh
-            </button>
+            </Button>
           </div>
         </header>
         <div className="issues-content">
@@ -511,17 +519,22 @@ export function App() {
                 </p>
               )}
               <div className="panel-actions">
-                <button className="button primary" onClick={retryWorkspace}>
+                <Button variant="default" className="button primary" onClick={retryWorkspace}>
                   {snapshot.accessDenied
                     ? "Check access again"
                     : snapshot.authenticationRequired
                       ? "Sign in again"
                       : "Try again"}
-                </button>
+                </Button>
                 {local && snapshot.error?.includes("HTTP 403") && (
-                  <button className="button" onClick={() => void initialize()} disabled={initializing}>
+                  <Button
+                    variant="outline"
+                    className="button"
+                    onClick={() => void initialize()}
+                    disabled={initializing}
+                  >
                     {initializing ? "Initializing…" : "Initialize local workspace"}
-                  </button>
+                  </Button>
                 )}
               </div>
             </section>
@@ -543,13 +556,14 @@ export function App() {
                       <strong>Change rejected{issue ? ` · ${identifier(issue, snapshot.teams)}` : ""}.</strong>{" "}
                       {rejection.message}
                     </div>
-                    <button
+                    <Button
+                      variant="ghost"
                       className="notice-dismiss"
                       aria-label="Dismiss rejection"
                       onClick={() => workspace.dismissRejection(rejection.id)}
                     >
                       ×
-                    </button>
+                    </Button>
                   </div>
                 );
               })}
@@ -560,16 +574,17 @@ export function App() {
                 !snapshot.issues.some((issue) => issue.id === archivedIssue.id) && (
                   <div className="notice archive-notice" role="status" aria-label="Archive status">
                     <span>{identifier(archivedIssue, snapshot.teams)} archived.</span>
-                    <button className="button quiet compact" onClick={undoArchive}>
+                    <Button variant="ghost" size="sm" className="button quiet compact" onClick={undoArchive}>
                       Undo archive
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="ghost"
                       className="notice-dismiss"
                       aria-label="Dismiss archive notice"
                       onClick={() => setArchivedIssue(null)}
                     >
                       ×
-                    </button>
+                    </Button>
                   </div>
                 )}
               {teamsView ? (
@@ -633,14 +648,16 @@ export function App() {
                     >
                       <div className="create-panel-heading">
                         <DialogTitle>New issue</DialogTitle>
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           className="button quiet compact"
                           type="button"
                           onClick={() => setCreatingIssue(false)}
                           aria-label="Close new issue"
                         >
                           ×
-                        </button>
+                        </Button>
                       </div>
                       <form className="create-form" onSubmit={create}>
                         <div className="title-field">
@@ -659,7 +676,7 @@ export function App() {
                         </div>
                         <div className="team-field">
                           <label htmlFor="new-issue-team">Team</label>
-                          <select
+                          <NativeSelect
                             id="new-issue-team"
                             value={selectedTeam}
                             onChange={(event) => setTeamId(event.target.value)}
@@ -671,15 +688,16 @@ export function App() {
                                 {team.key}
                               </option>
                             ))}
-                          </select>
+                          </NativeSelect>
                         </div>
-                        <button
+                        <Button
+                          variant="default"
                           className="button primary create-button"
                           type="submit"
                           disabled={!canCreate || !title.trim()}
                         >
                           <span aria-hidden="true">+</span> Create issue
-                        </button>
+                        </Button>
                       </form>
                       {formError && (
                         <p className="field-error" id="create-error" role="alert">
@@ -700,20 +718,24 @@ export function App() {
                         {listName} <span>{issues.length}</span>
                       </h2>
                       <div className="issue-layout-controls" role="group" aria-label="Issue layout">
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           className="button quiet compact"
                           aria-pressed={viewLayouts[view] === "list"}
                           onClick={() => setViewLayouts((current) => ({ ...current, [view]: "list" }))}
                         >
                           List
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           className="button quiet compact"
                           aria-pressed={viewLayouts[view] === "board"}
                           onClick={() => setViewLayouts((current) => ({ ...current, [view]: "board" }))}
                         >
                           Board
-                        </button>
+                        </Button>
                       </div>
                     </div>
                     {snapshot.phase === "starting" ? (

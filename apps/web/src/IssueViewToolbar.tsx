@@ -1,3 +1,4 @@
+import { NativeSelect } from "./components/ui/native-select";
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import type { WorkspaceSnapshot } from "./workspace";
@@ -41,7 +42,7 @@ export function IssueViewToolbar({
       <div className="view-filter-fields">
         <label htmlFor="filter-state">
           Filter by status
-          <select
+          <NativeSelect
             id="filter-state"
             value={filters.stateId}
             disabled={!ready}
@@ -59,11 +60,11 @@ export function IssueViewToolbar({
                 {state.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         <label htmlFor="filter-assignee">
           Filter by assignee
-          <select
+          <NativeSelect
             id="filter-assignee"
             value={view === "mine" ? (snapshot.context?.actor.id ?? "") : filters.assigneeId}
             disabled={!ready || view === "mine"}
@@ -89,11 +90,11 @@ export function IssueViewToolbar({
                 ))}
               </>
             )}
-          </select>
+          </NativeSelect>
         </label>
         <label htmlFor="filter-priority">
           Filter by priority
-          <select
+          <NativeSelect
             id="filter-priority"
             value={filters.priority}
             disabled={!ready}
@@ -105,11 +106,11 @@ export function IssueViewToolbar({
             <option value="2">High</option>
             <option value="3">Medium</option>
             <option value="4">Low</option>
-          </select>
+          </NativeSelect>
         </label>
         <label htmlFor="filter-label">
           Filter by label
-          <select
+          <NativeSelect
             id="filter-label"
             value={filters.labelId}
             disabled={!ready}
@@ -127,11 +128,11 @@ export function IssueViewToolbar({
                 {label.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         <label htmlFor="issue-order">
           Sort issues
-          <select
+          <NativeSelect
             id="issue-order"
             value={filters.order}
             disabled={!ready}
@@ -142,7 +143,7 @@ export function IssueViewToolbar({
             <option value="newest">Newest first</option>
             <option value="updated">Recently updated</option>
             <option value="title">Title</option>
-          </select>
+          </NativeSelect>
         </label>
         <Button
           variant="ghost"

@@ -13,18 +13,20 @@
   "scripts": {
     "verify": "node src/cli.mjs",
     "capture:ui": "node src/capture-ui.mjs",
+    "capture:hosted": "tsx src/capture-hosted.mjs",
     "test": "node --test test/*.test.mjs",
     "test:recovery": "node src/recovery.mjs",
     "typecheck": "node --check src/cli.mjs && node --check src/index.mjs && node --check src/docs.mjs && node --check src/launch.mjs && node --check src/recovery.mjs && tsc --noEmit -p test/recovery/tsconfig.json",
     "build": "echo 'source package'"
   },
   "devDependencies": {
-    "@kanbun/worker": "workspace:*",
     "@kanbun/model": "workspace:*",
     "@kanbun/mutators": "workspace:*",
     "@kanbun/sync": "workspace:*",
+    "@kanbun/worker": "workspace:*",
     "@playwright/test": "1.64.1",
     "@types/node": "22.20.5",
+    "tsx": "^4.23.15",
     "typescript": "5.9.3",
     "vite": "7.3.7"
   }
