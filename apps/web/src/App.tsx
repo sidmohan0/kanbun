@@ -1,3 +1,4 @@
+import { AnalyticsStarterSettings } from "./AnalyticsStarterSettings";
 import { GoogleSheetsCommand } from "./GoogleSheetsCommand";
 import { Inbox as InboxIcon, ListTodo, CircleUserRound, Settings } from "lucide-react";
 import { NativeSelect } from "./components/ui/native-select";
@@ -213,6 +214,7 @@ export function App() {
     mine: emptyIssueFilters(),
   }));
   const [viewLayouts, setViewLayouts] = useState<Record<IssueView, "list" | "board">>({ all: "list", mine: "list" });
+  const [analyticsView, setAnalyticsView] = useState(() => location.hash === "#analytics");
   const [inboxView, setInboxView] = useState(() => location.hash === "#inbox");
   const [teamsView, setTeamsView] = useState(() => ["#settings", "#settings/integrations"].includes(location.hash));
   const [membersView, setMembersView] = useState(() => location.hash === "#members");
@@ -231,6 +233,7 @@ export function App() {
       setMembersView(location.hash === "#members");
       setTeamsView(["#settings", "#settings/integrations"].includes(location.hash));
       setInboxView(location.hash === "#inbox");
+      setAnalyticsView(location.hash === "#analytics");
       if (location.hash === "#my-issues") setView("mine");
       else if (location.hash === "#issues" || location.hash === "") setView("all");
     };
@@ -366,7 +369,9 @@ export function App() {
           <a
             className="navigation-item"
             href="#issues"
-            aria-current={!membersView && !inboxView && !teamsView && view === "all" ? "page" : undefined}
+            aria-current={
+              !analyticsView && !membersView && !inboxView && !teamsView && view === "all" ? "page" : undefined
+            }
           >
             <ListTodo className="navigation-symbol" size={16} aria-hidden="true" />
             All issues{ready && <span className="navigation-count">{snapshot.issues.length}</span>}
@@ -374,10 +379,15 @@ export function App() {
           <a
             className="navigation-item my-issues-navigation"
             href="#my-issues"
-            aria-current={!membersView && !inboxView && !teamsView && view === "mine" ? "page" : undefined}
+            aria-current={
+              !analyticsView && !membersView && !inboxView && !teamsView && view === "mine" ? "page" : undefined
+            }
           >
             <CircleUserRound className="navigation-symbol" size={16} aria-hidden="true" /> My Issues
             {ready && <span className="navigation-count">{myIssueCount}</span>}
+          </a>
+          <a className="navigation-item" href="#analytics" aria-current={analyticsView ? "page" : undefined}>
+            Analytics starter
           </a>
           {context && (
             <a
@@ -418,15 +428,17 @@ export function App() {
         <header className="workspace-topbar">
           <span className="workspace-breadcrumb">
             {workspaceName} <span aria-hidden="true">/</span>{" "}
-            {teamsView
-              ? "Settings"
-              : inboxView
-                ? "Inbox"
-                : membersView
-                  ? "Members"
-                  : selectedIssue
-                    ? identifier(selectedIssue, snapshot.teams)
-                    : listName}
+            {analyticsView
+              ? "Analytics starter"
+              : teamsView
+                ? "Settings"
+                : inboxView
+                  ? "Inbox"
+                  : membersView
+                    ? "Members"
+                    : selectedIssue
+                      ? identifier(selectedIssue, snapshot.teams)
+                      : listName}
           </span>
           <div className="sync-actions">
             <span className="sync-indicator" data-state={snapshot.status} role="status" aria-live="polite">
@@ -453,22 +465,25 @@ export function App() {
           >
             <div>
               <h1>
-                {teamsView
-                  ? "Settings"
-                  : inboxView
-                    ? "Inbox"
-                    : membersView
-                      ? "Members"
-                      : issueId
-                        ? "Issue"
-                        : view === "mine"
-                          ? "My Issues"
-                          : "Issues"}
+                {analyticsView
+                  ? "Analytics starter"
+                  : teamsView
+                    ? "Settings"
+                    : inboxView
+                      ? "Inbox"
+                      : membersView
+                        ? "Members"
+                        : issueId
+                          ? "Issue"
+                          : view === "mine"
+                            ? "My Issues"
+                            : "Issues"}
               </h1>
             </div>
             {!teamsView &&
               !membersView &&
               !inboxView &&
+              !analyticsView &&
               !issueId &&
               snapshot.phase !== "waiting" &&
               snapshot.phase !== "failed" && (
@@ -557,6 +572,7 @@ export function App() {
               {!teamsView &&
                 !membersView &&
                 !inboxView &&
+                !analyticsView &&
                 archivedIssue &&
                 !snapshot.issues.some((issue) => issue.id === archivedIssue.id) && (
                   <div className="notice archive-notice" role="status" aria-label="Archive status">
@@ -574,7 +590,13 @@ export function App() {
                     </Button>
                   </div>
                 )}
-              {teamsView ? (
+              {analyticsView ? (
+                ready ? (
+                  <AnalyticsStarterSettings />
+                ) : (
+                  <p>Opening analytics starter…</p>
+                )
+              ) : teamsView ? (
                 ready ? (
                   <TeamSettings snapshot={snapshot} />
                 ) : (
