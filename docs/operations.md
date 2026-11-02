@@ -10,6 +10,11 @@ GitHub’s `queue: max` setting so a newly queued health run cannot replace a pe
 
 ## What the report proves
 
+Web deployment and this report follow core `ci`, which runs the full devcontainer verifier and
+public audits. Desktop installer packaging runs independently in `desktop-packaging.yml`; its
+status does not gate a web release or determine the latest successful web CI commit. The `check`
+branch-protection context and core qualification artifact provenance remain unchanged.
+
 The retained `receipt.json` and Actions summary identify the active Worker version and its source
 commit, verify that source belongs to main, and compare it with the latest successful main push CI.
 They show the latest deployment workflow status. A failed latest deployment fails the health check.
