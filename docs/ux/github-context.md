@@ -32,6 +32,12 @@ Clipboard denial never starts work. Missing Started status or a triage priority 
 leaves the issue unchanged and displays normal sync rejection feedback. Changes use the durable
 sync queue; server replay checks current preferences, team, identity and workflow state.
 
+Members open Settings directly to their personal Code & reviews controls. Workspace, team,
+membership, shared branch-format and integration administration remain available through the
+owner's settings. Hosted identity currently admits owner and member roles; a separately managed
+hosted administrator role is not implemented. Personal preference access does not grant access
+to owner repository catalogs or change the backend branch-format authorization policy.
+
 Once a repository is connected to a team, PR and review deliveries automatically link its pull
 requests to existing issues identified in the canonical branch name or PR title. References are
 case-insensitive whole identifiers such as `ENG-123`; underscores, slashes and punctuation can

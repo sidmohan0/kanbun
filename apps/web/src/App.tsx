@@ -253,7 +253,6 @@ export function App() {
   const workspaceName = context?.workspaceName ?? "Workspace";
   const userName = context?.name ?? "Not signed in";
   const ready = snapshot.phase === "ready";
-  const canManageTeams = context?.role === "owner";
   const canCreate = ready && Boolean(selectedTeam);
   const filters = viewFilters[view];
   const issues = visibleIssues({
@@ -380,7 +379,7 @@ export function App() {
             <CircleUserRound className="navigation-symbol" size={16} aria-hidden="true" /> My Issues
             {ready && <span className="navigation-count">{myIssueCount}</span>}
           </a>
-          {canManageTeams && (
+          {context && (
             <a
               className="navigation-item teams-navigation"
               href="#settings"
@@ -576,11 +575,11 @@ export function App() {
                   </div>
                 )}
               {teamsView ? (
-                ready && canManageTeams ? (
+                ready ? (
                   <TeamSettings snapshot={snapshot} />
                 ) : (
                   <section className="empty-state">
-                    <h2>{ready ? "Workspace owner access required" : "Opening team settings…"}</h2>
+                    <h2>Opening settings…</h2>
                     <a href="#issues">Return to all issues</a>
                   </section>
                 )
