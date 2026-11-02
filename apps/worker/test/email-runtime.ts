@@ -61,6 +61,7 @@ export function startEmailRuntime(
     isolatedRestore?: boolean;
     githubConfig?: Record<string, string>;
     slackConfig?: Record<string, string>;
+    sheetsConfig?: Record<string, string>;
   } = {},
 ) {
   return startPreviewRuntime({ ownerEmail: "owner@example.com", emailAuth: true, ...options });

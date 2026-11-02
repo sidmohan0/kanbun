@@ -8,6 +8,7 @@ preparation moves them to a dated version heading.
 - Security: Reject Slack and Google Sheets token encryption keys in public installation variables.
 
 - Added owner-only Slack workspace connection settings with encrypted credentials, disconnect, and signed uninstall handling.
+- Added owner-managed Google Sheets exports for public-team issues and optional projects, with manual and hourly refresh, recovery of interrupted refresh scheduling, private credential storage, and disconnect controls.
 
 ### Changed
 

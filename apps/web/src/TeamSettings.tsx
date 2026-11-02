@@ -10,6 +10,7 @@ import "./styles/teams.css";
 import { SlackSettings } from "./SlackSettings";
 import { GitHubSettings } from "./GitHubSettings";
 import { GitBranchSettings } from "./GitBranchSettings";
+import { GoogleSheetsSettings } from "./GoogleSheetsSettings";
 
 const categoryName: Record<WorkflowStateType, string> = {
   triage: "Triage",
@@ -381,6 +382,7 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
         <GitBranchSettings snapshot={snapshot} />
         <GitHubSettings snapshot={snapshot} />
         <SlackSettings snapshot={snapshot} />
+        <GoogleSheetsSettings snapshot={snapshot} />
       </div>
       <div hidden={section !== "teams" && section !== "workflow"} className="settings-team-section">
         <h2>Teams</h2>
