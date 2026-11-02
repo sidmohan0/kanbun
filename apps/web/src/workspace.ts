@@ -42,11 +42,13 @@ export type WorkspaceSnapshot = {
   teams: Row<"team">[];
   workflowStates: Row<"workflowState">[];
   members: Row<"user">[];
+  userSettings?: Row<"userSettings"> | null;
   labels: Row<"issueLabel">[];
   labelLinks: Row<"issueLabelLink">[];
   issueRelations: Row<"issueRelation">[];
   githubRepositories: Row<"githubRepository">[];
   issuePullRequests: Row<"issuePullRequest">[];
+  attachments: Row<"attachment">[];
   teamMemberships: Row<"teamMembership">[];
   rejections: WorkspaceRejection[];
   error: string | null;
@@ -97,6 +99,7 @@ let snapshot: WorkspaceSnapshot = {
   issueRelations: [],
   githubRepositories: [],
   issuePullRequests: [],
+  attachments: [],
   teamMemberships: [],
   rejections,
   error,
@@ -180,6 +183,7 @@ function publish() {
     notifications,
     unreadNotificationCount: notifications.filter((row) => !row.readAt).length,
     comments: authenticationRequired ? [] : (client?.list("comment").filter((comment) => !comment.archivedAt) ?? []),
+    attachments: authenticationRequired ? [] : (client?.list("attachment").filter((row) => !row.archivedAt) ?? []),
     knownMembers: authenticationRequired ? [] : (client?.list("user") ?? []),
     knownAgents: authenticationRequired ? [] : (client?.list("agent") ?? []),
     githubRepositories:
@@ -229,6 +233,10 @@ function publish() {
         ?.list("user")
         .filter((member) => member.active && !member.archivedAt)
         .sort((a, b) => a.displayName.localeCompare(b.displayName) || compare(a.id, b.id)) ?? [],
+    userSettings:
+      authenticationRequired || !client || !context
+        ? null
+        : (client.list("userSettings").find((row) => row.userId === context!.actor.id) ?? null),
     labels:
       (authenticationRequired ? undefined : client)
         ?.list("issueLabel")
@@ -379,6 +387,7 @@ async function initialize() {
   client.subscribe("team", changed);
   for (const model of [
     "organization",
+    "userSettings",
     "workflowState",
     "user",
     "issueLabel",
@@ -388,6 +397,7 @@ async function initialize() {
     "issuePullRequest",
     "teamMembership",
     "comment",
+    "attachment",
     "agent",
   ] as const)
     client.subscribe(model, changed);
@@ -584,6 +594,24 @@ export const workspace = {
     publish();
     flush(active);
   },
+  attachSlackMessage(issue: Row<"issue">, url: string, title: string): void {
+    const active = editableClient();
+    active.mutate("issueSlackMessageAttach", {
+      id: uuidv7(),
+      issueId: issue.id,
+      issueIncarnation: issueIncarnation(issue),
+      url,
+      title,
+    });
+    publish();
+    flush(active);
+  },
+  detachSlackMessage(issue: Row<"issue">, id: string): void {
+    const active = editableClient();
+    active.mutate("issueSlackMessageDetach", { id, issueId: issue.id, issueIncarnation: issueIncarnation(issue) });
+    publish();
+    flush(active);
+  },
   async flushPendingChanges(): Promise<void> {
     await client?.flushPersistence();
   },
@@ -688,6 +716,18 @@ export const workspace = {
     publish();
     flush(active);
   },
+  updateCodePreferences(patch: { moveIssueToStartOnBranchCopy?: boolean; autoAssignToSelf?: boolean }): void {
+    const active = editableClient();
+    active.mutate("userSettingsUpdate", { patch });
+    publish();
+    flush(active);
+  },
+  branchNameCopied(id: string, teamId: string, issueIncarnation: string): void {
+    const active = editableClient();
+    active.mutate("issueBranchNameCopied", { id, teamId, issueIncarnation, assigneeSubscriptionId: uuidv7() });
+    publish();
+    flush(active);
+  },
   updateIssue(id: string, patch: { stateId?: string; priority?: 0 | 1 | 2 | 3 | 4; assigneeId?: string | null }): void {
     const active = editableClient();
     active.mutate("issueUpdate", { id, patch, ...(patch.assigneeId ? { assigneeSubscriptionId: uuidv7() } : {}) });
@@ -729,6 +769,10 @@ export const workspace = {
   async loadComments(issueId: string): Promise<void> {
     const active = editableClient();
     await active.load("comment", issueId);
+    publish();
+  },
+  async loadAttachments(issueId: string): Promise<void> {
+    await editableClient().load("attachment", issueId);
     publish();
   },
   async issueEvents(issueId: string, options: { before?: number; since?: number; signal?: AbortSignal } = {}) {

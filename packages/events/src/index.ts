@@ -168,6 +168,16 @@ const githubRepositoryConfiguredIntent = z.strictObject({
   type: z.literal("GitHubRepositoryConfigured"),
   payload: githubRepositorySourceSchema,
 });
+const slackMessageAttachedIntent = z.strictObject({
+  ...subject,
+  type: z.literal("SlackMessageAttached"),
+  payload: z.strictObject({ id, issueIncarnation: id, url: z.string().url(), title, creatorId: id }),
+});
+const slackMessageDetachedIntent = z.strictObject({
+  ...subject,
+  type: z.literal("SlackMessageDetached"),
+  payload: z.strictObject({ id, issueIncarnation: id }),
+});
 const githubRepositoryDisconnectedIntent = z.strictObject({
   entityType: z.literal("githubRepository"),
   entityId: id,
@@ -318,6 +328,8 @@ const commentResolvedIntent = z.strictObject({
 
 /** A decision carries business meaning; the execution boundary supplies provenance. */
 export const pendingEventSchema = z.discriminatedUnion("type", [
+  slackMessageAttachedIntent,
+  slackMessageDetachedIntent,
   commentPostedIntent,
   commentEditedIntent,
   commentResolvedIntent,
@@ -368,6 +380,8 @@ const envelope = {
 
 /** The closed vocabulary accepted by durable storage and deterministic replay. */
 export const eventSchema = z.discriminatedUnion("type", [
+  slackMessageAttachedIntent.extend(envelope),
+  slackMessageDetachedIntent.extend(envelope),
   commentPostedIntent.extend(envelope),
   commentEditedIntent.extend(envelope),
   commentResolvedIntent.extend(envelope),

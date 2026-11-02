@@ -11,6 +11,8 @@ import { SlackSettings } from "./SlackSettings";
 import { GitHubSettings } from "./GitHubSettings";
 import { GitBranchSettings } from "./GitBranchSettings";
 import { GoogleSheetsSettings } from "./GoogleSheetsSettings";
+import { WorkspaceExportSettings } from "./WorkspaceExportSettings";
+import { CodeSettings } from "./CodeSettings";
 
 const categoryName: Record<WorkflowStateType, string> = {
   triage: "Triage",
@@ -275,12 +277,12 @@ function WorkspaceName({ name }: { name: string }) {
 }
 
 export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
-  const [section, setSection] = useState<"workspace" | "integrations" | "teams" | "workflow">(() => {
+  const [section, setSection] = useState<"workspace" | "integrations" | "teams" | "workflow" | "code">(() => {
     try {
       if (location.hash === "#settings/integrations") return "integrations";
       const saved = sessionStorage.getItem("kanbun:settings-section");
       if (saved === "workspace") return snapshot.context?.mode === "hosted" ? saved : "teams";
-      return saved === "integrations" || saved === "workflow" ? saved : "teams";
+      return saved === "integrations" || saved === "workflow" || saved === "code" ? saved : "teams";
     } catch {
       return "teams";
     }
@@ -292,7 +294,7 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
       /* Optional preference. */
     }
   }, [section]);
-  function selectSection(next: "workspace" | "integrations" | "teams" | "workflow") {
+  function selectSection(next: "workspace" | "integrations" | "teams" | "workflow" | "code") {
     setSection(next);
     history.replaceState(null, "", next === "integrations" ? "#settings/integrations" : "#settings");
   }
@@ -324,6 +326,15 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
   return (
     <section className="teams-settings" aria-label="Team and workflow settings">
       <nav className="settings-nav" aria-label="Settings sections">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="button quiet compact"
+          aria-pressed={section === "code"}
+          onClick={() => selectSection("code")}
+        >
+          Code &amp; reviews
+        </Button>
         {snapshot.context?.mode === "hosted" && snapshot.context.role === "owner" && (
           <a className="button quiet compact" href="#members">
             Members
@@ -373,12 +384,16 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
           {error}
         </p>
       )}
+      <div hidden={section !== "code"}>
+        <CodeSettings snapshot={snapshot} />
+      </div>
       {snapshot.context?.mode === "hosted" && (
         <div hidden={section !== "workspace"}>
           <WorkspaceName name={snapshot.context.workspaceName} />
         </div>
       )}
       <div hidden={section !== "integrations"}>
+        <WorkspaceExportSettings snapshot={snapshot} />
         <GitBranchSettings snapshot={snapshot} />
         <GitHubSettings snapshot={snapshot} />
         <SlackSettings snapshot={snapshot} />

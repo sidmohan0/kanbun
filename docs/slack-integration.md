@@ -1,8 +1,8 @@
 # Slack workspace connection
 
-This first Slack integration slice connects one Slack workspace, reports its name in Settings,
-and lets the Kanbun owner revoke it. Issue actions, channel notifications, unfurls and thread sync
-are subsequent slices. It does not enable an agent, slash commands, Asks, Slackbot MCP or Enterprise
+Connect one Slack workspace, preview public-team issue links, and let the Kanbun owner disable
+previews or revoke the connection in Settings. Issue actions, channel notifications, project links,
+and thread sync are subsequent slices. It does not enable an agent, slash commands, Asks, Slackbot MCP or Enterprise
 Grid. Slack authorization is separate from Kanbun sign-in.
 
 ## App setup
@@ -10,9 +10,10 @@ Grid. Slack authorization is separate from Kanbun sign-in.
 Create a Slack app for the installation's HTTPS origin and configure:
 
 - OAuth redirect: `<APP_ORIGIN>/api/integrations/slack/callback`
-- Bot token scope: `chat:write` (for subsequent channel notification delivery)
+- Bot token scopes: `chat:write`, `links:read`, `links:write`
 - Events request URL: `<APP_ORIGIN>/api/integrations/slack/events`
-- Bot lifecycle event: `app_uninstalled`
+- Bot events: `app_uninstalled`, `link_shared`
+- App unfurl domain: the installation's application hostname
 
 Use workspace installations, not organization-wide installation. Token rotation is not supported
 by this slice; leave it disabled. Do not configure commands or advertise unavailable capabilities.
@@ -27,8 +28,50 @@ and logs, and retain it in the installation's secret manager. Losing or rotating
 reconnecting Slack; it cannot be recovered from D1. `SLACK_TRANSPORT` is a test-only private service
 binding, not a public provider override.
 
-Apply the accounts migration before deploying this slice using the existing manual compatibility
-review process. Do not bypass the automated code-only deployment guard.
+Apply the accounts and workspace migrations before deploying this slice using the existing manual
+compatibility review process. Do not bypass the automated code-only deployment guard.
+
+## Issue previews
+
+Only exact canonical `<APP_ORIGIN>/#issues/<issue UUID>` links are supported. Kanbun previews the
+issue identifier, title, description, status, assignee and creation date. It never fetches arbitrary
+URLs. User text is rendered literally so issue content cannot inject Slack mentions or actions.
+Issues must belong to a public, active team and must not be trashed. Project and document previews
+and issue write actions are not included.
+
+The owner controls **Preview public issue links in Slack**. Existing connections with only the old
+`chat:write` grant display a request to update Slack authorization; previews require both link scopes.
+Slack may require an administrator to approve the additional permissions. No message-history scopes
+are requested. Disabling previews or reconnecting retires pending work for the previous configuration.
+Previously posted previews remain visible in Slack, including after an issue becomes private.
+
+Signed events are durably admitted and deduplicated before acknowledgement. A private workspace
+receipt and scheduled job survive retries and provider outages. Jobs contain issue identifiers and
+an opaque connection version, never tokens or issue content. Delivery rechecks the current issue
+incarnation and public visibility after credential reads, immediately before posting. Preference,
+connection and revocation changes are serialized with delivery. A failed Slack request retains its
+job for retry; retrying a successful request after a checkpoint failure updates the same Slack unfurl.
+Composer and posted-message link events are supported. Slack's
+[link event reference](https://docs.slack.dev/reference/events/link_shared/) and
+[unfurl method](https://docs.slack.dev/reference/methods/chat.unfurl/) describe the provider contract.
+
+## Message links without synchronization
+
+Open an issue and use **Slack message links** to paste a message URL copied from Slack, optionally
+with a descriptive title. Kanbun stores the link as an attachment; it does not fetch the message,
+copy its text, synchronize comments, or post to Slack. No Slack app connection or additional scopes
+are needed. Opening the link still requires the viewer to have access to the original Slack channel.
+
+Supported links use `https://<workspace>.slack.com/archives/<channel>/p<message timestamp>`.
+Copied `thread_ts` context is retained; the redundant `cid` is validated and removed. Adding the same
+message again, with or without copied thread context, leaves one attachment. Arbitrary external
+URLs and unsupported query parameters are refused. Removing the attachment leaves Slack unchanged.
+
+Attachments inherit the issue's team visibility and move with the issue. Any active member with
+access to an active issue can add or remove a link, including on a private team. Saved mutation drafts
+are bound to that issue incarnation so deleting and recreating its UUID cannot attach an old draft
+to the replacement. Archived or trashed issues cannot receive link edits. The Slack message-menu
+action and bidirectional synced threads are separate features.
 
 ## Connection and recovery
 

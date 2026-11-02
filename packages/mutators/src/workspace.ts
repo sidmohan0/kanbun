@@ -177,6 +177,7 @@ export const mutators = {
           ),
           notificationChannelPreferences: z.object({ desktop: z.boolean(), email: z.boolean(), mobile: z.boolean() }),
           autoAssignToSelf: z.boolean(),
+          moveIssueToStartOnBranchCopy: z.boolean(),
           sidebar: z.record(z.string(), z.unknown()),
         })
         .partial(),

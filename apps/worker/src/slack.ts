@@ -4,6 +4,7 @@ import { activeMember } from "./directory";
 import { configuration, requireHostedOrigin, type HostedPrincipal } from "./auth";
 import { authTokenHash } from "./email-auth";
 import { body, query, RequestError } from "./requests";
+import { slackDestinationSchema, type SlackUnfurls } from "./slack-unfurls";
 
 export interface SlackEnvironment {
   SLACK_CLIENT_ID?: string;
@@ -17,7 +18,7 @@ export interface SlackEnvironment {
 const prefix = "/api/integrations/slack";
 const cookieName = "__Host-kanbun-slack";
 const callbackPath = prefix + "/callback";
-const scopes = ["chat:write"];
+const scopes = ["chat:write", "links:read", "links:write"];
 const unavailable = () => new RequestError("Slack connection could not be completed. Try again.", 503);
 const json = (value: unknown, status = 200, cookie?: string) =>
   new Response(JSON.stringify(value), {
@@ -54,7 +55,7 @@ async function api(env: SlackEnvironment, method: string, values: Record<string,
     if (!result.ok) throw unavailable();
     const value: unknown = await result.json();
     if (
-      (method === "auth.revoke" || method === "auth.test") &&
+      (method === "auth.revoke" || method === "auth.test" || method === "chat.unfurl") &&
       z
         .object({ ok: z.literal(false), error: z.enum(["invalid_auth", "token_revoked", "account_inactive"]) })
         .safeParse(value).success
@@ -103,6 +104,159 @@ export async function openSlackToken(env: SlackEnvironment, workspaceId: string,
 }
 const binding = (principal: HostedPrincipal) =>
   JSON.stringify({ workspaceId: principal.workspaceId, accountId: principal.actor.id, sessionId: principal.sessionId });
+
+export type SlackConnection = {
+  workspace_id: string;
+  team_id: string;
+  team_name: string;
+  bot_user_id: string;
+  token_ciphertext: string;
+  scopes: string;
+  updated_at: string;
+  unfurls_enabled: number;
+  unfurl_generation: string;
+};
+export async function slackConnection(env: Env, workspaceId: string) {
+  return database(env)
+    .prepare("SELECT * FROM slack_connections WHERE workspace_id=?")
+    .bind(workspaceId)
+    .first<SlackConnection>();
+}
+export const slackVersion = (row: SlackConnection) =>
+  authTokenHash(JSON.stringify([row.team_id, row.token_ciphertext, row.unfurl_generation]));
+export const slackUnfurlsReady = (row: SlackConnection) =>
+  ["links:read", "links:write"].every((scope) => row.scopes.split(",").includes(scope));
+export async function slackStatus(env: Env, workspaceId: string) {
+  const row = await slackConnection(env, workspaceId);
+  return {
+    configured: configured(env),
+    connection: row
+      ? {
+          teamId: row.team_id,
+          teamName: row.team_name,
+          updatedAt: row.updated_at,
+          unfurlsEnabled: !!row.unfurls_enabled,
+          reauthorizationRequired: !slackUnfurlsReady(row),
+        }
+      : null,
+  };
+}
+export const slackCommandSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("connect"),
+    teamId: z.string(),
+    teamName: z.string(),
+    botUserId: z.string(),
+    token: z.string(),
+    scopes: z.string(),
+  }),
+  z.strictObject({ kind: z.literal("disconnect") }),
+  z.strictObject({ kind: z.literal("configure"), enabled: z.boolean() }),
+]);
+export async function slackCommand(env: Env, principal: HostedPrincipal, command: z.infer<typeof slackCommandSchema>) {
+  const row = await slackConnection(env, principal.workspaceId);
+  if (command.kind === "connect") {
+    if (row && row.team_id !== command.teamId)
+      throw new RequestError("Disconnect the current Slack workspace before connecting another.", 409);
+    const sealed = await sealSlackToken(env, principal.workspaceId, command.token);
+    if ((await activeMember(env, principal)).role !== "owner")
+      throw new RequestError("Workspace owner access required", 403);
+    const saved = await database(env)
+      .prepare(
+        "INSERT INTO slack_connections(workspace_id,team_id,team_name,bot_user_id,token_ciphertext,scopes,connected_by,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(workspace_id) DO UPDATE SET team_name=excluded.team_name,bot_user_id=excluded.bot_user_id,token_ciphertext=excluded.token_ciphertext,scopes=excluded.scopes,connected_by=excluded.connected_by,updated_at=excluded.updated_at WHERE slack_connections.team_id=excluded.team_id",
+      )
+      .bind(
+        principal.workspaceId,
+        command.teamId,
+        command.teamName,
+        command.botUserId,
+        sealed,
+        command.scopes,
+        principal.actor.id,
+        new Date().toISOString(),
+      )
+      .run();
+    if (saved.meta.changes !== 1)
+      throw new RequestError("Disconnect the current Slack workspace before connecting another.", 409);
+  } else if (command.kind === "configure") {
+    if (!row) throw new RequestError("Connect Slack before configuring link previews", 409);
+    await database(env)
+      .prepare("UPDATE slack_connections SET unfurls_enabled=?,unfurl_generation=? WHERE workspace_id=?")
+      .bind(command.enabled ? 1 : 0, crypto.randomUUID(), principal.workspaceId)
+      .run();
+  } else if (row) {
+    await api(env, "auth.revoke", { token: await openSlackToken(env, principal.workspaceId, row.token_ciphertext) });
+    await database(env)
+      .prepare("DELETE FROM slack_connections WHERE workspace_id=? AND token_ciphertext=?")
+      .bind(principal.workspaceId, row.token_ciphertext)
+      .run();
+  }
+  return slackStatus(env, principal.workspaceId);
+}
+type SlackRpcResult<T> = { ok: true; value: T } | { ok: false; error: string; status: number };
+export async function slackRpc<T>(action: () => Promise<T>): Promise<SlackRpcResult<T>> {
+  try {
+    return { ok: true, value: await action() };
+  } catch (error) {
+    return {
+      ok: false,
+      status: error instanceof RequestError ? error.status : 500,
+      error: error instanceof RequestError ? error.message : "Slack operation could not be completed",
+    };
+  }
+}
+async function rpcValue<T>(promise: Promise<SlackRpcResult<T>>) {
+  const result = await promise;
+  if (!result.ok) throw new RequestError(result.error, result.status);
+  return result.value;
+}
+export async function slackUninstall(env: Env, workspaceId: string, teamId: string) {
+  const row = await slackConnection(env, workspaceId);
+  if (!row || row.team_id !== teamId) return;
+  const token = await openSlackToken(env, workspaceId, row.token_ciphertext);
+  const status = z.object({ ok: z.boolean() }).parse(await api(env, "auth.test", { token }));
+  if (!status.ok)
+    await database(env)
+      .prepare("DELETE FROM slack_connections WHERE workspace_id=? AND token_ciphertext=?")
+      .bind(workspaceId, row.token_ciphertext)
+      .run();
+}
+/** Called in the same DO queue as connection changes. Resolve issue visibility after credential I/O. */
+export async function sendSlackUnfurls(
+  env: Env,
+  workspaceId: string,
+  teamId: string,
+  version: string,
+  destination: z.infer<typeof slackDestinationSchema>,
+  resolve: () => SlackUnfurls,
+) {
+  const row = await slackConnection(env, workspaceId);
+  if (
+    !row ||
+    row.team_id !== teamId ||
+    !row.unfurls_enabled ||
+    !slackUnfurlsReady(row) ||
+    (await slackVersion(row)) !== version
+  )
+    return;
+  const token = await openSlackToken(env, workspaceId, row.token_ciphertext);
+  const unfurls = resolve();
+  if (!Object.keys(unfurls).length) return;
+  const result = z.object({ ok: z.boolean() }).parse(
+    await api(env, "chat.unfurl", {
+      token,
+      unfurls: JSON.stringify(unfurls),
+      ...(destination.kind === "message"
+        ? { channel: destination.channel, ts: destination.ts }
+        : { unfurl_id: destination.id, source: destination.source }),
+    }),
+  );
+  if (!result.ok)
+    await database(env)
+      .prepare("DELETE FROM slack_connections WHERE workspace_id=? AND token_ciphertext=?")
+      .bind(workspaceId, row.token_ciphertext)
+      .run();
+}
 async function connect(env: Env, principal: HostedPrincipal) {
   if (!configured(env)) throw unavailable();
   if (!principal.sessionId) throw new RequestError("Native email sign-in is required to connect Slack", 401);
@@ -157,7 +311,7 @@ async function callback(request: Request, env: Env, principal: HostedPrincipal) 
     return new Response(null, {
       status: 303,
       headers: {
-        location: configuration(env).appOrigin + "/#settings",
+        location: configuration(env).appOrigin + "/#settings/integrations",
         "cache-control": "no-store",
         "set-cookie": `${cookieName}=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`,
       },
@@ -184,36 +338,20 @@ async function callback(request: Request, env: Env, principal: HostedPrincipal) 
     );
   if (result.app_id !== env.SLACK_APP_ID || !scopes.every((scope) => result.scope.split(",").includes(scope)))
     throw unavailable();
-  const existing = await database(env)
-    .prepare("SELECT team_id FROM slack_connections WHERE workspace_id=?")
-    .bind(principal.workspaceId)
-    .first<{ team_id: string }>();
-  if (existing && existing.team_id !== result.team.id)
-    throw new RequestError("Disconnect the current Slack workspace before connecting another.", 409);
-  const sealed = await sealSlackToken(env, principal.workspaceId, result.access_token);
-  if ((await activeMember(env, principal)).role !== "owner")
-    throw new RequestError("Workspace ownership is required", 403);
-  const saved = await database(env)
-    .prepare(
-      "INSERT INTO slack_connections(workspace_id,team_id,team_name,bot_user_id,token_ciphertext,scopes,connected_by,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(workspace_id) DO UPDATE SET team_name=excluded.team_name,bot_user_id=excluded.bot_user_id,token_ciphertext=excluded.token_ciphertext,scopes=excluded.scopes,connected_by=excluded.connected_by,updated_at=excluded.updated_at WHERE slack_connections.team_id=excluded.team_id",
-    )
-    .bind(
-      principal.workspaceId,
-      result.team.id,
-      result.team.name,
-      result.bot_user_id,
-      sealed,
-      result.scope,
-      principal.actor.id,
-      new Date().toISOString(),
-    )
-    .run();
-  if (saved.meta.changes !== 1)
-    throw new RequestError("Disconnect the current Slack workspace before connecting another.", 409);
+  await rpcValue(
+    env.WORKSPACES.getByName(principal.workspaceId).slackConnectionCommand(principal, {
+      kind: "connect",
+      teamId: result.team.id,
+      teamName: result.team.name,
+      botUserId: result.bot_user_id,
+      token: result.access_token,
+      scopes: result.scope,
+    }),
+  );
   return new Response(null, {
     status: 303,
     headers: {
-      location: configuration(env).appOrigin + "/#settings",
+      location: configuration(env).appOrigin + "/#settings/integrations",
       "cache-control": "no-store",
       "referrer-policy": "no-referrer",
       "set-cookie": `${cookieName}=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`,
@@ -230,30 +368,27 @@ export async function slackRoute(request: Request, env: Env, principal: HostedPr
   if (url.pathname === callbackPath && request.method === "GET") return callback(request, env, principal);
   query(z.strictObject({}), url);
   if (url.pathname === prefix && request.method === "GET") {
-    const connection = await database(env)
-      .prepare(
-        "SELECT team_id AS teamId,team_name AS teamName,updated_at AS updatedAt FROM slack_connections WHERE workspace_id=?",
-      )
-      .bind(principal.workspaceId)
-      .first();
-    return json({ configured: configured(env), connection });
+    return json(await slackStatus(env, principal.workspaceId));
   }
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   requireHostedOrigin(request, env);
+  if (url.pathname === prefix + "/unfurls") {
+    const value = await body(z.strictObject({ enabled: z.boolean() }), request);
+    return json(
+      await rpcValue(
+        env.WORKSPACES.getByName(principal.workspaceId).slackConnectionCommand(principal, {
+          kind: "configure",
+          ...value,
+        }),
+      ),
+    );
+  }
   await body(z.strictObject({}), request);
   if (url.pathname === prefix + "/connect") return connect(env, principal);
   if (url.pathname === prefix + "/disconnect") {
-    const row = await database(env)
-      .prepare("SELECT token_ciphertext FROM slack_connections WHERE workspace_id=?")
-      .bind(principal.workspaceId)
-      .first<{ token_ciphertext: string }>();
-    if (row) {
-      await api(env, "auth.revoke", { token: await openSlackToken(env, principal.workspaceId, row.token_ciphertext) });
-      await database(env)
-        .prepare("DELETE FROM slack_connections WHERE workspace_id=? AND token_ciphertext=?")
-        .bind(principal.workspaceId, row.token_ciphertext)
-        .run();
-    }
+    await rpcValue(
+      env.WORKSPACES.getByName(principal.workspaceId).slackConnectionCommand(principal, { kind: "disconnect" }),
+    );
     return json({ ok: true });
   }
   return json({ error: "Not found" }, 404);
@@ -289,6 +424,7 @@ export async function slackEventRoute(request: Request, env: Env): Promise<Respo
       challenge: z.string().optional(),
       api_app_id: z.string().optional(),
       team_id: z.string().optional(),
+      event_id: z.string().min(1).optional(),
       event: z.object({ type: z.string() }).optional(),
     })
     .parse(JSON.parse(raw));
@@ -296,20 +432,47 @@ export async function slackEventRoute(request: Request, env: Env): Promise<Respo
   if (input.api_app_id !== env.SLACK_APP_ID) throw new RequestError("Slack app does not match", 403);
   if (input.type === "event_callback" && input.event?.type === "app_uninstalled" && input.team_id) {
     const connection = await database(env)
-      .prepare("SELECT workspace_id,token_ciphertext FROM slack_connections WHERE team_id=?")
+      .prepare("SELECT * FROM slack_connections WHERE team_id=?")
       .bind(input.team_id)
-      .first<{ workspace_id: string; token_ciphertext: string }>();
+      .first<SlackConnection>();
     if (connection) {
-      // Provider token validity decides cleanup, not the ordering of clocks or deliveries.
-      // A delayed uninstall cannot remove a valid reconnection, even after clock skew.
-      const token = await openSlackToken(env, connection.workspace_id, connection.token_ciphertext);
-      const status = z.object({ ok: z.boolean() }).parse(await api(env, "auth.test", { token }));
-      if (!status.ok)
-        await database(env)
-          .prepare("DELETE FROM slack_connections WHERE workspace_id=? AND token_ciphertext=?")
-          .bind(connection.workspace_id, connection.token_ciphertext)
-          .run();
+      await rpcValue(
+        env.WORKSPACES.getByName(connection.workspace_id).slackUninstalled(connection.workspace_id, connection.team_id),
+      );
     }
+  }
+  if (input.type === "event_callback" && input.event?.type === "link_shared" && input.team_id && input.event_id) {
+    const event = z
+      .object({
+        event: z.object({
+          channel: z.string(),
+          message_ts: z.string(),
+          unfurl_id: z.string().optional(),
+          source: z.enum(["composer", "conversations_history"]).optional(),
+          links: z.array(z.object({ url: z.string() })),
+        }),
+      })
+      .parse(JSON.parse(raw)).event;
+    const destination = slackDestinationSchema.safeParse(
+      event.unfurl_id && event.source
+        ? { kind: "unfurl", id: event.unfurl_id, source: event.source }
+        : { kind: "message", channel: event.channel, ts: event.message_ts },
+    );
+    if (!destination.success) return json({ ok: true });
+    const connection = await database(env)
+      .prepare("SELECT * FROM slack_connections WHERE team_id=?")
+      .bind(input.team_id)
+      .first<SlackConnection>();
+    if (connection)
+      await rpcValue(
+        env.WORKSPACES.getByName(connection.workspace_id).slackUnfurl(connection.workspace_id, {
+          eventId: input.event_id,
+          teamId: input.team_id,
+          version: await slackVersion(connection),
+          destination: destination.data,
+          urls: event.links.map((link) => link.url),
+        }),
+      );
   }
   return json({ ok: true });
 }

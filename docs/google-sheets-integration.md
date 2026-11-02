@@ -21,7 +21,11 @@ Only issues in active public teams and projects attached to at least one active 
 Private-only project references, private parent issues, private team names, and private-team labels
 are excluded from related columns. Archived issues/projects remain available with archive timestamps;
 trashed objects do not export. Timestamps are the stored UTC ISO timestamps; blanks represent missing
-values. Export does not invent timestamp transitions or alter application status behavior.
+values. Moving between workflow states in the same category preserves the stored completion or
+cancellation timestamp, including a missing value. Entering a terminal category records the current
+transition time; leaving it clears that category's timestamp. This also applies when moving teams or
+replacing a deleted workflow state. Historical missing values are not backfilled. Existing startedAt
+behavior is unchanged. Export reads these values without inventing transitions.
 
 The spreadsheet ID is retained across refreshes and reconnection, so renaming the spreadsheet or
 moving it does not create another file. Keep the app's access when moving to a shared drive; a Google

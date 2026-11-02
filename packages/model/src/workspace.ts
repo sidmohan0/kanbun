@@ -283,6 +283,7 @@ export const userSettings = sqliteTable("user_settings", {
     .notNull()
     .$default(() => ({ desktop: true, email: true, mobile: true })),
   autoAssignToSelf: bool("auto_assign_to_self").notNull().default(false),
+  moveIssueToStartOnBranchCopy: bool("move_issue_to_start_on_branch_copy").notNull().default(false),
   sidebar: json<Record<string, unknown>>("sidebar")
     .notNull()
     .$default(() => ({})),
@@ -977,6 +978,13 @@ export const issuePullRequest = sqliteTable(
 
 /** Receipt and queue targeting survive restarts and are included in full SQL backups. */
 export const githubDelivery = sqliteTable("github_delivery", {
+  id: text("id").primaryKey(),
+  createdAt: text("created_at").notNull(),
+  completedAt: text("completed_at"),
+});
+
+/** Private delivery receipts keep Slack retries from creating new unfurl work after completion. */
+export const slackDelivery = sqliteTable("slack_delivery", {
   id: text("id").primaryKey(),
   createdAt: text("created_at").notNull(),
   completedAt: text("completed_at"),

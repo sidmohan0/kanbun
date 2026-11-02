@@ -1,3 +1,4 @@
+import { GoogleSheetsCommand } from "./GoogleSheetsCommand";
 import { Inbox as InboxIcon, ListTodo, CircleUserRound, Settings } from "lucide-react";
 import { NativeSelect } from "./components/ui/native-select";
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
@@ -350,6 +351,7 @@ export function App() {
             <span>{local ? "Development" : context ? "Signed in" : "Connecting"}</span>
           </div>
         </div>
+        <GoogleSheetsCommand snapshot={snapshot} />
         <nav>
           <a className="navigation-item inbox-navigation" href="#inbox" aria-current={inboxView ? "page" : undefined}>
             <InboxIcon className="navigation-symbol" size={16} aria-hidden="true" /> Inbox

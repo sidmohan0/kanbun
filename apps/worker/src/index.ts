@@ -1,4 +1,18 @@
-import { slackRoute, slackEventRoute, type SlackEnvironment } from "./slack";
+import {
+  slackRoute,
+  slackEventRoute,
+  slackCommand,
+  slackCommandSchema,
+  slackConnection,
+  slackVersion,
+  slackUnfurlsReady,
+  slackUninstall,
+  sendSlackUnfurls,
+  slackRpc,
+  type SlackEnvironment,
+} from "./slack";
+import { SLACK_UNFURL_JOB, slackUnfurlDeliverySchema, queueSlackUnfurl, consumeSlackUnfurl } from "./slack-unfurls";
+import { workspaceCsv } from "./workspace-csv";
 import { DurableObject } from "cloudflare:workers";
 import migrations from "@kanbun/model/migrations/workspace/migrations.js";
 import { uuidv7 } from "@kanbun/model";
@@ -110,6 +124,7 @@ export interface Env
 const routes = new Map<string, string>(
   Object.entries({
     "/api/context": "GET",
+    "/api/exports.csv": "GET",
     "/api/members": "GET",
     "/api/workspace/name": "POST",
     "/api/invitations": "POST",
@@ -225,6 +240,7 @@ export class WorkspaceDO extends DurableObject<Env> {
   private alarmRunning = false;
   private notificationTask: Promise<void> | null = null;
   private sheetsTask: Promise<unknown> = Promise.resolve();
+  private slackTask: Promise<unknown> = Promise.resolve();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -263,6 +279,57 @@ export class WorkspaceDO extends DurableObject<Env> {
     const task = this.sheetsTask.catch(() => undefined).then(action);
     this.sheetsTask = task.catch(() => undefined);
     return task;
+  }
+
+  private slackQueue<T>(action: () => Promise<T>): Promise<T> {
+    const task = this.slackTask.catch(() => undefined).then(action);
+    this.slackTask = task.catch(() => undefined);
+    return task;
+  }
+
+  async slackConnectionCommand(inputPrincipal: HostedPrincipal, input: unknown) {
+    return this.slackQueue(() =>
+      slackRpc(async () => {
+        await this.ready;
+        if (!this.maintenanceEnabled()) throw new RequestError("Slack is unavailable", 503);
+        const principal = hostedPrincipalSchema.parse(inputPrincipal);
+        const context = await this.authorizePrincipal(this.server!, principal);
+        if (context.role !== "owner") throw new RequestError("Workspace owner access required", 403);
+        return slackCommand(this.env, principal, slackCommandSchema.parse(input));
+      }),
+    );
+  }
+
+  async slackUninstalled(workspaceId: string, teamId: string) {
+    return this.slackQueue(() =>
+      slackRpc(async () => {
+        await this.ready;
+        this.requireWorkspace(workspaceId);
+        if (!this.maintenanceEnabled()) throw new RequestError("Slack is unavailable", 503);
+        await slackUninstall(this.env, workspaceId, teamId);
+        return { ok: true };
+      }),
+    );
+  }
+
+  /** Admission never waits for a provider POST: its durable receipt precedes Slack's ACK. */
+  async slackUnfurl(workspaceId: string, input: unknown) {
+    return slackRpc(async () => {
+      await this.ready;
+      this.requireWorkspace(workspaceId);
+      if (!this.maintenanceEnabled()) throw new RequestError("Slack is unavailable", 503);
+      const delivery = slackUnfurlDeliverySchema.parse(input);
+      const row = await slackConnection(this.env, workspaceId);
+      const enabled =
+        !!row &&
+        row.team_id === delivery.teamId &&
+        !!row.unfurls_enabled &&
+        slackUnfurlsReady(row) &&
+        (await slackVersion(row)) === delivery.version;
+      const result = queueSlackUnfurl(this.driver, this.server!, delivery, configuration(this.env).appOrigin, enabled);
+      await this.armNextJob(true);
+      return result;
+    });
   }
 
   async googleSheetsCommand(principal: HostedPrincipal, input: unknown) {
@@ -469,7 +536,11 @@ export class WorkspaceDO extends DurableObject<Env> {
       !this.alarmRunning &&
       this.server &&
       (scheduleNotificationJob(this.driver, this.server) ||
-        this.driver.all("SELECT id FROM scheduled_job WHERE kind IN (?,?)", [GITHUB_JOB, SHEETS_JOB]).length)
+        this.driver.all("SELECT id FROM scheduled_job WHERE kind IN (?,?,?)", [
+          GITHUB_JOB,
+          SHEETS_JOB,
+          SLACK_UNFURL_JOB,
+        ]).length)
     )
       await this.armNextJob(true);
   }
@@ -601,6 +672,31 @@ export class WorkspaceDO extends DurableObject<Env> {
       ]);
       let failure: Error | null = null;
       for (const job of due) {
+        if (job["kind"] === SLACK_UNFURL_JOB) {
+          try {
+            await this.slackQueue(() =>
+              consumeSlackUnfurl(
+                this.driver,
+                this.server!,
+                job,
+                configuration(this.env).appOrigin,
+                (teamId, version, destination, resolve) =>
+                  sendSlackUnfurls(
+                    this.env,
+                    configuration(this.env).workspaceId,
+                    teamId,
+                    version,
+                    destination,
+                    resolve,
+                  ),
+              ),
+            );
+          } catch {
+            console.error("workspace_slack_unfurl_failed");
+            failure ??= new Error("Workspace Slack unfurl failed");
+          }
+          continue;
+        }
         if (job["kind"] === SHEETS_JOB) {
           try {
             await this.sheetsQueue(async () => {
@@ -924,6 +1020,12 @@ export class WorkspaceDO extends DurableObject<Env> {
       }
       if (url.pathname === "/sync/connect") return await this.upgradeSocket(request, server, url);
       if (url.pathname === "/sync/document") return await this.document(request, server, url);
+      if (url.pathname === "/api/exports.csv") {
+        const input = query(z.strictObject({ type: z.enum(["issues", "projects"]) }), url);
+        const context = await this.requestContext(request, server);
+        if (context.role !== "owner") throw new RequestError("Workspace owner access required", 403);
+        return workspaceCsv(server.store, input.type);
+      }
       if (url.pathname.startsWith("/api/") && url.pathname !== "/api/context") {
         if (mode(this.env) !== "hosted") return json({ error: "Not found" }, 404);
         const input =
@@ -1083,7 +1185,8 @@ export default {
           query(z.strictObject({}), url);
           return json(localContext(selectedActor(request)));
         }
-        if (!syncRoute(url.pathname) && !localRoute(url.pathname)) return json({ error: "Not found" }, 404);
+        if (!syncRoute(url.pathname) && !localRoute(url.pathname) && url.pathname !== "/api/exports.csv")
+          return json({ error: "Not found" }, 404);
         return env.WORKSPACES.getByName("local").fetch(request);
       }
       if (localRoute(url.pathname)) return json({ error: "Not found" }, 404);

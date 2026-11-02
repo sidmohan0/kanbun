@@ -43,6 +43,13 @@
       "when": 1793571656220,
       "tag": "0005_illegal_grim_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793576515126,
+      "tag": "0006_clean_ricochet",
+      "breakpoints": true
     }
   ]
 }
