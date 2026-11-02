@@ -8,6 +8,7 @@ import { IssueProperties } from "./IssueProperties";
 import { IssueRelationships } from "./IssueRelationships";
 import { IssueDiscussion } from "./IssueDiscussion";
 import { IssueDevelopment } from "./GitHubContext";
+import { IssueAttachments } from "./IssueAttachments";
 import type { WorkspaceSnapshot } from "./workspace";
 
 export function IssueDetail({
@@ -68,6 +69,11 @@ export function IssueDetail({
             <IssueRelationships issue={issue} snapshot={workspaceSnapshot} />
           </details>
           <IssueDevelopment issue={issue} snapshot={workspaceSnapshot} />
+          <IssueAttachments
+            key={`${issue.id}:${issue.createdSeq}:${issue.createdAt}`}
+            issue={issue}
+            snapshot={workspaceSnapshot}
+          />
           <IssueDiscussion issue={issue} context={context} snapshot={workspaceSnapshot} />
         </div>
         <aside className="issue-detail-sidebar">

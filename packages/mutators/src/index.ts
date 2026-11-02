@@ -12,6 +12,7 @@ import * as teams from "./teams";
 import * as views from "./views";
 import * as workspace from "./workspace";
 import * as notifications from "./notifications";
+import * as attachments from "./attachments";
 
 export const mutators = defineMutators({
   ...github.mutators,
@@ -21,6 +22,7 @@ export const mutators = defineMutators({
   ...comments.mutators,
   ...views.mutators,
   ...notifications.mutators,
+  ...attachments.mutators,
 });
 
 export type Mutators = typeof mutators;
@@ -52,3 +54,4 @@ export { applyIssueEvent } from "./issueEvents";
 export { applyCommentEvent } from "./commentEvents";
 
 export { applyGitHubEvent, canonicalGitHubSnapshot, githubIssueIdentifiers } from "./github";
+export { applyAttachmentEvent, canonicalSlackMessageUrl } from "./attachments";

@@ -55,6 +55,24 @@ Composer and posted-message link events are supported. Slack's
 [link event reference](https://docs.slack.dev/reference/events/link_shared/) and
 [unfurl method](https://docs.slack.dev/reference/methods/chat.unfurl/) describe the provider contract.
 
+## Message links without synchronization
+
+Open an issue and use **Slack message links** to paste a message URL copied from Slack, optionally
+with a descriptive title. Kanbun stores the link as an attachment; it does not fetch the message,
+copy its text, synchronize comments, or post to Slack. No Slack app connection or additional scopes
+are needed. Opening the link still requires the viewer to have access to the original Slack channel.
+
+Supported links use `https://<workspace>.slack.com/archives/<channel>/p<message timestamp>`.
+Copied `thread_ts` context is retained; the redundant `cid` is validated and removed. Adding the same
+message again, with or without copied thread context, leaves one attachment. Arbitrary external
+URLs and unsupported query parameters are refused. Removing the attachment leaves Slack unchanged.
+
+Attachments inherit the issue's team visibility and move with the issue. Any active member with
+access to an active issue can add or remove a link, including on a private team. Saved mutation drafts
+are bound to that issue incarnation so deleting and recreating its UUID cannot attach an old draft
+to the replacement. Archived or trashed issues cannot receive link edits. The Slack message-menu
+action and bidirectional synced threads are separate features.
+
 ## Connection and recovery
 
 Sign in with native email as the workspace owner, open Settings, and select Connect Slack. Slack

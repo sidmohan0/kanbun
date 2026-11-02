@@ -5,6 +5,7 @@ preparation moves them to a dated version heading.
 
 ## [Unreleased]
 
+- Add issue attachments for pasted Slack message links, with team-scoped access and no thread synchronization.
 - Add owner-controlled Slack previews for public-team issue links, with durable retry delivery, permission refresh, and private-team protection.
 - Added owner-only CSV downloads for public issues and projects, independent of Google setup, with spreadsheet-safe text escaping.
 - Added an owner-only Commands dialog with Cmd/Ctrl+K and a manual Sync to Google Sheets action.

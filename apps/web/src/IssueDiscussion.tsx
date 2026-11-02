@@ -20,6 +20,10 @@ function actorName(actor: DomainEvent["actor"], snapshot: WorkspaceSnapshot): st
 
 function activityText(event: DomainEvent, snapshot: WorkspaceSnapshot): string {
   switch (event.type) {
+    case "SlackMessageAttached":
+      return `attached Slack message “${event.payload.title}”`;
+    case "SlackMessageDetached":
+      return "removed a Slack message link";
     case "GitHubPullRequestLinked":
       return `linked pull request #${event.payload.snapshot.number}: ${event.payload.snapshot.title}`;
     case "GitHubPullRequestUnlinked":

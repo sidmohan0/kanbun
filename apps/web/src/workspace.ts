@@ -48,6 +48,7 @@ export type WorkspaceSnapshot = {
   issueRelations: Row<"issueRelation">[];
   githubRepositories: Row<"githubRepository">[];
   issuePullRequests: Row<"issuePullRequest">[];
+  attachments: Row<"attachment">[];
   teamMemberships: Row<"teamMembership">[];
   rejections: WorkspaceRejection[];
   error: string | null;
@@ -98,6 +99,7 @@ let snapshot: WorkspaceSnapshot = {
   issueRelations: [],
   githubRepositories: [],
   issuePullRequests: [],
+  attachments: [],
   teamMemberships: [],
   rejections,
   error,
@@ -181,6 +183,7 @@ function publish() {
     notifications,
     unreadNotificationCount: notifications.filter((row) => !row.readAt).length,
     comments: authenticationRequired ? [] : (client?.list("comment").filter((comment) => !comment.archivedAt) ?? []),
+    attachments: authenticationRequired ? [] : (client?.list("attachment").filter((row) => !row.archivedAt) ?? []),
     knownMembers: authenticationRequired ? [] : (client?.list("user") ?? []),
     knownAgents: authenticationRequired ? [] : (client?.list("agent") ?? []),
     githubRepositories:
@@ -394,6 +397,7 @@ async function initialize() {
     "issuePullRequest",
     "teamMembership",
     "comment",
+    "attachment",
     "agent",
   ] as const)
     client.subscribe(model, changed);
@@ -590,6 +594,24 @@ export const workspace = {
     publish();
     flush(active);
   },
+  attachSlackMessage(issue: Row<"issue">, url: string, title: string): void {
+    const active = editableClient();
+    active.mutate("issueSlackMessageAttach", {
+      id: uuidv7(),
+      issueId: issue.id,
+      issueIncarnation: issueIncarnation(issue),
+      url,
+      title,
+    });
+    publish();
+    flush(active);
+  },
+  detachSlackMessage(issue: Row<"issue">, id: string): void {
+    const active = editableClient();
+    active.mutate("issueSlackMessageDetach", { id, issueId: issue.id, issueIncarnation: issueIncarnation(issue) });
+    publish();
+    flush(active);
+  },
   async flushPendingChanges(): Promise<void> {
     await client?.flushPersistence();
   },
@@ -747,6 +769,10 @@ export const workspace = {
   async loadComments(issueId: string): Promise<void> {
     const active = editableClient();
     await active.load("comment", issueId);
+    publish();
+  },
+  async loadAttachments(issueId: string): Promise<void> {
+    await editableClient().load("attachment", issueId);
     publish();
   },
   async issueEvents(issueId: string, options: { before?: number; since?: number; signal?: AbortSignal } = {}) {
