@@ -110,8 +110,15 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
       setCopied(gitBranch);
     } catch {
       setError("The branch name could not be copied. Select and copy it below, or allow clipboard access.");
+      return;
     }
-  }, [gitBranch, issue.archivedAt, issue.trashed]);
+    try {
+      if (snapshot.userSettings?.moveIssueToStartOnBranchCopy)
+        workspace.branchNameCopied(issue.id, issue.teamId, issueIncarnation(issue));
+    } catch (failure) {
+      setError(`Branch name copied. ${failure instanceof Error ? failure.message : "The issue could not be started."}`);
+    }
+  }, [gitBranch, issue, snapshot.userSettings]);
   useEffect(() => {
     function keydown(event: KeyboardEvent) {
       if (

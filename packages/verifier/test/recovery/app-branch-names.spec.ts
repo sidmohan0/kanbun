@@ -102,3 +102,87 @@ test("shares the branch format across browsers and copies the current issue name
     await Promise.allSettled([settingsContext.close(), issueContext.close()]);
   }
 });
+
+test("branch-copy preferences sync and start work only after successful clipboard access", async ({
+  browser,
+  emailApp: app,
+}) => {
+  const context = await browser.newContext();
+  const secondContext = await browser.newContext();
+  await nativeBrowser(context);
+  await nativeBrowser(secondContext);
+  const page = await context.newPage();
+  try {
+    await loginEmail(page, app);
+    await page.getByRole("button", { name: "New issue" }).click();
+    await page.getByRole("textbox", { name: "Issue title", exact: true }).fill("Branch copy automation");
+    await page.getByRole("button", { name: "Create issue", exact: true }).click();
+    await expect(page.locator(".sync-indicator")).toContainText("Saved");
+    const bootstrap = (await (
+      await page.request.get(`${app.origin}/sync/bootstrap?clientId=copy-start-reader`)
+    ).json()) as BootstrapResponse;
+    const issue = bootstrap.rows.issue!.find((row) => row.title === "Branch copy automation")!;
+    await page.goto(`${app.origin}/#settings`);
+    await page.getByRole("button", { name: "Code & reviews", exact: true }).click();
+    const settings = page.getByRole("region", { name: "Code and reviews settings", exact: true });
+    const enabled = settings.getByRole("checkbox", {
+      name: "Move issues to start when copying a git branch name",
+      exact: true,
+    });
+    await expect(enabled).not.toBeChecked();
+    await enabled.check();
+    await settings
+      .getByRole("checkbox", { name: "Assign unassigned issues to me when starting from a branch copy", exact: true })
+      .check();
+    await expect(page.locator(".sync-indicator")).toContainText("Saved");
+    await page.reload();
+    await expect(enabled).toBeChecked();
+    const second = await secondContext.newPage();
+    await loginEmail(second, app, app.runtime.ownerEmail, "#settings");
+    await second.getByRole("button", { name: "Code & reviews", exact: true }).click();
+    const secondEnabled = second.getByRole("checkbox", {
+      name: "Move issues to start when copying a git branch name",
+      exact: true,
+    });
+    await expect(secondEnabled).toBeChecked();
+    await secondEnabled.uncheck();
+    await expect(enabled).not.toBeChecked();
+    await secondEnabled.check();
+    await expect(enabled).toBeChecked();
+    await page.goto(`${app.origin}/#issues/${issue.id}`);
+    const development = page.getByRole("region", { name: "Development", exact: true });
+    await page.evaluate(() =>
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText: () => Promise.reject(new Error("Denied")) },
+      }),
+    );
+    await development.getByRole("button", { name: "Copy git branch name", exact: true }).click();
+    await expect(development.getByRole("alert")).toContainText("Select and copy it below");
+    const readIssue = async () => {
+      const response = (await (
+        await page.request.get(`${app.origin}/sync/bootstrap?clientId=copy-start-check`)
+      ).json()) as BootstrapResponse;
+      return { issue: response.rows.issue!.find((row) => row.id === issue.id)!, states: response.rows.workflowState! };
+    };
+    expect((await readIssue()).issue.stateId).toBe(issue.stateId);
+    await page.evaluate(() =>
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText: () => Promise.resolve() },
+      }),
+    );
+    await page.getByRole("heading", { name: "Branch copy automation", exact: true }).click();
+    await page.keyboard.press("Control+Shift+Period");
+    await expect
+      .poll(async () => {
+        const current = await readIssue();
+        return current.states.find((state) => state.id === current.issue.stateId)?.type;
+      })
+      .toBe("started");
+    const owner = bootstrap.rows.user!.find((row) => row.email === app.runtime.ownerEmail)!;
+    await expect.poll(async () => (await readIssue()).issue.assigneeId).toBe(owner.id);
+  } finally {
+    await Promise.allSettled([context.close(), secondContext.close()]);
+  }
+});

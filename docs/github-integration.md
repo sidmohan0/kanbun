@@ -153,6 +153,10 @@ green commit. The ordinary automatic code-release guard must continue to reject 
 schema/configuration transition; do not bypass it or roll code back across that transition.
 After the reviewed rollout, resume normal CI-gated code deployments.
 
+The branch-copy start preference adds an additive workspace migration with a false default for
+existing members. Deploy that migration and its matching code through the same manual
+compatibility-review path. No GitHub permission or credential update is needed for this preference.
+
 Verify a real owner connection, selected-repository mapping, canonical PR link, signed delivery and
 updated context in another authorized browser. Check that an uninvited/nonowner cannot read the
 owner catalog and that current private-team scope controls projection and history access. Retain

@@ -1,0 +1,1 @@
+ALTER TABLE `user_settings` ADD `move_issue_to_start_on_branch_copy` integer DEFAULT false NOT NULL;

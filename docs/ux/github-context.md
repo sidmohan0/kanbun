@@ -21,7 +21,16 @@ titles become lowercase ASCII slugs; names without ASCII characters fall back to
 `{username}/{issueIdentifier}-{issueTitle}`. Formats accept letters, numbers, hyphens, underscores
 and slashes and must produce valid Git branch names. Format changes use normal durable sync,
 including offline persistence and rejection feedback. Copying a name does not create a GitHub
-branch, assign the issue or change its status.
+branch. Automatic PR linking is a separate capability.
+
+In **Settings → Code & reviews**, each member can enable **Move issues to start when copying a
+git branch name**. It defaults off. After the button or shortcut successfully copies a name,
+eligible triage, backlog or unstarted work moves to its team's first Started status. The separate
+assignment preference assigns unassigned work to that member during this transition. Existing
+assignees, Started work, completed/canceled work and archived/trashed work are preserved.
+Clipboard denial never starts work. Missing Started status or a triage priority requirement
+leaves the issue unchanged and displays normal sync rejection feedback. Changes use the durable
+sync queue; server replay checks current preferences, team, identity and workflow state.
 
 Once a repository is connected to a team, PR and review deliveries automatically link its pull
 requests to existing issues identified in the canonical branch name or PR title. References are

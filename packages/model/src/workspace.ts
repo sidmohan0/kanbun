@@ -283,6 +283,7 @@ export const userSettings = sqliteTable("user_settings", {
     .notNull()
     .$default(() => ({ desktop: true, email: true, mobile: true })),
   autoAssignToSelf: bool("auto_assign_to_self").notNull().default(false),
+  moveIssueToStartOnBranchCopy: bool("move_issue_to_start_on_branch_copy").notNull().default(false),
   sidebar: json<Record<string, unknown>>("sidebar")
     .notNull()
     .$default(() => ({})),

@@ -5,6 +5,7 @@ import {
   MutationError,
   defineEventMutator,
   defineMutator,
+  issueIncarnation,
   type DecideContext,
   type MutatorContext,
 } from "@kanbun/sync";
@@ -445,6 +446,40 @@ export const mutators = {
           },
         },
       ];
+    },
+    apply: applyIssueEvent,
+  }),
+
+  issueBranchNameCopied: defineEventMutator({
+    args: z.object({ id, teamId: id, issueIncarnation: z.string(), assigneeSubscriptionId: id }),
+    description: "Apply the caller's branch-copy start and assignment preferences to eligible work.",
+    decide(ctx, args) {
+      if (ctx.actor.type !== "user") throw new MutationError("Only people can copy branch names", "forbidden");
+      const issue = requireIssue(ctx, args.id);
+      if (issue.teamId !== args.teamId || issueIncarnation(issue) !== args.issueIncarnation) return [];
+      const settings = ctx.store.list("userSettings", { userId: ctx.actorId })[0];
+      if (!settings?.moveIssueToStartOnBranchCopy || issue.trashed || issue.archivedAt) return [];
+      const current = ctx.store.get("workflowState", issue.stateId);
+      if (!current || current.archivedAt || !["triage", "backlog", "unstarted"].includes(current.type)) return [];
+      const state = ctx.store
+        .list("workflowState", { teamId: issue.teamId })
+        .filter((candidate) => !candidate.archivedAt && candidate.type === "started")
+        .sort((a, b) => a.position - b.position || a.id.localeCompare(b.id))[0];
+      if (!state) throw new MutationError("This team has no Started workflow status. Add one in Settings.", "invalid");
+      const events: PendingEvent[] = [statusAssertion(ctx, issue, state.id)];
+      if (settings.autoAssignToSelf && !issue.assigneeId) {
+        const team = requireTeamAccess(ctx, issue.teamId);
+        requireAssignee(ctx, team, ctx.actorId);
+        const subject = { entityType: "issue" as const, entityId: issue.id, teamId: issue.teamId, scopeUserId: null };
+        events.push({ ...subject, type: "IssueAssigned", payload: { assigneeId: ctx.actorId } });
+        if (!ctx.store.list("issueSubscription", { issueId: issue.id, userId: ctx.actorId }).length)
+          events.push({
+            ...subject,
+            type: "SubscriberAdded",
+            payload: { id: args.assigneeSubscriptionId, userId: ctx.actorId },
+          });
+      }
+      return events;
     },
     apply: applyIssueEvent,
   }),

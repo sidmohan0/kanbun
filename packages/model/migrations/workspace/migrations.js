@@ -9,6 +9,7 @@ import m0006 from './0006_yielding_patriot.sql';
 import m0007 from './0007_clammy_meltdown.sql';
 import m0008 from './0008_thin_gargoyle.sql';
 import m0009 from './0009_shiny_agent_brand.sql';
+import m0010 from './0010_tearful_zzzax.sql';
 
   export default {
     journal,
@@ -22,7 +23,8 @@ m0005,
 m0006,
 m0007,
 m0008,
-m0009
+m0009,
+m0010
     }
   }
   

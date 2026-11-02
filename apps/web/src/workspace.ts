@@ -42,6 +42,7 @@ export type WorkspaceSnapshot = {
   teams: Row<"team">[];
   workflowStates: Row<"workflowState">[];
   members: Row<"user">[];
+  userSettings?: Row<"userSettings"> | null;
   labels: Row<"issueLabel">[];
   labelLinks: Row<"issueLabelLink">[];
   issueRelations: Row<"issueRelation">[];
@@ -229,6 +230,10 @@ function publish() {
         ?.list("user")
         .filter((member) => member.active && !member.archivedAt)
         .sort((a, b) => a.displayName.localeCompare(b.displayName) || compare(a.id, b.id)) ?? [],
+    userSettings:
+      authenticationRequired || !client || !context
+        ? null
+        : (client.list("userSettings").find((row) => row.userId === context!.actor.id) ?? null),
     labels:
       (authenticationRequired ? undefined : client)
         ?.list("issueLabel")
@@ -379,6 +384,7 @@ async function initialize() {
   client.subscribe("team", changed);
   for (const model of [
     "organization",
+    "userSettings",
     "workflowState",
     "user",
     "issueLabel",
@@ -685,6 +691,18 @@ export const workspace = {
   renameIssue(id: string, title: string): void {
     const active = editableClient();
     active.mutate("issueUpdate", { id, patch: { title } });
+    publish();
+    flush(active);
+  },
+  updateCodePreferences(patch: { moveIssueToStartOnBranchCopy?: boolean; autoAssignToSelf?: boolean }): void {
+    const active = editableClient();
+    active.mutate("userSettingsUpdate", { patch });
+    publish();
+    flush(active);
+  },
+  branchNameCopied(id: string, teamId: string, issueIncarnation: string): void {
+    const active = editableClient();
+    active.mutate("issueBranchNameCopied", { id, teamId, issueIncarnation, assigneeSubscriptionId: uuidv7() });
     publish();
     flush(active);
   },

@@ -9,6 +9,7 @@ preparation moves them to a dated version heading.
 - Added owner-only CSV downloads for public issues and projects, independent of Google setup, with spreadsheet-safe text escaping.
 - Added an owner-only Commands dialog with Cmd/Ctrl+K and a manual Sync to Google Sheets action.
 - Fixed completion and cancellation timestamps changing within the same workflow category, including state replacement and cross-team fallback.
+- Added personal Code & reviews preferences to start eligible issues and optionally self-assign them after a successful git branch-name copy, preserving completed work and existing assignees.
 
 - Security: Reject Slack and Google Sheets token encryption keys in public installation variables.
 
