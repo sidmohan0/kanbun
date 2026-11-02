@@ -91,6 +91,8 @@ test("command shortcut preserves editor and modal shortcuts, focus and disconnec
     await page.keyboard.press("Meta+k");
     await expect(dialog).toBeVisible();
     await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
     const search = page.getByRole("searchbox", { name: "Search issues", exact: true });
     await search.focus();
     await search.press("Control+k");
