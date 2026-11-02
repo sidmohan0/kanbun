@@ -9,21 +9,26 @@ export function IssueAttachments({ issue, snapshot }: { issue: Row<"issue">; sna
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
+    if (snapshot.phase !== "ready") return;
     let active = true;
     void workspace
       .loadAttachments(issue.id)
       .then(() => {
-        if (active) setLoaded(true);
+        if (active) {
+          setLoaded(true);
+          setLoadError(null);
+        }
       })
       .catch(() => {
-        if (active) setError("Slack message links could not be loaded. Reload to retry.");
+        if (active) setLoadError("Slack message links could not be loaded. Reconnect or reload to retry.");
       });
     return () => {
       active = false;
     };
-  }, [issue.id]);
+  }, [issue.id, snapshot.phase, snapshot.status]);
   const links = snapshot.attachments.filter((row) => row.issueId === issue.id && row.sourceType === "slack");
   const unavailable = !loaded || !!issue.trashed || !!issue.archivedAt;
   function change(action: () => void) {
@@ -106,9 +111,9 @@ export function IssueAttachments({ issue, snapshot }: { issue: Row<"issue">; sna
           Add Slack link
         </Button>
       </form>
-      {error && (
+      {(error || loadError) && (
         <p role="alert" className="notice">
-          {error}
+          {error || loadError}
         </p>
       )}
     </section>
