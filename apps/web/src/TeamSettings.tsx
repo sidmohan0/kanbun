@@ -323,6 +323,12 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
       failed(failure);
     }
   }
+  if (snapshot.context?.role !== "owner")
+    return (
+      <section className="teams-settings" aria-label="Personal settings">
+        <CodeSettings snapshot={snapshot} />
+      </section>
+    );
   return (
     <section className="teams-settings" aria-label="Team and workflow settings">
       <nav className="settings-nav" aria-label="Settings sections">

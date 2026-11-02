@@ -1,5 +1,5 @@
 import type { BootstrapResponse } from "@kanbun/sync";
-import { test, expect, loginEmail, nativeBrowser } from "./app-email.fixture";
+import { test, expect, loginEmail, nativeBrowser, requestEmail, consumeEmail } from "./app-email.fixture";
 
 test("legacy desktop integration settings expose a browser fallback before creating OAuth state", async ({
   browser,
@@ -184,5 +184,124 @@ test("branch-copy preferences sync and start work only after successful clipboar
     await expect.poll(async () => (await readIssue()).issue.assigneeId).toBe(owner.id);
   } finally {
     await Promise.allSettled([context.close(), secondContext.close()]);
+  }
+});
+
+test("ordinary members manage their own code preferences without loading owner settings", async ({
+  browser,
+  emailApp: app,
+}) => {
+  const ownerContext = await browser.newContext(),
+    memberContext = await browser.newContext();
+  await nativeBrowser(ownerContext);
+  await nativeBrowser(memberContext);
+  const owner = await ownerContext.newPage(),
+    member = await memberContext.newPage();
+  const memberEmail = "code-settings-member@datafog.ai";
+  const administrativeRequests: string[] = [];
+  member.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/api/integrations/") || path === "/api/members" || path === "/api/exports.csv")
+      administrativeRequests.push(path);
+  });
+  try {
+    await loginEmail(owner, app);
+    await owner.getByRole("link", { name: "Settings", exact: true }).click();
+    await owner.getByRole("link", { name: "Members", exact: true }).click();
+    await owner.getByText("Invite member", { exact: true }).click();
+    await owner.getByRole("textbox", { name: "Invite by email", exact: true }).fill(memberEmail);
+    await owner.getByRole("button", { name: "Create invitation", exact: true }).click();
+    const destination = new URL(await owner.getByRole("textbox", { name: "Invitation link", exact: true }).inputValue())
+      .hash;
+    const signIn = await requestEmail(member, app, memberEmail, destination);
+    await consumeEmail(member, app, memberEmail, signIn);
+    await member.getByRole("button", { name: "Accept invitation", exact: true }).click();
+    await expect(member.locator(".sync-indicator")).toContainText("Saved");
+    await member.getByRole("link", { name: "Settings", exact: true }).click();
+    const personal = member.getByRole("region", { name: "Personal settings", exact: true });
+    const enabled = personal.getByRole("checkbox", {
+      name: "Move issues to start when copying a git branch name",
+      exact: true,
+    });
+    await expect(enabled).not.toBeChecked();
+    await enabled.check();
+    await personal
+      .getByRole("checkbox", { name: "Assign unassigned issues to me when starting from a branch copy", exact: true })
+      .check();
+    await expect(member.locator(".sync-indicator")).toContainText("Saved");
+    await member.reload();
+    await expect(enabled).toBeChecked();
+    for (const name of ["Workspace", "Integrations", "Teams", "Workflow"])
+      await expect(member.getByRole("button", { name, exact: true })).toHaveCount(0);
+    await expect(member.getByRole("link", { name: "Members", exact: true })).toHaveCount(0);
+    await expect(member.getByRole("textbox", { name: "Git branch format", exact: true })).toHaveCount(0);
+    await member.goto(`${app.origin}/#settings/integrations`);
+    await expect(personal).toBeVisible();
+    expect(administrativeRequests).toEqual([]);
+    // Owner settings and preferences remain independently available.
+    await owner.goto(`${app.origin}/#settings`);
+    await owner.getByRole("button", { name: "Code & reviews", exact: true }).click();
+    await expect(
+      owner.getByRole("checkbox", { name: "Move issues to start when copying a git branch name", exact: true }),
+    ).not.toBeChecked();
+    // Exercise the preference as the admitted member, rather than only checking its UI.
+    await member.goto(`${app.origin}/#issues`);
+    await member.getByRole("button", { name: "New issue" }).click();
+    await member.getByRole("textbox", { name: "Issue title", exact: true }).fill("Started by a member branch copy");
+    await member.getByRole("button", { name: "Create issue", exact: true }).click();
+    await expect(member.locator(".sync-indicator")).toContainText("Saved");
+    const bootstrap = (await (
+      await member.request.get(`${app.origin}/sync/bootstrap?clientId=member-code-reader`)
+    ).json()) as BootstrapResponse;
+    const issue = bootstrap.rows.issue!.find((row) => row.title === "Started by a member branch copy")!;
+    const person = bootstrap.rows.user!.find((row) => row.email === memberEmail)!;
+    await member.goto(`${app.origin}/#issues/${issue.id}`);
+    await member.evaluate(() =>
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText: () => Promise.resolve() },
+      }),
+    );
+    await member.getByRole("button", { name: "Copy git branch name", exact: true }).click();
+    await expect
+      .poll(async () => {
+        const latest = (await (
+          await member.request.get(`${app.origin}/sync/bootstrap?clientId=member-code-check`)
+        ).json()) as BootstrapResponse;
+        const current = latest.rows.issue!.find((row) => row.id === issue.id)!;
+        return {
+          type: latest.rows.workflowState!.find((state) => state.id === current.stateId)?.type,
+          assigneeId: current.assigneeId,
+        };
+      })
+      .toEqual({ type: "started", assigneeId: person.id });
+    // Direct requests still meet the server's existing owner/admin boundaries.
+    for (const path of [
+      "/api/members",
+      "/api/integrations/github",
+      "/api/integrations/slack",
+      "/api/integrations/google-sheets",
+      "/api/exports.csv?type=issues",
+    ]) {
+      const denied = await member.request.get(`${app.origin}${path}`);
+      expect(denied.status(), path).toBe(403);
+    }
+    const rejected = await member.request.post(`${app.origin}/sync/push`, {
+      headers: { Origin: app.origin },
+      data: {
+        clientId: "member-branch-format-negative",
+        mutations: [
+          {
+            id: 1,
+            name: "organizationGitBranchFormatUpdate",
+            args: { format: "member/{issueIdentifier}" },
+            ts: new Date().toISOString(),
+          },
+        ],
+      },
+    });
+    expect(await rejected.json()).toMatchObject({ rejected: [{ error: "Workspace admin required" }] });
+  } finally {
+    await Promise.allSettled([ownerContext.close(), memberContext.close()]);
   }
 });
