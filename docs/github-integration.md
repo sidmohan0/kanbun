@@ -89,11 +89,17 @@ The webhook endpoint is public to GitHub and does not require a browser session.
 following [GitHub's signature contract](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries).
 It then validates installation/repository identity and delivery type. Invalid signatures are denied;
 the public endpoint does not let a caller supply trusted projection state. PR/review/check/status
-deliveries enqueue canonical API reads for existing linked PRs. Installation suspension/deletion or
-repository removal retires the affected bindings. Unrelated deliveries do not create new links.
+deliveries enqueue canonical API reads. PR/review deliveries can discover new links from canonical
+branch names and PR titles, only for existing issues in teams explicitly mapped to that repository.
+Check/status deliveries refresh known PRs and can discover additional matching issues in those
+mapped teams. Identifier matching is case-insensitive and accepts separators such as underscores,
+without treating partial words or numbers as references. There are no PR-body reads, issue creation,
+assignment/status changes, linkback comments or additional GitHub permissions in this behavior.
+Installation suspension/deletion or repository removal retires the affected bindings.
 
 The DO deduplicates by installation and delivery ID and persists jobs in `scheduled_job`. A job
-captures the association IDs that existed when admitted. Each successful target and its checkpoint
+captures the binding/team, existing association IDs and main event-log admission sequence. Issues
+created or recreated after admission are not candidates for that old job. Each successful target and its checkpoint
 commit atomically. Failures remain durable and use the existing Cloudflare alarm retry contract;
 there is no added application retry quota or silent success after an arbitrary attempt count.
 The normal maintenance scheduler can rearm retained jobs after an interrupted or exhausted alarm.
@@ -105,6 +111,13 @@ fetches. Unlink, disconnect, repository revocation and hard deletion prevent a d
 recreating an old association or applying its evidence to a replacement issue. Reserved monotonic
 observation revisions prevent an older in-flight fetch from overwriting a newer observation.
 Current-head CI/review evidence never becomes a passing/approval signal for another commit.
+
+Manual unlink history is retained in the immutable event log. Existing link/observation events
+identify which PR was removed. Automatic creation remains suppressed for that issue incarnation,
+repository binding and PR even when references change; explicit manual linking can resume tracking.
+This avoids treating an unobserved edit made before unlink as new permission to re-create a link.
+Automatic re-linking after later edits remains separate work. Pending jobs created by older versions
+have no discovery admission metadata and retain observation-only behavior.
 
 Workspace backup bundles retain the integration projections, revision/delivery state and scheduled
 jobs. Directory restoration deliberately leaves `github_setups` and `oauth_states` empty, alongside

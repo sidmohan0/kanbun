@@ -35,6 +35,7 @@ export const SYSTEM_ONLY = [
   "githubRepositoryDisconnect",
   "githubPullRequestLink",
   "githubPullRequestObserve",
+  "githubPullRequestAutoLink",
 ] as const;
 
 /** Agent tool definitions (JSON schema), optionally restricted to an allow-list. */
@@ -50,4 +51,4 @@ export * from "./ordering";
 export { applyIssueEvent } from "./issueEvents";
 export { applyCommentEvent } from "./commentEvents";
 
-export { applyGitHubEvent, canonicalGitHubSnapshot } from "./github";
+export { applyGitHubEvent, canonicalGitHubSnapshot, githubIssueIdentifiers } from "./github";

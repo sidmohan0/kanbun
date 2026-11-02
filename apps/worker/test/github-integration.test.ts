@@ -37,6 +37,156 @@ const callback = (agent: Agent, state: string, issuer: string | null = "https://
     },
   );
 
+it("automatically links canonical branch/title references from signed PR deliveries and respects manual unlink", async () => {
+  const runtime = await startGithubRuntime();
+  try {
+    const owner = nativeAgent(runtime);
+    await signIn(runtime, owner);
+    expect((await callback(owner, (await connect(owner)).state)).status).toBe(303);
+    const bootstrap = async () =>
+      (await (await owner.fetch("/sync/bootstrap?clientId=auto-link-reader")).json()) as BootstrapResponse;
+    const team = (await bootstrap()).rows.team![0]!;
+    expect(
+      (
+        await owner.json("/api/integrations/github/repositories", {
+          teamId: team.id,
+          installationId: GITHUB_INSTALLATION_ID,
+          repositoryId: GITHUB_REPOSITORY_ID,
+        })
+      ).status,
+    ).toBe(200);
+    const ids = [uuidv7(), uuidv7()];
+    for (const [index, id] of ids.entries())
+      expect(
+        await (
+          await owner.json("/sync/push", {
+            clientId: "automatic-issues",
+            mutations: [
+              {
+                id: index + 1,
+                name: "issueCreate",
+                ts: new Date().toISOString(),
+                args: { id, teamId: team.id, title: `Automatic task ${index}`, subscriptionId: uuidv7() },
+              },
+            ],
+          })
+        ).json(),
+      ).toMatchObject({ rejected: [] });
+    const issues = (await bootstrap()).rows.issue!.filter((row) => ids.includes(String(row.id)));
+    const first = issues.find((row) => row.id === ids[0])!,
+      second = issues.find((row) => row.id === ids[1])!;
+    const title = `Ship ${team.key}-${first.number}`;
+    const pr = githubPullRequest({
+      title,
+      head: { ref: `owner/${String(team.key).toLowerCase()}-${second.number}_fix`, sha: "a".repeat(40) },
+    });
+    // Reference-bearing metadata can change within GitHub's second-precision timestamp.
+    // Both title and branch must agree with the final canonical read before any link exists.
+    const binding = (await bootstrap()).rows.githubRepository![0]!;
+    for (const changed of [
+      { ...pr, title: title + " changed during read" },
+      { ...pr, head: { ...pr.head, ref: "another-branch" } },
+    ]) {
+      await runtime.setGithubResponses([
+        { method: "GET", path: "/repos/example/pilot/pulls/42", body: pr, once: true },
+        ...githubResponses(changed),
+      ]);
+      expect(
+        (
+          await owner.json("/api/integrations/github/pull-requests/link", {
+            issueId: first.id,
+            issueIncarnation: issueIncarnation(first as Row<"issue">),
+            repositoryBindingId: binding.id,
+            url: "https://github.com/example/pilot/pull/42",
+          })
+        ).status,
+      ).toBe(409);
+      expect((await bootstrap()).rows.issuePullRequest).toHaveLength(0);
+    }
+    await runtime.setGithubResponses(githubResponses(pr));
+    const payload = JSON.stringify({
+      action: "opened",
+      installation: { id: GITHUB_INSTALLATION_ID },
+      repository: { id: GITHUB_REPOSITORY_ID },
+      pull_request: { number: 42, title: "Forged webhook reference NOT-99" },
+    });
+    const deliveryId = uuidv7();
+    const deliver = (id = uuidv7(), signature = githubSignature(payload)) =>
+      runtime.fetch(
+        "/api/integrations/github/webhook",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-GitHub-Event": "pull_request",
+            "X-GitHub-Delivery": id,
+            "X-Hub-Signature-256": signature,
+          },
+          body: payload,
+        },
+        null,
+      );
+    const before = (await runtime.githubRequests()).length;
+    expect((await deliver(deliveryId, "sha256=" + "0".repeat(64))).status).toBe(401);
+    expect((await runtime.githubRequests()).length).toBe(before);
+    expect((await deliver(deliveryId)).status).toBe(202);
+    await expect.poll(async () => (await bootstrap()).rows.issuePullRequest?.length).toBe(2);
+    const linked = (await bootstrap()).rows.issuePullRequest!;
+    expect(linked.every((row) => row.title === title)).toBe(true);
+    const requests = (await runtime.githubRequests()).length;
+    expect((await deliver(deliveryId)).status).toBe(202);
+    expect((await runtime.githubRequests()).length).toBe(requests);
+    const removed = linked.find((row) => row.issueId === first.id)!;
+    expect(
+      await (
+        await owner.json("/sync/push", {
+          clientId: "automatic-unlink",
+          mutations: [
+            { id: 1, name: "issuePullRequestUnlink", args: { id: removed.id }, ts: new Date().toISOString() },
+          ],
+        })
+      ).json(),
+    ).toMatchObject({ rejected: [] });
+    const revision = Number(linked.find((row) => row.issueId === second.id)!.observationRevision);
+    expect((await deliver()).status).toBe(202);
+    await expect
+      .poll(async () =>
+        Number(
+          (await bootstrap()).rows.issuePullRequest!.find((row) => row.issueId === second.id)!.observationRevision,
+        ),
+      )
+      .toBeGreaterThan(revision);
+    expect((await bootstrap()).rows.issuePullRequest).toHaveLength(1);
+    const beforeEditRevision = Number((await bootstrap()).rows.issuePullRequest![0]!.observationRevision);
+    await runtime.setGithubResponses(
+      githubResponses({ ...pr, title: title + " revised", updated_at: "2026-11-01T13:00:00Z" }),
+    );
+    expect((await deliver()).status).toBe(202);
+    await expect
+      .poll(async () => Number((await bootstrap()).rows.issuePullRequest![0]!.observationRevision))
+      .toBeGreaterThan(beforeEditRevision);
+    expect((await bootstrap()).rows.issuePullRequest).toHaveLength(1);
+    expect(
+      (
+        await owner.json("/api/integrations/github/pull-requests/link", {
+          issueId: first.id,
+          issueIncarnation: issueIncarnation(first as Row<"issue">),
+          repositoryBindingId: binding.id,
+          url: "https://github.com/example/pilot/pull/42",
+        })
+      ).status,
+    ).toBe(200);
+    expect((await bootstrap()).rows.issuePullRequest).toHaveLength(2);
+    for (const original of issues)
+      expect((await bootstrap()).rows.issue!.find((row) => row.id === original.id)!.stateId).toBe(original.stateId);
+    const history = await (await owner.fetch(`/sync/events?issueId=${first.id}`)).text();
+    expect(history).not.toContain("Forged webhook reference");
+    expect(history).toContain("GitHubPullRequestLinked");
+  } finally {
+    await runtime.close();
+  }
+});
+
 it("keeps GitHub OAuth tied to the native owner session and binds only the user-granted installation catalog", async () => {
   const runtime = await startGithubRuntime();
   try {
