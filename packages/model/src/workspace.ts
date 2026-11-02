@@ -990,6 +990,13 @@ export const slackDelivery = sqliteTable("slack_delivery", {
   completedAt: text("completed_at"),
 });
 
+/** Operational per-thread reply cooldown/reservation, never synchronized to clients. */
+export const slackIssueReply = sqliteTable("slack_issue_reply", {
+  id: text("id").primaryKey(),
+  pendingJobId: text("pending_job_id"),
+  lastSentAt: text("last_sent_at"),
+});
+
 /** Monotonic request-start ordering, independent of wall-clock ties across Edge isolates. */
 export const githubObservationCursor = sqliteTable("github_observation_cursor", {
   id: text("id").primaryKey(),

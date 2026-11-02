@@ -10,8 +10,12 @@ import {
   sendSlackUnfurls,
   slackRpc,
   type SlackEnvironment,
+  slackReplyVersion,
+  slackRepliesReady,
+  sendSlackReply,
 } from "./slack";
 import { SLACK_UNFURL_JOB, slackUnfurlDeliverySchema, queueSlackUnfurl, consumeSlackUnfurl } from "./slack-unfurls";
+import { SLACK_REPLY_JOB, slackReplyDeliverySchema, queueSlackReplies, consumeSlackReply } from "./slack-replies";
 import { workspaceCsv } from "./workspace-csv";
 import { DurableObject } from "cloudflare:workers";
 import migrations from "@kanbun/model/migrations/workspace/migrations.js";
@@ -332,6 +336,26 @@ export class WorkspaceDO extends DurableObject<Env> {
     });
   }
 
+  /** Message text never crosses this boundary; reservations and receipts are durable before ACK. */
+  async slackIssueReplies(workspaceId: string, input: unknown) {
+    return slackRpc(async () => {
+      await this.ready;
+      this.requireWorkspace(workspaceId);
+      if (!this.maintenanceEnabled()) throw new RequestError("Slack is unavailable", 503);
+      const delivery = slackReplyDeliverySchema.parse(input);
+      const row = await slackConnection(this.env, workspaceId);
+      const enabled =
+        !!row &&
+        row.team_id === delivery.teamId &&
+        !!row.issue_replies_enabled &&
+        slackRepliesReady(row) &&
+        (await slackReplyVersion(row)) === delivery.version;
+      const result = queueSlackReplies(this.driver, this.server!, delivery, enabled);
+      await this.armNextJob(true);
+      return result;
+    });
+  }
+
   async googleSheetsCommand(principal: HostedPrincipal, input: unknown) {
     return this.sheetsQueue(async () => {
       try {
@@ -536,10 +560,11 @@ export class WorkspaceDO extends DurableObject<Env> {
       !this.alarmRunning &&
       this.server &&
       (scheduleNotificationJob(this.driver, this.server) ||
-        this.driver.all("SELECT id FROM scheduled_job WHERE kind IN (?,?,?)", [
+        this.driver.all("SELECT id FROM scheduled_job WHERE kind IN (?,?,?,?)", [
           GITHUB_JOB,
           SHEETS_JOB,
           SLACK_UNFURL_JOB,
+          SLACK_REPLY_JOB,
         ]).length)
     )
       await this.armNextJob(true);
@@ -672,6 +697,32 @@ export class WorkspaceDO extends DurableObject<Env> {
       ]);
       let failure: Error | null = null;
       for (const job of due) {
+        if (job["kind"] === SLACK_REPLY_JOB) {
+          try {
+            await this.slackQueue(() =>
+              consumeSlackReply(
+                this.driver,
+                this.server!,
+                job,
+                configuration(this.env).appOrigin,
+                (teamId, version, channel, thread, resolve) =>
+                  sendSlackReply(
+                    this.env,
+                    configuration(this.env).workspaceId,
+                    teamId,
+                    version,
+                    channel,
+                    thread,
+                    resolve,
+                  ),
+              ),
+            );
+          } catch {
+            console.error("workspace_slack_reply_failed");
+            failure ??= new Error("Workspace Slack reply failed");
+          }
+          continue;
+        }
         if (job["kind"] === SLACK_UNFURL_JOB) {
           try {
             await this.slackQueue(() =>

@@ -53,8 +53,13 @@ export class WorkspaceDO extends ApplicationWorkspaceDO {
   }
   async slackTestSnapshot() {
     return {
-      jobs: [...this.ctx.storage.sql.exec("SELECT * FROM scheduled_job WHERE kind='slack-issue-unfurl'")],
+      jobs: [
+        ...this.ctx.storage.sql.exec(
+          "SELECT * FROM scheduled_job WHERE kind IN ('slack-issue-unfurl','slack-issue-reply')",
+        ),
+      ],
       deliveries: [...this.ctx.storage.sql.exec("SELECT * FROM slack_delivery")],
+      replies: [...this.ctx.storage.sql.exec("SELECT * FROM slack_issue_reply")],
       alarm: await this.ctx.storage.getAlarm(),
       commands: this.slackControl.commands,
       uninstalls: this.slackControl.uninstalls,
@@ -62,6 +67,12 @@ export class WorkspaceDO extends ApplicationWorkspaceDO {
   }
   async slackTestGate() {
     this.slackControl.gate = true;
+  }
+  async slackTestAgeReplies(minutes) {
+    this.ctx.storage.sql.exec(
+      "UPDATE slack_issue_reply SET last_sent_at=? WHERE last_sent_at IS NOT NULL",
+      new Date(Date.now() - minutes * 60_000).toISOString(),
+    );
   }
   async slackTestPending() {
     return this.slackControl.pending;
