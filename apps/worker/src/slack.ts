@@ -5,6 +5,7 @@ import { configuration, requireHostedOrigin, type HostedPrincipal } from "./auth
 import { authTokenHash } from "./email-auth";
 import { body, query, RequestError } from "./requests";
 import { slackDestinationSchema, type SlackUnfurls } from "./slack-unfurls";
+import { slackIssueIdentifiers } from "./slack-replies";
 
 export interface SlackEnvironment {
   SLACK_CLIENT_ID?: string;
@@ -55,12 +56,25 @@ async function api(env: SlackEnvironment, method: string, values: Record<string,
     if (!result.ok) throw unavailable();
     const value: unknown = await result.json();
     if (
-      (method === "auth.revoke" || method === "auth.test" || method === "chat.unfurl") &&
+      (method === "auth.revoke" ||
+        method === "auth.test" ||
+        method === "chat.unfurl" ||
+        method === "chat.postMessage") &&
       z
         .object({ ok: z.literal(false), error: z.enum(["invalid_auth", "token_revoked", "account_inactive"]) })
         .safeParse(value).success
     )
       return method === "auth.revoke" ? { ok: true } : { ok: false };
+    if (
+      method === "chat.postMessage" &&
+      z
+        .object({
+          ok: z.literal(false),
+          error: z.enum(["channel_not_found", "not_in_channel", "is_archived", "thread_not_found"]),
+        })
+        .safeParse(value).success
+    )
+      return { ok: false, retired: true };
     if (!z.object({ ok: z.literal(true) }).safeParse(value).success) throw unavailable();
     return value;
   } catch {
@@ -115,6 +129,8 @@ export type SlackConnection = {
   updated_at: string;
   unfurls_enabled: number;
   unfurl_generation: string;
+  issue_replies_enabled: number;
+  issue_reply_generation: string;
 };
 export async function slackConnection(env: Env, workspaceId: string) {
   return database(env)
@@ -124,6 +140,10 @@ export async function slackConnection(env: Env, workspaceId: string) {
 }
 export const slackVersion = (row: SlackConnection) =>
   authTokenHash(JSON.stringify([row.team_id, row.token_ciphertext, row.unfurl_generation]));
+export const slackReplyVersion = (row: SlackConnection) =>
+  authTokenHash(JSON.stringify([row.team_id, row.token_ciphertext, row.issue_reply_generation]));
+export const slackRepliesReady = (row: SlackConnection) =>
+  row.scopes.split(",").includes("channels:history") && row.scopes.split(",").includes("chat:write");
 export const slackUnfurlsReady = (row: SlackConnection) =>
   ["links:read", "links:write"].every((scope) => row.scopes.split(",").includes(scope));
 export async function slackStatus(env: Env, workspaceId: string) {
@@ -137,6 +157,8 @@ export async function slackStatus(env: Env, workspaceId: string) {
           updatedAt: row.updated_at,
           unfurlsEnabled: !!row.unfurls_enabled,
           reauthorizationRequired: !slackUnfurlsReady(row),
+          issueRepliesEnabled: !!row.issue_replies_enabled,
+          issueRepliesReauthorizationRequired: !!row.issue_replies_enabled && !slackRepliesReady(row),
         }
       : null,
   };
@@ -152,6 +174,7 @@ export const slackCommandSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({ kind: z.literal("disconnect") }),
   z.strictObject({ kind: z.literal("configure"), enabled: z.boolean() }),
+  z.strictObject({ kind: z.literal("configureIssueReplies"), enabled: z.boolean() }),
 ]);
 export async function slackCommand(env: Env, principal: HostedPrincipal, command: z.infer<typeof slackCommandSchema>) {
   const row = await slackConnection(env, principal.workspaceId);
@@ -182,6 +205,12 @@ export async function slackCommand(env: Env, principal: HostedPrincipal, command
     if (!row) throw new RequestError("Connect Slack before configuring link previews", 409);
     await database(env)
       .prepare("UPDATE slack_connections SET unfurls_enabled=?,unfurl_generation=? WHERE workspace_id=?")
+      .bind(command.enabled ? 1 : 0, crypto.randomUUID(), principal.workspaceId)
+      .run();
+  } else if (command.kind === "configureIssueReplies") {
+    if (!row) throw new RequestError("Connect Slack before configuring issue replies", 409);
+    await database(env)
+      .prepare("UPDATE slack_connections SET issue_replies_enabled=?,issue_reply_generation=? WHERE workspace_id=?")
       .bind(command.enabled ? 1 : 0, crypto.randomUUID(), principal.workspaceId)
       .run();
   } else if (row) {
@@ -270,9 +299,10 @@ async function connect(env: Env, principal: HostedPrincipal) {
     .bind(await authTokenHash(state), binding(principal), new Date(principal.expiresAt).toISOString())
     .run();
   const url = new URL("https://slack.com/oauth/v2/authorize");
+  const connection = await slackConnection(env, principal.workspaceId);
   url.search = new URLSearchParams({
     client_id: env.SLACK_CLIENT_ID!,
-    scope: scopes.join(","),
+    scope: [...scopes, ...(connection?.issue_replies_enabled ? ["channels:history"] : [])].join(","),
     state,
     redirect_uri: configuration(env).appOrigin + callbackPath,
   }).toString();
@@ -372,6 +402,17 @@ export async function slackRoute(request: Request, env: Env, principal: HostedPr
   }
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   requireHostedOrigin(request, env);
+  if (url.pathname === prefix + "/issue-replies") {
+    const value = await body(z.strictObject({ enabled: z.boolean() }), request);
+    return json(
+      await rpcValue(
+        env.WORKSPACES.getByName(principal.workspaceId).slackConnectionCommand(principal, {
+          kind: "configureIssueReplies",
+          ...value,
+        }),
+      ),
+    );
+  }
   if (url.pathname === prefix + "/unfurls") {
     const value = await body(z.strictObject({ enabled: z.boolean() }), request);
     return json(
@@ -474,5 +515,101 @@ export async function slackEventRoute(request: Request, env: Env): Promise<Respo
         }),
       );
   }
+  if (input.type === "event_callback" && input.event?.type === "message" && input.team_id && input.event_id) {
+    const event = z
+      .object({
+        event: z.object({
+          channel_type: z.string().optional(),
+          channel: z.string().optional(),
+          user: z.string().optional(),
+          text: z.string().optional(),
+          ts: z.string().optional(),
+          thread_ts: z.string().optional(),
+          subtype: z.unknown().optional(),
+          bot_id: z.unknown().optional(),
+          bot_profile: z.unknown().optional(),
+          app_id: z.unknown().optional(),
+          edited: z.unknown().optional(),
+        }),
+      })
+      .parse(JSON.parse(raw)).event;
+    if (
+      event.channel_type !== "channel" ||
+      !event.channel ||
+      !/^C[A-Z0-9]+$/.test(event.channel) ||
+      !event.user ||
+      !/^U[A-Z0-9]+$/.test(event.user) ||
+      event.subtype !== undefined ||
+      event.bot_id !== undefined ||
+      event.bot_profile !== undefined ||
+      event.user === "USLACKBOT" ||
+      event.app_id !== undefined ||
+      event.edited !== undefined ||
+      !event.text ||
+      !event.ts ||
+      !/^\d+\.\d{6}$/.test(event.ts) ||
+      (event.thread_ts !== undefined && !/^\d+\.\d{6}$/.test(event.thread_ts))
+    )
+      return json({ ok: true });
+    const identifiers = slackIssueIdentifiers(event.text);
+    if (!identifiers.length) return json({ ok: true });
+    const connection = await database(env)
+      .prepare("SELECT * FROM slack_connections WHERE team_id=?")
+      .bind(input.team_id)
+      .first<SlackConnection>();
+    if (connection && event.user !== connection.bot_user_id)
+      await rpcValue(
+        env.WORKSPACES.getByName(connection.workspace_id).slackIssueReplies(connection.workspace_id, {
+          eventId: input.event_id,
+          teamId: input.team_id,
+          version: await slackReplyVersion(connection),
+          channel: event.channel,
+          thread: event.thread_ts ?? event.ts,
+          identifiers,
+        }),
+      );
+  }
   return json({ ok: true });
+}
+
+/** Serialized with connection mutations; resolve current public issue only after credential I/O. */
+export async function sendSlackReply(
+  env: Env,
+  workspaceId: string,
+  teamId: string,
+  version: string,
+  channel: string,
+  thread: string,
+  resolve: () => string | null,
+): Promise<boolean> {
+  const row = await slackConnection(env, workspaceId);
+  if (
+    !row ||
+    row.team_id !== teamId ||
+    !row.issue_replies_enabled ||
+    !slackRepliesReady(row) ||
+    (await slackReplyVersion(row)) !== version
+  )
+    return false;
+  const token = await openSlackToken(env, workspaceId, row.token_ciphertext);
+  const text = resolve();
+  if (!text) return false;
+  const result = z.object({ ok: z.boolean(), retired: z.boolean().optional() }).parse(
+    await api(env, "chat.postMessage", {
+      token,
+      channel,
+      thread_ts: thread,
+      text,
+      mrkdwn: "false",
+      unfurl_links: "false",
+      unfurl_media: "false",
+      reply_broadcast: "false",
+    }),
+  );
+  if (!result.ok && !result.retired)
+    await database(env)
+      .prepare("DELETE FROM slack_connections WHERE workspace_id=? AND token_ciphertext=?")
+      .bind(workspaceId, row.token_ciphertext)
+      .run();
+  return result.ok;
 }

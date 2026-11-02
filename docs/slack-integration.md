@@ -1,7 +1,8 @@
 # Slack workspace connection
 
 Connect one Slack workspace, preview public-team issue links, and let the Kanbun owner disable
-previews or revoke the connection in Settings. Issue actions, channel notifications, project links,
+previews or revoke the connection in Settings. Owners can also opt in to deterministic issue-ID
+replies in public Slack channels. Issue actions, channel notifications, project links,
 and thread sync are subsequent slices. It does not enable an agent, slash commands, Asks, Slackbot MCP or Enterprise
 Grid. Slack authorization is separate from Kanbun sign-in.
 
@@ -14,6 +15,14 @@ Create a Slack app for the installation's HTTPS origin and configure:
 - Events request URL: `<APP_ORIGIN>/api/integrations/slack/events`
 - Bot events: `app_uninstalled`, `link_shared`
 - App unfurl domain: the installation's application hostname
+
+For the optional public-channel issue-ID replies, also subscribe to `message.channels`. Enable
+**Reply to issue IDs in public Slack channels** and then **Update Slack authorization**: only this
+opt-in adds `channels:history` to the OAuth request. Existing grants need reauthorization. The app
+must participate in the public channel; this slice does not auto-join channels. No private-channel
+or DM event subscription/scope is requested, and no history API is called. Disabling replies stops
+delivery but does not remove previously granted Slack permissions; remove/reinstall the app to
+change the provider grant if necessary.
 
 Use workspace installations, not organization-wide installation. Token rotation is not supported
 by this slice; leave it disabled. Do not configure commands or advertise unavailable capabilities.
@@ -72,6 +81,39 @@ access to an active issue can add or remove a link, including on a private team.
 are bound to that issue incarnation so deleting and recreating its UUID cannot attach an old draft
 to the replacement. Archived or trashed issues cannot receive link edits. The Slack message-menu
 action and bidirectional synced threads are separate features.
+
+## Public-channel issue-ID replies
+
+This is the public-channel portion of physical spreadsheet row128. Private Slack channels and DMs
+remain approved follow-up work. It is deterministic and does not enable an agent. The independent
+owner setting defaults off; turning unfurls off does not turn replies off, or vice versa.
+
+When an ordinary human message mentions an existing identifier such as `ENG-123`, Kanbun replies
+in its parent thread with only the canonical identifier and issue link. Anyone in that Slack channel
+can see them. Only issues in public, active Kanbun teams are eligible; private-team issues are never
+disclosed. Bot/app/own messages, message subtypes, edits, private channels and DMs are ignored.
+Identifiers are case-insensitive. Only the first 20 distinct well-formed identifiers in a message are
+considered; malformed, zero-padded and nonexistent identifiers do not produce replies. Messages with
+no identifiers create no durable receipt or job. The app
+does not import, store or log the message text. No title, description or arbitrary user text is posted.
+
+A private durable receipt and pending reservation are committed before acknowledging the signed
+event. Pending work suppresses duplicate mentions even during a long provider outage. After a
+successful delivery/checkpoint, the same issue is suppressed in that thread for 60 minutes; a different
+issue or thread is independent. Jobs contain identifiers, issue incarnation, channel/thread IDs and
+an opaque connection/configuration version, never raw message bodies or credentials. Delivery
+rechecks current credentials, scope, owner preference, issue incarnation, current identifier and
+public visibility immediately before posting. Disabling/reconnecting retires previous pending work.
+
+Provider outages/rate limits leave jobs pending for retry. Revoked credentials are removed using a
+current-token comparison; known inaccessible/archived channel or missing-thread failures retire the
+job. A successful `chat.postMessage` followed by a process crash before the local checkpoint can
+produce a duplicate on retry. Delivery is at least once; the 60-minute suppression is not an exactly-once
+guarantee. Existing posted replies remain in Slack after privacy or preference changes.
+
+See Slack's [public-channel message event](https://docs.slack.dev/reference/events/message.channels/)
+and [posting/thread contract](https://docs.slack.dev/reference/methods/chat.postMessage/). Apply the
+accounts 0007 and workspace 0011 migrations under the normal compatibility review before deployment.
 
 ## Connection and recovery
 

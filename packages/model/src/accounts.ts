@@ -183,6 +183,8 @@ export const slackConnections = sqliteTable(
     updatedAt: text("updated_at").notNull(),
     unfurlsEnabled: bool("unfurls_enabled").notNull().default(true),
     unfurlGeneration: text("unfurl_generation").notNull().default(""),
+    issueRepliesEnabled: bool("issue_replies_enabled").notNull().default(false),
+    issueReplyGeneration: text("issue_reply_generation").notNull().default(""),
   },
   (t) => [uniqueIndex("slack_connections_team").on(t.teamId)],
 );

@@ -1,0 +1,2 @@
+ALTER TABLE `slack_connections` ADD `issue_replies_enabled` integer DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE `slack_connections` ADD `issue_reply_generation` text DEFAULT '' NOT NULL;

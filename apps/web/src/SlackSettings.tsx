@@ -6,7 +6,14 @@ import { DesktopIntegrationSettings, isDesktopApplication } from "./DesktopInteg
 
 type Connection = {
   configured: boolean;
-  connection: { teamId: string; teamName: string; unfurlsEnabled: boolean; reauthorizationRequired: boolean } | null;
+  connection: {
+    teamId: string;
+    teamName: string;
+    unfurlsEnabled: boolean;
+    reauthorizationRequired: boolean;
+    issueRepliesEnabled: boolean;
+    issueRepliesReauthorizationRequired: boolean;
+  } | null;
 };
 function OwnerSlackSettings() {
   const [value, setValue] = useState<Connection | null>(null);
@@ -59,6 +66,20 @@ function OwnerSlackSettings() {
       setBusy(false);
     }
   }
+  async function replies(enabled: boolean) {
+    const previous = value;
+    if (value?.connection) setValue({ ...value, connection: { ...value.connection, issueRepliesEnabled: enabled } });
+    setBusy(true);
+    setError(null);
+    try {
+      setValue((await membershipRequest("/api/integrations/slack/issue-replies", { enabled })) as Connection);
+    } catch (failure) {
+      setValue(previous);
+      setError(failure instanceof Error ? failure.message : "Slack replies could not be changed.");
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <section className="github-settings" aria-label="Slack connection">
       <h2>Slack</h2>
@@ -83,6 +104,23 @@ function OwnerSlackSettings() {
           </label>
           <p>Only issues in public teams are shared. Existing previews remain in Slack after disabling.</p>
           {value.connection.reauthorizationRequired && <p>Update Slack authorization to enable link previews.</p>}
+          <label>
+            <input
+              type="checkbox"
+              checked={value.connection.issueRepliesEnabled}
+              disabled={busy}
+              onChange={(event) => void replies(event.target.checked)}
+            />{" "}
+            Reply to issue IDs in public Slack channels
+          </label>
+          <p>
+            Off by default. Anyone in the channel can see the public-team issue identifier and link. Requires reading
+            messages in public channels where the app participates; message text is not stored. Repeated mentions of the
+            same issue in a thread are suppressed for 60 minutes.
+          </p>
+          {value.connection.issueRepliesReauthorizationRequired && (
+            <p>Update Slack authorization to allow public-channel message events for issue replies.</p>
+          )}
         </>
       )}
       {value?.configured && (

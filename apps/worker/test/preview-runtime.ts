@@ -387,6 +387,15 @@ export async function startPreviewRuntime({
           .bind(workspaceId)
           .run();
       },
+      async slackAgeReplies(minutes: number) {
+        const response = await harness
+          .getWorker(slackControlWorker)
+          .fetch("http://fixture/", {
+            method: "POST",
+            body: JSON.stringify({ action: "ageReplies", workspaceId, minutes }),
+          });
+        if (!response.ok) throw new Error("Slack test aging failed");
+      },
       async authRows() {
         return {
           accounts: (await environment.ACCOUNTS.prepare("SELECT * FROM accounts ORDER BY id").all()).results,
