@@ -1,0 +1,169 @@
+{
+  "format": 1,
+  "capacity": 1000,
+  "issueHeaders": [
+    "ID",
+    "Team",
+    "Title",
+    "Description",
+    "Status",
+    "Estimate",
+    "Priority",
+    "Project ID",
+    "Project",
+    "Creator",
+    "Assignee",
+    "Labels",
+    "Cycle Number",
+    "Cycle Name",
+    "Cycle Start",
+    "Cycle End",
+    "Due Date",
+    "Parent issue",
+    "Project Milestone ID",
+    "Project Milestone",
+    "Created",
+    "Updated",
+    "Started",
+    "Triaged",
+    "Completed",
+    "Canceled",
+    "Archived"
+  ],
+  "projectHeaders": [
+    "ID",
+    "Name",
+    "Description",
+    "Status",
+    "Priority",
+    "Milestones",
+    "Creator",
+    "Lead",
+    "Start Date",
+    "Target Date",
+    "Created",
+    "Started",
+    "Updated",
+    "Completed",
+    "Canceled",
+    "Archived",
+    "Teams",
+    "Health"
+  ],
+  "sha256": "0777e8696c6ffaaa6ee0ad84c29153a613348c1e451c2a415e7a9cdeae093e2b",
+  "generatorSha256": "8b5b7df944ec3abbb3406bb4d2c0badbfac4a3bbcf1425888fb67aa57b2e9c9e",
+  "engine": "artifact-tool bundled26.1020.11618",
+  "checks": [
+    {
+      "label": "exclusive end boundary",
+      "cell": "Issue analytics!B9",
+      "actual": 3
+    },
+    {
+      "label": "estimate total",
+      "cell": "Issue analytics!B10",
+      "actual": 3
+    },
+    {
+      "label": "numeric text import converted",
+      "cell": "Issue analytics!E20",
+      "actual": 3
+    },
+    {
+      "label": "zero estimate retained in detail",
+      "cell": "Issue analytics!E21",
+      "actual": 0
+    },
+    {
+      "label": "missing estimate distinguished",
+      "cell": "Issue analytics!B11",
+      "actual": 1
+    },
+    {
+      "label": "invalid pair excluded from duration",
+      "cell": "Issue analytics!B12",
+      "actual": 1.5
+    },
+    {
+      "label": "invalid pair counted",
+      "cell": "Issue analytics!B13",
+      "actual": 1
+    },
+    {
+      "label": "real VLOOKUP",
+      "cell": "Project planning!B10",
+      "actual": "Public launch"
+    },
+    {
+      "label": "planning score",
+      "cell": "Project planning!I10",
+      "actual": 2
+    },
+    {
+      "label": "planning rank",
+      "cell": "Project planning!J10",
+      "actual": 1
+    },
+    {
+      "label": "assignee and cycle filter",
+      "cell": "Issue analytics!B9",
+      "actual": 2
+    },
+    {
+      "label": "duplicate cycle number scoped to other team",
+      "cell": "Issue analytics!B9",
+      "actual": 1
+    },
+    {
+      "label": "blank team includes all teams with cycle number",
+      "cell": "Issue analytics!B9",
+      "actual": 3
+    },
+    {
+      "label": "duplicate cycle number scoped to selected team",
+      "cell": "Issue analytics!B9",
+      "actual": 2
+    },
+    {
+      "label": "zero confidence is a real zero",
+      "cell": "Project planning!I10",
+      "actual": 0
+    },
+    {
+      "label": "zero effort unavailable",
+      "cell": "Project planning!I10",
+      "actual": ""
+    },
+    {
+      "label": "invalid input guidance",
+      "cell": "Project planning!K10",
+      "actual": "Invalid assumptions"
+    },
+    {
+      "label": "duplicate ID unavailable",
+      "cell": "Project planning!K10",
+      "actual": "Missing or duplicate ID"
+    },
+    {
+      "label": "missing ID lookup",
+      "cell": "Project planning!B10",
+      "actual": "Check project ID"
+    },
+    {
+      "label": "overflow never undercounts",
+      "cell": "Issue analytics!B9",
+      "actual": ""
+    },
+    {
+      "label": "blank template has no false zero",
+      "cell": "Issue analytics!B9",
+      "actual": ""
+    },
+    {
+      "label": "blank planning remains unavailable",
+      "cell": "Project planning!I10",
+      "actual": ""
+    }
+  ],
+  "remoteGoogleAccessValidated": false
+}

@@ -81,7 +81,9 @@ This slice implements connection, issue/project export, optional project data, h
 literal text writes, privacy filtering, and disconnect/reconnect. Initiative export is pending the
 initiative domain model. Export columns reflect currently implemented fields; initiatives, roadmaps,
 derived SLA status, customer revenue/count, project members, and project updates are not fabricated.
-CSV export and an analytics template are separate follow-ups in the integration roadmap.
+Owner-only issue/project CSV downloads are available independently of Google setup. All active
+members can open the sidebar Analytics starter for a blank workbook and import guide; see
+[the analytics starter guide](analytics-starter.md). Broader domain columns remain separate follow-ups.
 
 The provider contract is exercised against a private synthetic Google service in workerd, including
 OAuth isolation, plaintext credential exclusion, public-to-private removal, formula-like text,

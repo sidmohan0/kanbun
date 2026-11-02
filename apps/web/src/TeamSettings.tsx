@@ -400,6 +400,9 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
       )}
       <div hidden={section !== "integrations"}>
         <WorkspaceExportSettings snapshot={snapshot} />
+        <p>
+          <a href="#analytics">Open analytics starter</a>
+        </p>
         <GitBranchSettings snapshot={snapshot} />
         <GitHubSettings snapshot={snapshot} />
         <SlackSettings snapshot={snapshot} />
