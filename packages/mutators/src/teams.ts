@@ -1,3 +1,4 @@
+import { terminalTimestamps } from "./status-timestamps";
 import type { Row, WorkflowStateType } from "@kanbun/model";
 import { MutationError, defineMutator, type DecideContext, type MutatorContext } from "@kanbun/sync";
 import { z } from "zod";
@@ -314,8 +315,7 @@ export const mutators = {
           stateId,
           updatedAt: ctx.now,
           startedAt: changed && effective.type === "started" ? (issue.startedAt ?? ctx.now) : issue.startedAt,
-          completedAt: !changed ? issue.completedAt : effective.type === "completed" ? ctx.now : null,
-          canceledAt: !changed ? issue.canceledAt : effective.type === "canceled" ? ctx.now : null,
+          ...terminalTimestamps(issue, ctx.store.get("workflowState", issue.stateId)?.type, effective.type, ctx.now),
         });
       }
       const team = ctx.store.get("team", s.teamId)!;

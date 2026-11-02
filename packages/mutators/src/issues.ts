@@ -1,3 +1,4 @@
+import { terminalTimestamps } from "./status-timestamps";
 import type { PendingEvent } from "@kanbun/events";
 import type { Row } from "@kanbun/model";
 import {
@@ -142,8 +143,7 @@ function statusAssertion(
       effectiveStateId: state.id,
       boardOrder,
       startedAt: changed && state.type === "started" ? (issue.startedAt ?? ctx.now) : issue.startedAt,
-      completedAt: !changed ? issue.completedAt : state.type === "completed" ? ctx.now : null,
-      canceledAt: !changed ? issue.canceledAt : state.type === "canceled" ? ctx.now : null,
+      ...terminalTimestamps(issue, previous?.type, state.type, ctx.now),
       triagedAt: changed && previous?.type === "triage" && state.type !== "triage" ? ctx.now : issue.triagedAt,
       startedTriageAt: changed && state.type === "triage" ? ctx.now : issue.startedTriageAt,
     },
@@ -173,6 +173,7 @@ function runLegacyIssueUpdate(ctx: MutatorContext, args: IssueUpdateArgs, combin
     if (!stateId) throw new MutationError("target team has no default state", "invalid");
     patch.teamId = target.id;
     patch.stateId = stateId;
+    Object.assign(patch, terminalTimestamps(issue, curState?.type, ctx.store.get("workflowState", stateId)?.type, now));
     const baselineType = ctx.store.get("workflowState", issue.derivedStateId ?? issue.stateId)?.type ?? "backlog";
     patch.derivedStateId = stateOfType(ctx, target.id, baselineType)?.id ?? target.defaultIssueStateId ?? stateId;
     patch.assertedStateId = issue.assertedStateId ? stateId : null;
@@ -211,8 +212,7 @@ function runLegacyIssueUpdate(ctx: MutatorContext, args: IssueUpdateArgs, combin
     patch.derivedStateId = state.id;
     patch.assertedStateId = null;
     patch.startedAt = state.type === "started" ? (issue.startedAt ?? now) : issue.startedAt;
-    patch.completedAt = state.type === "completed" ? now : null;
-    patch.canceledAt = state.type === "canceled" ? now : null;
+    Object.assign(patch, terminalTimestamps(issue, prev?.type, state.type, now));
     if (prev?.type === "triage" && state.type !== "triage") patch.triagedAt = now;
     if (state.type === "triage") patch.startedTriageAt = now;
     if (p.boardOrder === undefined) {
