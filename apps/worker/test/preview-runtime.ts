@@ -388,12 +388,10 @@ export async function startPreviewRuntime({
           .run();
       },
       async slackAgeReplies(minutes: number) {
-        const response = await harness
-          .getWorker(slackControlWorker)
-          .fetch("http://fixture/", {
-            method: "POST",
-            body: JSON.stringify({ action: "ageReplies", workspaceId, minutes }),
-          });
+        const response = await harness.getWorker(slackControlWorker).fetch("http://fixture/", {
+          method: "POST",
+          body: JSON.stringify({ action: "ageReplies", workspaceId, minutes }),
+        });
         if (!response.ok) throw new Error("Slack test aging failed");
       },
       async authRows() {
