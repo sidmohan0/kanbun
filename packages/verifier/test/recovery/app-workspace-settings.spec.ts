@@ -1,6 +1,6 @@
 import { test, expect, selectPrincipal } from "./app-membership.fixture";
 
-test("workspace name changes reach another owner browser and members cannot open settings", async ({
+test("workspace name changes reach another owner browser and members only open personal settings", async ({
   browser,
   membership: app,
 }, testInfo) => {
@@ -49,12 +49,17 @@ test("workspace name changes reach another owner browser and members cannot open
     ).toBe(200);
     const memberPage = await member.newPage();
     await memberPage.goto(`${app.origin}/#settings`);
-    await expect(
-      memberPage.getByRole("heading", { name: "Workspace owner access required", exact: true }),
-    ).toBeVisible();
-    await expect(memberPage.getByRole("link", { name: "Settings", exact: true })).toHaveCount(0);
+    await expect(memberPage.getByRole("region", { name: "Personal settings", exact: true })).toBeVisible();
+    await expect(memberPage.getByRole("link", { name: "Settings", exact: true })).toBeVisible();
+    await expect(memberPage.getByRole("button", { name: "Workspace", exact: true })).toHaveCount(0);
     await expect(memberPage.getByRole("textbox", { name: "Workspace name", exact: true })).toHaveCount(0);
     await expect(memberPage.locator(".workspace-label")).toContainText("DataFog pilot");
+    const denied = await memberPage.request.post(`${app.origin}/api/workspace/name`, {
+      headers: { Origin: app.origin },
+      data: { name: "Member must not rename workspace" },
+    });
+    expect(denied.status()).toBe(403);
+    expect(await app.runtime.directoryWorkspace()).toMatchObject({ name: "DataFog pilot" });
     await ownerPage.route("**/api/workspace/name", (route) =>
       route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: "Expired" }) }),
     );
