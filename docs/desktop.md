@@ -56,11 +56,16 @@ compiled desktop JavaScript and application metadata, alongside the Electron run
 continues to load from the hosted app. `dist:mac` and `dist:windows` select the other packaging
 targets. Publishing is disabled in the build configuration and commands.
 
-CI first runs the full devcontainer verifier and uploads its compiled desktop JavaScript. Linux
-packaging runs in the same devcontainer; native Mac and Windows jobs download that verified output,
+The independent `Desktop packaging` workflow runs on pull requests and main pushes alongside core
+`ci`. It runs publication audits, builds and tests desktop source in the devcontainer, and uploads compiled JavaScript within
+its own run. Linux packaging runs in the devcontainer; native Mac and Windows jobs download that output,
 install frozen dependencies without lifecycle scripts, and package without recompiling repository
-source. This narrow exception is recorded in `AGENTS.md`. Mac jobs use macOS 15; Windows jobs use
+source. Native jobs only package the compiled output. Mac jobs use macOS 15; Windows jobs use
 Windows Server 2025. CI uploads the packages as workflow artifacts, with no release publication.
+
+Web deployment waits only for core `ci`, which retains the full verifier and public audits. Desktop
+packaging failures do not block web deployment, test-qualification reuse, or web health reporting.
+Desktop packages remain separate checks; inspect them before distributing desktop builds.
 
 Native jobs disable automatic signing-identity discovery. Unsigned artifacts are development
 builds, not public releases: Mac users will encounter Gatekeeper restrictions and Windows users
