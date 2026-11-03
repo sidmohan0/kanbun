@@ -44,8 +44,8 @@ test("the Slack message action deep link requires Kanbun issue selection before 
   try {
     await page.goto(`${app.origin}/#slack-link?url=${encodeURIComponent(url)}`);
     await expect(page.getByRole("heading", { name: "Link Slack message to an issue" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Link to ENG-1/ })).toBeVisible();
-    await page.getByRole("button", { name: /Link to ENG-1/ }).click();
+    await expect(page.getByRole("button", { name: /Link to REC-1/ })).toBeVisible();
+    await page.getByRole("button", { name: /Link to REC-1/ }).click();
     await expect(page).toHaveURL(new RegExp(`#issues/${app.issueId}`));
     const links = page.getByRole("region", { name: "Slack message links", exact: true });
     await expect(links.getByRole("link", { name: "Slack message", exact: true })).toHaveAttribute("href", url);

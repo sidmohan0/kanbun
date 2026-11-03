@@ -245,7 +245,7 @@ it("returns an authenticated Kanbun issue picker from a signed Slack message act
     };
     expect(interaction.response_type).toBe("ephemeral");
     const target = new URL(interaction.blocks[1]!.elements![0]!.url!);
-    expect(target.origin).toBe("https://kanbun.ai");
+    expect(target.origin).toBe(runtime.appOrigin);
     expect(target.hash).toContain("#slack-link?url=");
     expect(decodeURIComponent(target.hash)).toContain(
       "https://example.slack.com/archives/C123ABC/p1234567890123456?thread_ts=1234567890.123456",
