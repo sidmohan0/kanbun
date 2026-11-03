@@ -11,6 +11,7 @@ import m0008 from './0008_thin_gargoyle.sql';
 import m0009 from './0009_shiny_agent_brand.sql';
 import m0010 from './0010_tearful_zzzax.sql';
 import m0011 from './0011_safe_masked_marvel.sql';
+import m0012 from './0012_gigantic_sinister_six.sql';
 
   export default {
     journal,
@@ -26,7 +27,8 @@ m0007,
 m0008,
 m0009,
 m0010,
-m0011
+m0011,
+m0012
     }
   }
   

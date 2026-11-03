@@ -27,6 +27,7 @@ const snapshot: GitHubPullRequestSnapshot = {
   headSha: "b".repeat(40),
   reviewStatus: "approved",
   reviewHeadSha: "a".repeat(40),
+  reviewers: [{ login: "reviewer", state: "approved" }],
   checksStatus: "passing",
   checksHeadSha: "a".repeat(40),
   checksUrl: `${source.url}/pull/9/checks`,
@@ -89,6 +90,7 @@ it("replays GitHub facts identically in memory and SQLite, attributes observatio
     actual.server.github("githubPullRequestLink", args, person, snapshot.url);
     expect(actual.server.store.get("issuePullRequest", id(12))).toMatchObject({
       reviewStatus: "unknown",
+      reviewers: [],
       checksStatus: "unknown",
     });
     const merged = {

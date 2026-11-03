@@ -1,0 +1,1 @@
+ALTER TABLE `issue_pull_request` ADD `reviewers` text DEFAULT '[]' NOT NULL;

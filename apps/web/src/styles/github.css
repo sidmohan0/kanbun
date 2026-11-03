@@ -115,6 +115,29 @@
   min-width: 0;
   max-width: 100%;
 }
+.github-pr-chips > li {
+  display: grid;
+  gap: 4px;
+}
+.github-reviewers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.github-reviewers > li {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+.github-reviewers > li > span:first-child {
+  color: var(--text);
+  font-weight: 600;
+}
 .github-pr-chips a:hover {
   background: var(--surface-sunken);
   color: var(--text);

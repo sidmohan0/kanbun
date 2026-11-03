@@ -78,6 +78,24 @@ test("links real GitHub PR context and converges after signed webhook updates in
     await first.goto(`${app.origin}/#issues/${issueId}`);
     await loginEmail(second, app, app.runtime.ownerEmail, `#issues/${issueId}`);
     const development = (page: typeof first) => page.getByRole("region", { name: "Development", exact: true });
+    await app.runtime.setGithubResponses(
+      githubResponses().map((response) =>
+        response.path.includes("/reviews?")
+          ? {
+              ...response,
+              body: [
+                { id: 1, state: "APPROVED", commit_id: "a".repeat(40), user: { id: 301, login: "reviewer-one" } },
+                {
+                  id: 2,
+                  state: "CHANGES_REQUESTED",
+                  commit_id: "a".repeat(40),
+                  user: { id: 302, login: "reviewer-two" },
+                },
+              ],
+            }
+          : response,
+      ),
+    );
     await development(first)
       .getByRole("textbox", { name: "Pull request URL", exact: true })
       .fill("https://github.com/example/pilot/pull/42");
@@ -88,6 +106,8 @@ test("links real GitHub PR context and converges after signed webhook updates in
       "https://github.com/example/pilot/pull/42",
     );
     await expect(card).toContainText("feature/pilot");
+    await expect(card).toContainText(/reviewer-one\s*Approved/);
+    await expect(card).toContainText(/reviewer-two\s*Changes requested/);
     await app.runtime.setGithubResponses(
       githubResponses(
         githubPullRequest({
@@ -121,6 +141,7 @@ test("links real GitHub PR context and converges after signed webhook updates in
     );
     expect(delivered.ok).toBe(true);
     await expect(card).toContainText(/merged/i, { timeout: 15000 });
+    await expect(card).not.toContainText(/reviewer-one\s*Approved/);
     await expect(development(first)).toContainText(/merged/i);
     await second.goto(`${app.origin}/#issues`);
     await expect(

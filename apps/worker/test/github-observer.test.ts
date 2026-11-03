@@ -27,6 +27,7 @@ const snapshot: GitHubPullRequestSnapshot = {
   baseRef: "main",
   reviewStatus: "pending",
   reviewHeadSha: "a".repeat(40),
+  reviewers: [],
   checksStatus: "passing",
   checksHeadSha: "a".repeat(40),
   checksUrl: `${source.url}/pull/9/checks`,

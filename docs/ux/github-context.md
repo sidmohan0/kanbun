@@ -47,8 +47,11 @@ does not create missing issues or change their assignee or status.
 
 Issue details include a **Development** section. Each linked PR shows its repository and number,
 title, head and base branches, Draft/Open/Closed/Merged state, current-commit review/check signals,
-and **Last confirmed** timestamp. Source links open the pull request, its checks and commit on
-GitHub. Metadata is rendered as text; PR bodies, diffs and repository source code are not imported.
+reviewer logins with their current-head approval or change-request decision, and **Last confirmed**
+timestamp. Reviewer identities are read-only context from the existing Pull requests: read access;
+Kanbun does not submit reviews or expose review actions. Source links open the pull request, its
+checks and commit on GitHub. Metadata is rendered as text; PR bodies, diffs and repository source
+code are not imported.
 
 **Link pull request** accepts a GitHub PR URL from a repository connected to the issue's team.
 The client identifies the visible repository binding; the server independently checks the issue,

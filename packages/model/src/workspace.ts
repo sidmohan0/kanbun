@@ -963,6 +963,7 @@ export const issuePullRequest = sqliteTable(
     headSha: text("head_sha").notNull(),
     reviewStatus: text("review_status").$type<"unknown" | "pending" | "approved" | "changes_requested">().notNull(),
     reviewHeadSha: text("review_head_sha"),
+    reviewers: json<{ login: string; state: "approved" | "changes_requested" }[]>("reviewers").notNull().default([]),
     checksStatus: text("checks_status").$type<"unknown" | "pending" | "passing" | "failing">().notNull(),
     checksHeadSha: text("checks_head_sha"),
     checksUrl: text("checks_url"),

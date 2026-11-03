@@ -30,7 +30,11 @@ GitHub distinguishes the [user-authorization callback](https://docs.github.com/e
 from the setup URL. Use the exact origin and paths in the table; avoid wildcard callbacks.
 
 Use selected-repository installation and read-only repository permissions for **Metadata**,
-**Pull requests**, **Checks** and **Commit statuses**. The implementation requests no source-code
+**Pull requests**, **Checks** and **Commit statuses**. Linked PR context shows individual reviewers
+who approved or requested changes on the current PR head, using the existing Pull requests: read
+permission. Reviewer names are read-only context; Kanbun does not submit reviews or expose review
+actions. Existing installations need no permission change or reauthorization for reviewer identities.
+The implementation requests no source-code
 write permission and imports no PR bodies, diffs or code. Subscribe to `pull_request`,
 `pull_request_review`, `check_run`, `check_suite` and `status`. The handler also consumes App
 installation and installation-repository revocation deliveries. Keep webhook TLS verification enabled. Follow GitHub's

@@ -178,17 +178,25 @@ export async function readGitHubPullRequest(
     pages(env, token, `${repo}/commits/${pull.head.sha}/check-runs`, "check_runs"),
     pages(env, token, `${repo}/commits/${pull.head.sha}/status`, "statuses"),
   ]);
-  const latest = new Map<number, { state: string; commit_id: string }>();
+  const latest = new Map<number, { state: string; commit_id: string; login: string | undefined }>();
   const reviewSchema = z.object({
     id: number,
     state: z.string(),
     commit_id: z.string(),
-    user: z.object({ id: number }),
+    user: z.object({ id: number, login: z.string().min(1).max(100).optional() }).nullable(),
   });
   const reviews = reviewValues.map((value) => reviewSchema.parse(value)).sort((a, b) => a.id - b.id);
   for (const review of reviews)
-    if (["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].includes(review.state)) latest.set(review.user.id, review);
+    if (review.user && ["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].includes(review.state))
+      latest.set(review.user.id, { state: review.state, commit_id: review.commit_id, login: review.user.login });
   const votes = [...latest.values()].filter((review) => review.commit_id === pull.head.sha);
+  const reviewers = votes.flatMap<{ login: string; state: "approved" | "changes_requested" }>((review) => {
+    if (!review.login) return [];
+    if (review.state === "APPROVED") return [{ login: review.login, state: "approved" }];
+    if (review.state === "CHANGES_REQUESTED") return [{ login: review.login, state: "changes_requested" }];
+    return [];
+  });
+  reviewers.sort((left, right) => left.login.localeCompare(right.login));
   const reviewStatus = votes.some((r) => r.state === "CHANGES_REQUESTED")
     ? "changes_requested"
     : votes.some((r) => r.state === "APPROVED")
@@ -237,6 +245,7 @@ export async function readGitHubPullRequest(
     headSha: pull.head.sha,
     reviewStatus,
     reviewHeadSha: pull.head.sha,
+    reviewers,
     checksStatus,
     checksHeadSha: pull.head.sha,
     checksUrl: url + "/checks",

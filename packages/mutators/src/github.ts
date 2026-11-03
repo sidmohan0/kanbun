@@ -72,6 +72,7 @@ export function canonicalGitHubSnapshot(
   return {
     ...snapshot,
     reviewStatus: snapshot.reviewHeadSha === snapshot.headSha ? snapshot.reviewStatus : "unknown",
+    reviewers: snapshot.reviewHeadSha === snapshot.headSha ? snapshot.reviewers : [],
     checksStatus: snapshot.checksHeadSha === snapshot.headSha ? snapshot.checksStatus : "unknown",
   };
 }
