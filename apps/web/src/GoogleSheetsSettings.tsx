@@ -8,6 +8,7 @@ type Connection = {
   configured: boolean;
   connected: boolean;
   spreadsheetUrl: string | null;
+  issuesEnabled: boolean;
   projectsEnabled: boolean;
   lastSyncedAt: string | null;
   error: string | null;
@@ -18,6 +19,7 @@ function connection(value: unknown): Connection {
   if (
     typeof v.configured !== "boolean" ||
     typeof v.connected !== "boolean" ||
+    typeof v.issuesEnabled !== "boolean" ||
     typeof v.projectsEnabled !== "boolean" ||
     (v.spreadsheetUrl !== null &&
       (typeof v.spreadsheetUrl !== "string" ||
@@ -46,8 +48,15 @@ function OwnerGoogleSheetsSettings() {
   }, []);
   async function action(name: "connect" | "sync" | "configure" | "disconnect", input: object = {}) {
     const previous = state;
-    if (name === "configure" && state && "projectsEnabled" in input && typeof input.projectsEnabled === "boolean")
-      setState({ ...state, projectsEnabled: input.projectsEnabled });
+    if (
+      name === "configure" &&
+      state &&
+      "issuesEnabled" in input &&
+      typeof input.issuesEnabled === "boolean" &&
+      "projectsEnabled" in input &&
+      typeof input.projectsEnabled === "boolean"
+    )
+      setState({ ...state, issuesEnabled: input.issuesEnabled, projectsEnabled: input.projectsEnabled });
     setBusy(true);
     setError(null);
     try {
@@ -80,8 +89,8 @@ function OwnerGoogleSheetsSettings() {
         Private-team issues and private-only projects are excluded.
       </p>
       <p>
-        Kanbun overwrites its Issues and Projects tabs when refreshing. Keep formulas and analytics in a separate tab or
-        spreadsheet, and manage sharing in Google.
+        Kanbun overwrites its Issues and Projects tabs when refreshing. Disabled exports leave their owned tabs empty.
+        Keep formulas and analytics in a separate tab or spreadsheet, and manage sharing in Google.
       </p>
       {error && (
         <p className="notice" role="alert">
@@ -112,9 +121,28 @@ function OwnerGoogleSheetsSettings() {
               <label>
                 <input
                   type="checkbox"
+                  checked={state.issuesEnabled}
+                  disabled={busy}
+                  onChange={(event) =>
+                    void action("configure", {
+                      issuesEnabled: event.target.checked,
+                      projectsEnabled: state.projectsEnabled,
+                    })
+                  }
+                />{" "}
+                Include issues
+              </label>
+              <label>
+                <input
+                  type="checkbox"
                   checked={state.projectsEnabled}
                   disabled={busy}
-                  onChange={(event) => void action("configure", { projectsEnabled: event.target.checked })}
+                  onChange={(event) =>
+                    void action("configure", {
+                      issuesEnabled: state.issuesEnabled,
+                      projectsEnabled: event.target.checked,
+                    })
+                  }
                 />{" "}
                 Include projects
               </label>

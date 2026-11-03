@@ -3,7 +3,7 @@ import type { Store } from "@kanbun/sync";
 export type SheetsExport = { sheetId: number; title: string; values: (string | number)[][] }[];
 
 /** Only public-team data crosses this boundary, including names resolved through relations. */
-export function sheetsExport(store: Store, projectsEnabled: boolean): SheetsExport {
+export function sheetsExport(store: Store, issuesEnabled: boolean, projectsEnabled: boolean): SheetsExport {
   const teams = new Map(
     store
       .list("team")
@@ -54,7 +54,9 @@ export function sheetsExport(store: Store, projectsEnabled: boolean): SheetsExpo
       "Archived",
     ],
   ];
-  for (const i of issues.sort((a, b) => a.teamId.localeCompare(b.teamId) || a.number - b.number)) {
+  for (const i of (issuesEnabled ? issues : []).sort(
+    (a, b) => a.teamId.localeCompare(b.teamId) || a.number - b.number,
+  )) {
     const team = teams.get(i.teamId)!;
     const project = i.projectId ? projects.get(i.projectId) : undefined;
     const cycle = i.cycleId ? store.get("cycle", i.cycleId) : undefined;

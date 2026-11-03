@@ -1,0 +1,1 @@
+ALTER TABLE `google_sheets_connections` ADD `issues_enabled` integer DEFAULT true NOT NULL;

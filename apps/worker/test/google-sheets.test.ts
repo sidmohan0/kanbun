@@ -99,7 +99,25 @@ it("refreshes public data manually and hourly, clears private rows, uses literal
     expect(requests.length).toBeGreaterThan(0);
     expect(requests.at(-1)!.body).toContain('"stringValue":"=IMPORTXML(private)"');
     expect(requests.at(-1)!.body).not.toContain("formulaValue");
-    const before = requests.length;
+    await expect((await a.fetch("/api/integrations/google-sheets")).json()).resolves.toMatchObject({
+      issuesEnabled: true,
+    });
+    expect(
+      (await a.json("/api/integrations/google-sheets/configure", { issuesEnabled: false, projectsEnabled: false }))
+        .status,
+    ).toBe(200);
+    expect((await a.json("/api/integrations/google-sheets/sync", {})).status).toBe(200);
+    requests = await writes();
+    expect(requests.at(-1)!.body).toContain('"stringValue":"ID"');
+    expect(requests.at(-1)!.body).not.toContain('"stringValue":"=IMPORTXML(private)"');
+    expect(requests.at(-1)!.body).not.toContain('"stringValue":"Public issue"');
+    expect(
+      (await a.json("/api/integrations/google-sheets/configure", { issuesEnabled: true, projectsEnabled: false }))
+        .status,
+    ).toBe(200);
+    expect((await a.json("/api/integrations/google-sheets/sync", {})).status).toBe(200);
+    expect((await writes()).at(-1)!.body).toContain('"stringValue":"=IMPORTXML(private)"');
+    const before = (await writes()).length;
     await r.googleAlarm();
     expect((await writes()).length).toBe(before);
     await push("issueUpdate", { id: issueId, patch: { title: "Public changed title" } });
