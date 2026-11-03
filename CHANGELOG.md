@@ -7,6 +7,7 @@ preparation moves them to a dated version heading.
 
 - Add an owner setting to include or exclude issue data from the Google Sheets export.
 - Add a Slack message shortcut that lets signed-in workspace members link messages to existing issues without syncing threads.
+- Show each linked PR's current-head reviewer identities and their approval or change-request decision using existing read-only GitHub access.
 - Let active workspace members manage their own Code & reviews preferences while keeping workspace administration and integration settings restricted to the owner.
 - Add opt-in public Slack channel replies for public-team issue identifiers, with independent settings, permission refresh, durable retries and 60-minute per-thread suppression.
 - Added a downloadable analytics and project-planning starter for all workspace members, with separate raw inputs, Google/CSV import guidance and validated workbook formulas.

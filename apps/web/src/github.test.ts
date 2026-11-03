@@ -51,6 +51,7 @@ describe("GitHub source context", () => {
       reviewHeadSha: "previous",
       checksStatus: "passing",
       reviewStatus: "approved",
+      reviewers: [{ login: "old-reviewer", state: "approved" }],
     } as Row<"issuePullRequest">;
     expect(checksStatus(pr)).toBe("unknown");
     expect(reviewStatus(pr)).toBe("unknown");

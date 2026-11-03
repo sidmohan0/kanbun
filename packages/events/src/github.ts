@@ -9,6 +9,11 @@ export const githubRepositorySourceSchema = z.strictObject({
   private: z.boolean(),
 });
 export type GitHubRepositorySource = z.infer<typeof githubRepositorySourceSchema>;
+export const githubPullRequestReviewerSchema = z.strictObject({
+  login: z.string().min(1).max(100),
+  state: z.enum(["approved", "changes_requested"]),
+});
+export type GitHubPullRequestReviewer = z.infer<typeof githubPullRequestReviewerSchema>;
 export const githubPullRequestSnapshotSchema = z.strictObject({
   number: z.number().int().positive().safe(),
   title: z.string().min(1),
@@ -19,6 +24,7 @@ export const githubPullRequestSnapshotSchema = z.strictObject({
   headSha: z.string().min(1),
   reviewStatus: z.enum(["unknown", "pending", "approved", "changes_requested"]),
   reviewHeadSha: z.string().min(1).nullable(),
+  reviewers: z.array(githubPullRequestReviewerSchema).max(100).default([]),
   checksStatus: z.enum(["unknown", "pending", "passing", "failing"]),
   checksHeadSha: z.string().min(1).nullable(),
   checksUrl: z.url().nullable(),

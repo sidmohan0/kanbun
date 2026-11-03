@@ -307,6 +307,37 @@ it("accepts only signed webhook facts and fetches canonical PR context once per 
     expect(linked.status).toBe(200);
     const initial = (await bootstrap()).rows.issuePullRequest![0]!;
     expect(initial).toMatchObject({ title: "Ship the pilot", state: "open" });
+    await runtime.setGithubResponses(
+      githubResponses().map((response) =>
+        response.path.includes("/reviews?")
+          ? {
+              ...response,
+              body: [
+                { id: 1, state: "APPROVED", commit_id: "a".repeat(40), user: { id: 42, login: "alice" } },
+                {
+                  id: 2,
+                  state: "CHANGES_REQUESTED",
+                  commit_id: "a".repeat(40),
+                  user: { id: 42, login: "alice" },
+                },
+                { id: 3, state: "APPROVED", commit_id: "a".repeat(40), user: { id: 7, login: "zoe" } },
+                { id: 4, state: "APPROVED", commit_id: "0".repeat(40), user: { id: 5, login: "stale" } },
+                { id: 5, state: "DISMISSED", commit_id: "a".repeat(40), user: { id: 9, login: "dismissed" } },
+              ],
+            }
+          : response,
+      ),
+    );
+    expect((await owner.json("/api/integrations/github/pull-requests/refresh", { linkId: initial.id })).status).toBe(
+      200,
+    );
+    expect((await bootstrap()).rows.issuePullRequest![0]).toMatchObject({
+      reviewStatus: "changes_requested",
+      reviewers: [
+        { login: "alice", state: "changes_requested" },
+        { login: "zoe", state: "approved" },
+      ],
+    });
     const forcePushed = githubPullRequest({
       head: { ref: "feature/pilot", sha: "b".repeat(40) },
       updated_at: "2026-10-30T10:30:00Z",
@@ -334,6 +365,7 @@ it("accepts only signed webhook facts and fetches canonical PR context once per 
       headSha: "b".repeat(40),
       checksStatus: "unknown",
       reviewStatus: "pending",
+      reviewers: [],
     });
     const mergedPR = githubPullRequest({
       state: "closed",

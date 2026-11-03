@@ -44,6 +44,20 @@ function PullRequestSignals({ pr }: { pr: Row<"issuePullRequest"> }) {
   );
 }
 
+function PullRequestReviewers({ pr, label }: { pr: Row<"issuePullRequest">; label: string }) {
+  if (pr.reviewHeadSha !== pr.headSha || pr.reviewers.length === 0) return null;
+  return (
+    <ul className="github-reviewers" aria-label={label}>
+      {pr.reviewers.map((reviewer) => (
+        <li key={`${reviewer.login}:${reviewer.state}`}>
+          <span>{reviewer.login}</span>
+          <span>{reviewer.state === "approved" ? "Approved" : "Changes requested"}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** Compact contextual links are siblings of existing title controls, never nested interactive elements. */
 export function GitHubPullRequestChips({
   pullRequests,
@@ -77,6 +91,10 @@ export function GitHubPullRequestChips({
                 {pr.state}
               </span>
             </a>
+            <PullRequestReviewers
+              pr={pr}
+              label={`Current-head reviewers for ${repository.owner}/${repository.name} #${pr.number}`}
+            />
           </li>
         );
       })}
@@ -250,6 +268,10 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
                 <span>Branch</span> <code>{pr.headRef}</code> <span aria-label="into">→</span> <code>{pr.baseRef}</code>
               </p>
               <PullRequestSignals pr={pr} />
+              <PullRequestReviewers
+                pr={pr}
+                label={`Current-head reviewers for ${repository.owner}/${repository.name} #${pr.number}`}
+              />
               <p className="github-observation">
                 Last confirmed <time dateTime={pr.observedAt}>{new Date(pr.observedAt).toLocaleString()}</time>
               </p>

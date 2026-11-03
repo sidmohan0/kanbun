@@ -85,6 +85,13 @@
       "when": 1793602492528,
       "tag": "0011_safe_masked_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1793672839497,
+      "tag": "0012_gigantic_sinister_six",
+      "breakpoints": true
     }
   ]
 }
