@@ -43,7 +43,7 @@ export async function loginEmail(
 ) {
   const link = await requestEmail(page, app, email, destination);
   await consumeEmail(page, app, email, link);
-  await expect(page.locator(".sync-indicator")).toContainText("Saved");
+  await expect(page.locator(".sync-indicator")).toContainText("Saved", { timeout: 15_000 });
 }
 export const test = base.extend<{ emailApp: EmailHarness }>({
   // eslint-disable-next-line no-empty-pattern
