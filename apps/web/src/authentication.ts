@@ -1,3 +1,5 @@
+import { canonicalSlackMessageUrl } from "@kanbun/mutators";
+
 export type AuthenticationMethod = "local" | "access" | "email";
 export type AuthenticationConfig = {
   method: AuthenticationMethod;
@@ -29,6 +31,17 @@ export function authenticationConfig(value: unknown): AuthenticationConfig {
 
 /** Only application hash destinations can survive a sign-in round trip. */
 export function validReturnTo(value: string): boolean {
+  const slackPrefix = "#slack-link?";
+  if (value.startsWith(slackPrefix)) {
+    const params = new URLSearchParams(value.slice(slackPrefix.length));
+    const url = params.get("url");
+    if ([...params.keys()].length !== 1 || !url) return false;
+    try {
+      return canonicalSlackMessageUrl(url) === url;
+    } catch {
+      return false;
+    }
+  }
   return (
     ["#issues", "#my-issues", "#inbox", "#settings", "#settings/integrations", "#members"].includes(value) ||
     /^#issues\/[A-Za-z0-9_-]+$/u.test(value) ||

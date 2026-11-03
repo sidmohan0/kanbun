@@ -2,8 +2,9 @@
 
 Connect one Slack workspace, preview public-team issue links, and let the Kanbun owner disable
 previews or revoke the connection in Settings. Owners can also opt in to deterministic issue-ID
-replies in public Slack channels. Issue actions, channel notifications, project links,
-and thread sync are subsequent slices. It does not enable an agent, slash commands, Asks, Slackbot MCP or Enterprise
+replies in public Slack channels. A message shortcut hands a copied Slack message link to Kanbun,
+where a signed-in member chooses an existing accessible issue. It does not enable thread sync,
+channel notifications, project links, an agent, slash commands, Asks, Slackbot MCP or Enterprise
 Grid. Slack authorization is separate from Kanbun sign-in.
 
 ## App setup
@@ -15,6 +16,8 @@ Create a Slack app for the installation's HTTPS origin and configure:
 - Events request URL: `<APP_ORIGIN>/api/integrations/slack/events`
 - Bot events: `app_uninstalled`, `link_shared`
 - App unfurl domain: the installation's application hostname
+- Interactivity request URL: `<APP_ORIGIN>/api/integrations/slack/interactions`
+- A message shortcut named **Link to an existing Kanbun issue**
 
 For the optional public-channel issue-ID replies, also subscribe to `message.channels`. Enable
 **Reply to issue IDs in public Slack channels** and then **Update Slack authorization**: only this
@@ -79,8 +82,24 @@ URLs and unsupported query parameters are refused. Removing the attachment leave
 Attachments inherit the issue's team visibility and move with the issue. Any active member with
 access to an active issue can add or remove a link, including on a private team. Saved mutation drafts
 are bound to that issue incarnation so deleting and recreating its UUID cannot attach an old draft
-to the replacement. Archived or trashed issues cannot receive link edits. The Slack message-menu
-action and bidirectional synced threads are separate features.
+to the replacement. Archived or trashed issues cannot receive link edits. Bidirectional synced
+threads are a separate feature.
+
+## Link an existing issue from Slack (row 114)
+
+Enable interactivity and add the **Link to an existing Kanbun issue** message shortcut. Selecting it
+returns an ephemeral **Choose an issue** button. The button opens Kanbun's issue picker with the
+selected message permalink prefilled. The user must sign in to Kanbun and have access to the chosen
+issue; the normal issue attachment mutation enforces current membership and visibility. A Slack
+account is not automatically treated as a Kanbun identity, and people without Kanbun access cannot
+attach the message. The interaction request is verified with Slack's signing secret and five-minute
+replay window before its payload is read.
+
+The action attaches only a canonical Slack URL and the generic title “Slack message”. It does not
+read or copy message text, create a new issue, sync a thread, or post a reply. It needs no additional
+OAuth scopes. Slack's permalink lookup can fail for a message the connected app cannot access; in
+that case Slack shows instructions to paste the link into Kanbun instead. Removing the attachment
+in Kanbun does not change the Slack message.
 
 ## Public-channel issue-ID replies
 

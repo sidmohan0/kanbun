@@ -4,6 +4,7 @@ import { authenticationConfig, desktopSignInLink, returnDestination, signInRoute
 const token = "a".repeat(43);
 describe("email sign-in destinations", () => {
   it("round trips invitation and application hashes without opening a workspace first", () => {
+    const slackReturn = `#slack-link?url=${encodeURIComponent("https://example.slack.com/archives/C123ABC/p1234567890123456")}`;
     for (const returnTo of [
       "#issues",
       "#issues/legacy_issue-1",
@@ -13,6 +14,7 @@ describe("email sign-in destinations", () => {
       "#settings/integrations",
       "#members",
       `#invite/${token}`,
+      slackReturn,
     ]) {
       expect(signInRoute(`#signin/${token}/${encodeURIComponent(returnTo)}`)).toEqual({ token, returnTo });
       expect(desktopSignInLink(`#signin/${token}/${encodeURIComponent(returnTo)}`)).toBe(
@@ -31,6 +33,8 @@ describe("email sign-in destinations", () => {
       "#issues/one?email=person@example.com",
       "#issues/%2Foutside",
       "#invite/short",
+      "#slack-link?url=https%3A%2F%2Fevil.example%2F",
+      "#slack-link?url=https%3A%2F%2Fexample.slack.com%2Farchives%2FC123ABC%2Fp1234567890123456&returnTo=%23issues",
     ]) {
       expect(signInRoute(`#signin/${token}/${encodeURIComponent(returnTo)}`)).toEqual({ invalid: true });
       expect(desktopSignInLink(`#signin/${token}/${encodeURIComponent(returnTo)}`)).toBeNull();

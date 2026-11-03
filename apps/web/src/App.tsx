@@ -15,6 +15,7 @@ import { IssueDetail } from "./IssueDetail";
 import { Members } from "./Members";
 import { TeamSettings } from "./TeamSettings";
 import { Inbox } from "./Inbox";
+import { SlackLinkIssue } from "./SlackLinkIssue";
 import { IssueViewToolbar } from "./IssueViewToolbar";
 import { IssueBoard } from "./IssueBoard";
 import { GitHubPullRequestChips } from "./GitHubContext";
@@ -204,6 +205,13 @@ function selectedIssueId(): string | null {
   }
 }
 
+function slackLinkUrl(): string | null {
+  const prefix = "#slack-link?";
+  if (!location.hash.startsWith(prefix)) return null;
+  const params = new URLSearchParams(location.hash.slice(prefix.length));
+  return params.get("url");
+}
+
 export function App() {
   const snapshot = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
   const [creatingIssue, setCreatingIssue] = useState(false);
@@ -219,6 +227,7 @@ export function App() {
   const [teamsView, setTeamsView] = useState(() => ["#settings", "#settings/integrations"].includes(location.hash));
   const [membersView, setMembersView] = useState(() => location.hash === "#members");
   const [issueId, setIssueId] = useState(selectedIssueId);
+  const [slackUrl, setSlackUrl] = useState(slackLinkUrl);
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [title, setTitle] = useState("");
   const [teamId, setTeamId] = useState("");
@@ -230,6 +239,7 @@ export function App() {
     void workspace.start();
     const changeRoute = () => {
       setIssueId(selectedIssueId());
+      setSlackUrl(slackLinkUrl());
       setMembersView(location.hash === "#members");
       setTeamsView(["#settings", "#settings/integrations"].includes(location.hash));
       setInboxView(location.hash === "#inbox");
@@ -430,15 +440,17 @@ export function App() {
             {workspaceName} <span aria-hidden="true">/</span>{" "}
             {analyticsView
               ? "Analytics starter"
-              : teamsView
-                ? "Settings"
-                : inboxView
-                  ? "Inbox"
-                  : membersView
-                    ? "Members"
-                    : selectedIssue
-                      ? identifier(selectedIssue, snapshot.teams)
-                      : listName}
+              : slackUrl
+                ? "Link Slack message"
+                : teamsView
+                  ? "Settings"
+                  : inboxView
+                    ? "Inbox"
+                    : membersView
+                      ? "Members"
+                      : selectedIssue
+                        ? identifier(selectedIssue, snapshot.teams)
+                        : listName}
           </span>
           <div className="sync-actions">
             <span className="sync-indicator" data-state={snapshot.status} role="status" aria-live="polite">
@@ -467,23 +479,26 @@ export function App() {
               <h1>
                 {analyticsView
                   ? "Analytics starter"
-                  : teamsView
-                    ? "Settings"
-                    : inboxView
-                      ? "Inbox"
-                      : membersView
-                        ? "Members"
-                        : issueId
-                          ? "Issue"
-                          : view === "mine"
-                            ? "My Issues"
-                            : "Issues"}
+                  : slackUrl
+                    ? "Link Slack message"
+                    : teamsView
+                      ? "Settings"
+                      : inboxView
+                        ? "Inbox"
+                        : membersView
+                          ? "Members"
+                          : issueId
+                            ? "Issue"
+                            : view === "mine"
+                              ? "My Issues"
+                              : "Issues"}
               </h1>
             </div>
             {!teamsView &&
               !membersView &&
               !inboxView &&
               !analyticsView &&
+              !slackUrl &&
               !issueId &&
               snapshot.phase !== "waiting" &&
               snapshot.phase !== "failed" && (
@@ -595,6 +610,20 @@ export function App() {
                   <AnalyticsStarterSettings />
                 ) : (
                   <p>Opening analytics starter…</p>
+                )
+              ) : slackUrl ? (
+                ready ? (
+                  <SlackLinkIssue
+                    url={slackUrl}
+                    snapshot={snapshot}
+                    onLinked={(linkedIssueId) => {
+                      location.hash = `issues/${encodeURIComponent(linkedIssueId)}`;
+                    }}
+                  />
+                ) : (
+                  <section className="empty-state">
+                    <h2>Opening your workspace…</h2>
+                  </section>
                 )
               ) : teamsView ? (
                 ready ? (

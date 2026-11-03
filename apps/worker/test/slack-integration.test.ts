@@ -36,6 +36,24 @@ async function signed(
     body: raw,
   });
 }
+async function signedInteraction(
+  runtime: Awaited<ReturnType<typeof startEmailRuntime>>,
+  payload: unknown,
+  validSignature = true,
+) {
+  const raw = new URLSearchParams({ payload: JSON.stringify(payload) }).toString();
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const digest = createHmac("sha256", secret).update(`v0:${timestamp}:${raw}`).digest("hex");
+  return fetch(runtime.origin + "/api/integrations/slack/interactions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      "x-slack-request-timestamp": timestamp,
+      "x-slack-signature": "v0=" + (validSignature ? digest : "0".repeat(64)),
+    },
+    body: raw,
+  });
+}
 it("connects Slack only through a browser/session-bound owner grant and keeps tokens private", async () => {
   const runtime = await startEmailRuntime({ slackConfig: config });
   try {
@@ -176,6 +194,78 @@ it("never pairs one Slack team's identity with a concurrent grant for another te
     const stored = await runtime.slackCredentials();
     expect(stored).toHaveLength(1);
     expect(["T123:Example team", "T456:Other team"]).toContain(`${stored[0]!["team_id"]}:${stored[0]!["team_name"]}`);
+  } finally {
+    await runtime.close();
+  }
+});
+
+it("returns an authenticated Kanbun issue picker from a signed Slack message action", async () => {
+  const runtime = await startEmailRuntime({ slackConfig: config });
+  try {
+    const owner = nativeAgent(runtime);
+    await owner.requestLink(runtime.ownerEmail);
+    await owner.consume(linkToken(emailLink((await runtime.capturedEmails()).at(-1)!)));
+    await owner.fetch("/api/context");
+    await runtime.setGithubResponses([
+      { host: "slack.com", method: "POST", path: "/api/oauth.v2.access", body: grant },
+      {
+        host: "slack.com",
+        method: "POST",
+        path: "/api/chat.getPermalink",
+        body: {
+          ok: true,
+          permalink: "https://example.slack.com/archives/C123ABC/p1234567890123456?thread_ts=1234567890.123456",
+        },
+      },
+      { host: "hooks.slack.com", method: "POST", path: "/actions/T123/fixture", body: "ok" },
+    ]);
+    const begin = await owner.json("/api/integrations/slack/connect", {});
+    const state = new URL(((await begin.json()) as { url: string }).url).searchParams.get("state");
+    expect(
+      (await owner.fetch("/api/integrations/slack/callback?code=fixture&state=" + state, { redirect: "manual" }))
+        .status,
+    ).toBe(303);
+    const response = await signedInteraction(runtime, {
+      type: "message_action",
+      api_app_id: "A123",
+      team: { id: "T123" },
+      user: { id: "U789" },
+      channel: { id: "C123ABC" },
+      message_ts: "1234567890.123456",
+      response_url: "https://hooks.slack.com/actions/T123/fixture",
+    });
+    expect(response.status).toBe(200);
+    await expect
+      .poll(async () => (await runtime.githubRequests()).filter((r) => r.url.includes("hooks.slack.com/actions/")))
+      .toHaveLength(1);
+    const requests = await runtime.githubRequests();
+    const interaction = JSON.parse(requests.find((r) => r.url.includes("hooks.slack.com/actions/"))!.body) as {
+      response_type: string;
+      blocks: { elements?: { url?: string }[] }[];
+    };
+    expect(interaction.response_type).toBe("ephemeral");
+    const target = new URL(interaction.blocks[1]!.elements![0]!.url!);
+    expect(target.origin).toBe(runtime.appOrigin);
+    expect(target.hash).toContain("#slack-link?url=");
+    expect(decodeURIComponent(target.hash)).toContain(
+      "https://example.slack.com/archives/C123ABC/p1234567890123456?thread_ts=1234567890.123456",
+    );
+    expect(JSON.stringify(interaction)).not.toContain("U789");
+    const validPayload = {
+      type: "message_action",
+      api_app_id: "A123",
+      team: { id: "T123" },
+      user: { id: "U789" },
+      channel: { id: "C123ABC" },
+      message_ts: "1234567890.123456",
+      response_url: "https://hooks.slack.com/actions/T123/fixture",
+    };
+    expect((await signedInteraction(runtime, validPayload, false)).status).toBe(403);
+    expect((await signedInteraction(runtime, { ...validPayload, api_app_id: "A999" })).status).toBe(403);
+    expect(
+      (await signedInteraction(runtime, { ...validPayload, response_url: "https://attacker.example/actions/x" }))
+        .status,
+    ).toBe(400);
   } finally {
     await runtime.close();
   }
