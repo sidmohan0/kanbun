@@ -50,8 +50,8 @@
     "Teams",
     "Health"
   ],
-  "sha256": "0777e8696c6ffaaa6ee0ad84c29153a613348c1e451c2a415e7a9cdeae093e2b",
-  "generatorSha256": "8b5b7df944ec3abbb3406bb4d2c0badbfac4a3bbcf1425888fb67aa57b2e9c9e",
+  "sha256": "38fa65220a755069cf9df99c2b1f53abf849ebab4d5f8377f193671e9bae7f62",
+  "generatorSha256": "53b87b9adcfaac3a2c9c1d6b6ef8a3c14b780ebd697929711d3246923d9a52a9",
   "engine": "artifact-tool bundled26.1020.11618",
   "checks": [
     {
@@ -88,6 +88,36 @@
       "label": "invalid pair counted",
       "cell": "Issue analytics!B13",
       "actual": 1
+    },
+    {
+      "label": "valid time-to-start count",
+      "cell": "Issue analytics!F9",
+      "actual": 1
+    },
+    {
+      "label": "same-day time-to-start retains zero",
+      "cell": "Issue analytics!F10",
+      "actual": 0
+    },
+    {
+      "label": "missing time-to-start pair counted",
+      "cell": "Issue analytics!F11",
+      "actual": 1
+    },
+    {
+      "label": "negative time-to-start pair counted",
+      "cell": "Issue analytics!F12",
+      "actual": 1
+    },
+    {
+      "label": "negative time-to-start duration excluded",
+      "cell": "Issue analytics!N24",
+      "actual": ""
+    },
+    {
+      "label": "negative time-to-start pair labeled",
+      "cell": "Issue analytics!O24",
+      "actual": "Invalid date order"
     },
     {
       "label": "real VLOOKUP",

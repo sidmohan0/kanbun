@@ -48,13 +48,18 @@ names. Missing estimates are reported separately from numeric zero. Mean complet
 separately. Archived records remain included when present in the public export. An empty source or
 missing date window produces unavailable results, not a healthy zero.
 
+Mean time-to-start uses `Started − Created`. For this metric, the date window filters by **Created**;
+for completion metrics it filters by **Completed**. Missing Started timestamps and negative date
+pairs are counted separately; neither contributes to the mean. Issues with a missing Created date
+cannot be assigned to a time window and are excluded from time-to-start summaries.
+
 The detail table shows the source identifiers, filters and parsed dates behind these metrics. Use
 cycle filters for comparisons between exported cycle numbers. The same number may occur in different
 teams; use the explicit Team name filter to scope cycle comparisons. Leaving Team blank intentionally
 includes all teams. Filtering the detail table alone does not change summary formulas.
 No initiatives, derived SLA, customer or revenue fields are invented. This starter advances row145
-with these bounded examples. Label/work-type analyses, bug rates, Gantt charts and Created-to-Started
-(time-to-start) examples remain separate follow-ups; they are not delivered by this workbook.
+with these bounded examples. Label/work-type analyses, bug rates and Gantt charts remain separate
+follow-ups; they are not delivered by this workbook.
 
 ## Project prioritization
 

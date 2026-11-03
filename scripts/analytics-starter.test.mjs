@@ -44,10 +44,16 @@ test("starter retains live formulas, unavailable blanks and truthful Google impo
   for (const [cells, cell] of [
     [issues, "B9"],
     [issues, "F20"],
+    [issues, "M20"],
+    [issues, "N20"],
+    [issues, "O20"],
     [planning, "B10"],
     [planning, "I10"],
   ])
     assert.ok(cells.get(cell).formula, `${cell} must remain calculated rather than a cached constant`);
+  assert.equal(issues.get("M19").value, "Created (UTC)");
+  assert.equal(issues.get("N19").value, "Time-to-start days");
+  assert.equal(issues.get("O19").value, "Start timing");
   assert.equal(issues.get("B9").value, "");
   assert.equal(planning.get("I10").value, "");
   for (const cell of ["B4", "D4", "B5", "D5", "F5"])
@@ -70,6 +76,12 @@ test("hash-bound authoring proof matches independent synthetic fixture outcomes"
     "missing estimate distinguished": 1,
     "invalid pair excluded from duration": 1.5,
     "invalid pair counted": 1,
+    "valid time-to-start count": 1,
+    "same-day time-to-start retains zero": 0,
+    "missing time-to-start pair counted": 1,
+    "negative time-to-start pair counted": 1,
+    "negative time-to-start duration excluded": "",
+    "negative time-to-start pair labeled": "Invalid date order",
     "real VLOOKUP": "Public launch",
     "planning score": 2,
     "planning rank": 1,

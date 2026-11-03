@@ -130,8 +130,14 @@ value(analytics, "A10", "Completed estimate total");
 value(analytics, "A11", "Missing/invalid estimates");
 value(analytics, "A12", "Mean completion days");
 value(analytics, "A13", "Invalid date pairs");
+value(analytics, "E9", "Valid time-to-start pairs");
+value(analytics, "E10", "Mean time-to-start days");
+value(analytics, "E11", "Missing timestamps");
+value(analytics, "E12", "Invalid date pairs");
 const ranges = Object.fromEntries("ABCDEFGHIJKL".split("").map((c) => [c, `$${c}$20:$${c}$${last}`]));
+for (const c of ["M", "N", "O"]) ranges[c] = `$${c}$20:$${c}$${last}`;
 const conditions = `${ranges.G},">="&$B$4,${ranges.G},"<"&$D$4,${ranges.L},1`;
+const createdConditions = `${ranges.M},">="&$B$4,${ranges.M},"<"&$D$4,${ranges.L},1`;
 const ready = '$B$7<>"Ready",NOT(ISNUMBER($B$4)),NOT(ISNUMBER($D$4)),$D$4<=$B$4';
 formula(analytics, "B9", `=IF(OR(${ready}),"",COUNTIFS(${conditions}))`);
 formula(
@@ -146,15 +152,25 @@ formula(
   `=IF(NOT(ISNUMBER(B9)),"",IF(COUNTIFS(${conditions},${ranges.J},"OK")=0,"No valid date pairs",SUMIFS(${ranges.H},${conditions},${ranges.J},"OK")/COUNTIFS(${conditions},${ranges.J},"OK")))`,
 );
 formula(analytics, "B13", `=IF(NOT(ISNUMBER(B9)),"",COUNTIFS(${conditions},${ranges.J},"Invalid date order"))`);
+formula(analytics, "F9", `=IF(OR(${ready}),"",COUNTIFS(${createdConditions},${ranges.O},"OK"))`);
+formula(
+  analytics,
+  "F10",
+  `=IF(NOT(ISNUMBER(F9)),"",IF(F9=0,"No valid date pairs",SUMIFS(${ranges.N},${createdConditions},${ranges.O},"OK")/F9))`,
+);
+formula(analytics, "F11", `=IF(NOT(ISNUMBER(F9)),"",COUNTIFS(${createdConditions},${ranges.O},"Missing timestamps"))`);
+formula(analytics, "F12", `=IF(NOT(ISNUMBER(F9)),"",COUNTIFS(${createdConditions},${ranges.O},"Invalid date order"))`);
 analytics.getRange("B12").setNumberFormat("0.00");
+analytics.getRange("F10").setNumberFormat("0.00");
 value(analytics, "A15", "Enter both dates. Filter names match exported display names; identical names are grouped.");
 value(
   analytics,
   "A16",
-  "Completion uses the Completed timestamp, not custom status names. Blanks are unavailable, not zero.",
+  "Completion uses Completed; time-to-start uses Created. Each metric uses that event date in the window.",
 );
-value(analytics, "A17", "Detail uses UTC ISO timestamps. Review invalid dates before interpreting durations.");
-header(analytics, "A19:L19", [
+value(analytics, "A17", "Missing dates are counted separately; invalid negative durations are excluded from means.");
+value(analytics, "A18", "Detail uses UTC ISO timestamps. Review invalid dates before interpreting durations.");
+header(analytics, "A19:O19", [
   "Issue ID",
   "Team",
   "Assignee",
@@ -167,6 +183,9 @@ header(analytics, "A19:L19", [
   "Date pair",
   "Has estimate",
   "Matches filters",
+  "Created (UTC)",
+  "Time-to-start days",
+  "Start timing",
 ]);
 const letters = (n) => {
   let s = "";
@@ -192,15 +211,25 @@ for (let r = 20; r <= last; r++) {
     `=IF(A${r}="","",IF(OR(F${r}="",G${r}=""),"Missing timestamps",IF(G${r}<F${r},"Invalid date order","OK")))`,
     `=IF(AND(${id}<>"",ISNUMBER(E${r})),1,0)`,
     `=IF(AND(A${r}<>"",OR($B$5="",C${r}=$B$5),OR($D$5="",D${r}=$D$5),OR($F$5="",B${r}=$F$5)),1,0)`,
+    `=IF(${id}="","",${timestamp(source("Created", n))})`,
+    `=IF(OR(${id}="",M${r}="",F${r}="",F${r}<M${r}),"",F${r}-M${r})`,
+    `=IF(${id}="","",IF(OR(M${r}="",F${r}=""),"Missing timestamps",IF(F${r}<M${r},"Invalid date order","OK")))`,
   ]);
 }
-analytics.getRange(`A20:L${last}`).formulas = detail;
-analytics.getRange(`A20:L${last}`).format.font = { name: "Arial", size: 10 };
+analytics.getRange(`A20:O${last}`).formulas = detail;
+analytics.getRange(`A20:O${last}`).format.font = { name: "Arial", size: 10 };
 analytics.getRange(`K20:L${last}`).setNumberFormat("0;-0;;@");
 analytics.getRange(`F20:G${last}`).setNumberFormat("yyyy-mm-dd hh:mm");
+analytics.getRange(`M20:M${last}`).setNumberFormat("yyyy-mm-dd hh:mm");
 analytics.getRange(`H20:H${last}`).setNumberFormat("0.00");
+analytics.getRange(`N20:N${last}`).setNumberFormat("0.00");
 analytics.getRange("A1:A19").format.columnWidth = 27;
 analytics.getRange("C1:C19").format.columnWidth = 23;
+analytics.getRange("E1:E19").format.columnWidth = 27;
+analytics.getRange("F1:F19").format.columnWidth = 23;
+analytics.getRange("M1:M19").format.columnWidth = 23;
+analytics.getRange("N1:N19").format.columnWidth = 20;
+analytics.getRange("O1:O19").format.columnWidth = 24;
 analytics.freezePanes.freezeRows(19);
 title(planning, "Project prioritization");
 planning.tabColor = "#475569";
@@ -298,6 +327,11 @@ value(
 );
 value(
   guide,
+  "A23",
+  "Issue analytics reports Completed − Started and Created-to-Started; their date windows use Completed and Created respectively.",
+);
+value(
+  guide,
   "A24",
   "Only public-team export data belongs here. Sharing this workbook can reveal copied/imported data.",
 );
@@ -327,6 +361,7 @@ const fixtureIssues = [
     "Cycle Number": "1",
     Started: "2026-11-01T00:00:00.000Z",
     Completed: "2026-11-03T00:00:00.000Z",
+    Created: "2026-11-01T00:00:00.000Z",
   },
   {
     ID: "KAN-2",
@@ -336,6 +371,7 @@ const fixtureIssues = [
     "Cycle Number": 1,
     Started: "2026-11-02T00:00:00.000Z",
     Completed: "2026-11-03T00:00:00.000Z",
+    Created: "2026-11-02T00:00:00.000Z",
   },
   {
     ID: "KAN-3",
@@ -344,6 +380,7 @@ const fixtureIssues = [
     "Cycle Number": 1,
     Started: "2026-11-04T00:00:00.000Z",
     Completed: "2026-11-03T00:00:00.000Z",
+    Created: "2026-11-01T00:00:00.000Z",
   },
   {
     ID: "KAN-4",
@@ -352,9 +389,23 @@ const fixtureIssues = [
     Estimate: 9,
     Started: "2026-11-03T00:00:00.000Z",
     Completed: "2026-11-04T00:00:00.000Z",
+    Created: "2026-11-03T00:00:00.000Z",
+  },
+  {
+    ID: "KAN-5",
+    Team: "Public",
+    Started: "2026-11-02T00:00:00.000Z",
+    Created: "2026-11-03T00:00:00.000Z",
+  },
+  {
+    ID: "KAN-6",
+    Team: "Public",
+    Assignee: "Alice",
+    "Cycle Number": 1,
+    Created: "2026-11-03T00:00:00.000Z",
   },
 ];
-rawIssues.getRange("A2:AA5").values = fixtureIssues.map((v) => row(issueHeaders, v));
+rawIssues.getRange("A2:AA7").values = fixtureIssues.map((v) => row(issueHeaders, v));
 rawProjects.getRange("A2:R3").values = [
   row(projectHeaders, { ID: "p-one", Name: "Public launch", Priority: 1, Lead: "Alice", "Target Date": "2026-12-01" }),
   row(projectHeaders, { ID: "p-two", Name: "Follow-up", Priority: 0 }),
@@ -379,6 +430,12 @@ check(analytics, "E21", 0, "zero estimate retained in detail");
 check(analytics, "B11", 1, "missing estimate distinguished");
 check(analytics, "B12", 1.5, "invalid pair excluded from duration");
 check(analytics, "B13", 1, "invalid pair counted");
+check(analytics, "F9", 1, "valid time-to-start count");
+check(analytics, "F10", 0, "same-day time-to-start retains zero");
+check(analytics, "F11", 1, "missing time-to-start pair counted");
+check(analytics, "F12", 1, "negative time-to-start pair counted");
+check(analytics, "N24", "", "negative time-to-start duration excluded");
+check(analytics, "O24", "Invalid date order", "negative time-to-start pair labeled");
 check(planning, "B10", "Public launch", "real VLOOKUP");
 check(planning, "I10", 2, "planning score");
 check(planning, "J10", 1, "planning rank");
@@ -432,7 +489,7 @@ const errors = await wb.inspect({
 });
 await fs.writeFile(path.join(output, "formula-errors.ndjson"), errors.ndjson);
 for (const [s, range] of [
-  [analytics, "A1:K23"],
+  [analytics, "A1:O24"],
   [planning, "A1:K15"],
   [rawIssues, "A1:G5"],
   [rawProjects, "A1:G5"],
