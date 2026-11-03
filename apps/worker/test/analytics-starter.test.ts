@@ -7,7 +7,7 @@ it("keeps the downloadable starter aligned with the actual privacy-filtered expo
   const proof = JSON.parse(
     readFileSync(new URL("../../web/public/analytics/starter-proof.json", import.meta.url), "utf8"),
   );
-  const sheets = sheetsExport(new MemoryStore(), true);
+  const sheets = sheetsExport(new MemoryStore(), true, true);
   expect(proof.issueHeaders).toEqual(sheets[0]!.values[0]);
   expect(proof.projectHeaders).toEqual(sheets[1]!.values[0]);
 });

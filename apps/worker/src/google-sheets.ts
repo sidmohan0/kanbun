@@ -24,6 +24,7 @@ const scope = "https://www.googleapis.com/auth/drive.file";
 type Connection = {
   refresh_token: string;
   spreadsheet_id: string | null;
+  issues_enabled: number;
   projects_enabled: number;
   last_synced_seq: string | null;
   last_synced_at: string | null;
@@ -122,6 +123,7 @@ export async function sheetsStatus(env: Env, workspaceId: string) {
     configured: configured(env),
     connected: !!row,
     spreadsheetUrl: row?.spreadsheet_id ? `https://docs.google.com/spreadsheets/d/${row.spreadsheet_id}/edit` : null,
+    issuesEnabled: row ? !!row.issues_enabled : true,
     projectsEnabled: !!row?.projects_enabled,
     lastSyncedAt: row?.last_synced_at ?? null,
     error: row?.error ?? null,
@@ -129,7 +131,7 @@ export async function sheetsStatus(env: Env, workspaceId: string) {
 }
 export const sheetsCommandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("connect"), token: z.string().min(1) }),
-  z.strictObject({ kind: z.literal("configure"), projectsEnabled: z.boolean() }),
+  z.strictObject({ kind: z.literal("configure"), issuesEnabled: z.boolean(), projectsEnabled: z.boolean() }),
   z.strictObject({ kind: z.literal("sync") }),
   z.strictObject({ kind: z.literal("disconnect") }),
 ]);
@@ -145,8 +147,10 @@ export async function sheetsCommand(env: Env, workspaceId: string, input: z.infe
       .run();
   } else if (input.kind === "configure") {
     await database(env)
-      .prepare("UPDATE google_sheets_connections SET projects_enabled=?,last_synced_seq=NULL WHERE workspace_id=?")
-      .bind(input.projectsEnabled ? 1 : 0, workspaceId)
+      .prepare(
+        "UPDATE google_sheets_connections SET issues_enabled=?,projects_enabled=?,last_synced_seq=NULL WHERE workspace_id=?",
+      )
+      .bind(input.issuesEnabled ? 1 : 0, input.projectsEnabled ? 1 : 0, workspaceId)
       .run();
   } else if (input.kind === "disconnect") {
     await database(env).prepare("DELETE FROM google_sheets_connections WHERE workspace_id=?").bind(workspaceId).run();
@@ -179,7 +183,7 @@ export async function syncSheets(env: Env, workspaceId: string, store: Store, se
         .run();
     }
     const snapshotSeq = seq();
-    const data = sheetsExport(store, !!row.projects_enabled);
+    const data = sheetsExport(store, !!row.issues_enabled, !!row.projects_enabled);
     await google(env, token.access_token, `/${spreadsheetId}:batchUpdate`, { requests: sheetsWriteRequests(data) });
     await database(env)
       .prepare(
@@ -333,7 +337,7 @@ export async function googleSheetsRoute(
   }
   const authority = env.WORKSPACES.getByName(principal.workspaceId);
   if (url.pathname === prefix + "/configure") {
-    const input = await body(z.strictObject({ projectsEnabled: z.boolean() }), request);
+    const input = await body(z.strictObject({ issuesEnabled: z.boolean(), projectsEnabled: z.boolean() }), request);
     return response(await sheetsRpcValue(authority.googleSheetsCommand(principal, { kind: "configure", ...input })));
   }
   if (url.pathname === prefix + "/sync" || url.pathname === prefix + "/disconnect") {

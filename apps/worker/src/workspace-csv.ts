@@ -30,7 +30,7 @@ export function csvText(rows: (string | number)[][]): string {
 
 export function workspaceCsv(store: Store, type: ExportType): Response {
   const title = type === "issues" ? "Issues" : "Projects";
-  const data = sheetsExport(store, true).find((sheet) => sheet.title === title)!;
+  const data = sheetsExport(store, true, true).find((sheet) => sheet.title === title)!;
   return new Response(csvText(data.values), {
     headers: {
       "content-type": "text/csv; charset=utf-8",

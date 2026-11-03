@@ -2,8 +2,10 @@
 
 The workspace owner can connect one Google account under **Settings → Integrations → Google Sheets**.
 Kanbun creates a spreadsheet named **Kanbun Issues** with owned **Issues** and **Projects** tabs.
-Issues are exported by default; enable **Include projects** to populate Projects. An empty Projects
-header remains when projects are disabled. Other tabs are left alone.
+Issues are exported by default; enable or disable **Include issues** and **Include projects** to
+choose which owned tabs contain data. Disabled owned tabs are cleared to their header on the next
+refresh; other tabs are left alone. Existing connections retain the historical behavior of exporting
+issues by default.
 
 In the desktop app, choose **Manage Google Sheets in browser** to open the integration settings in
 your system browser. Sign in there and complete authorization in that browser, then reload the
@@ -77,7 +79,7 @@ an interrupted attempt that never stores a connection is safely cleaned up by th
 
 ## Scope and validation
 
-This slice implements connection, issue/project export, optional project data, hourly/manual refresh,
+This slice implements connection, independently configurable issue/project exports, hourly/manual refresh,
 literal text writes, privacy filtering, and disconnect/reconnect. Initiative export is pending the
 initiative domain model. Export columns reflect currently implemented fields; initiatives, roadmaps,
 derived SLA status, customer revenue/count, project members, and project updates are not fabricated.

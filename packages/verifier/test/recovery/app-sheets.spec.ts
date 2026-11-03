@@ -51,11 +51,31 @@ test("connects Google Sheets, refreshes exports and disconnects through owner se
       "https://docs.google.com/spreadsheets/d/fixture-spreadsheet/edit",
     );
     await expect(settings).toContainText("Last updated");
+    await expect(settings.getByRole("checkbox", { name: "Include issues", exact: true })).toBeChecked();
     await settings.getByRole("checkbox", { name: "Include projects", exact: true }).check();
     await expect(settings.getByRole("checkbox", { name: "Include projects", exact: true })).toBeChecked();
+    await settings.getByRole("checkbox", { name: "Include issues", exact: true }).uncheck();
+    await expect(settings.getByRole("checkbox", { name: "Include issues", exact: true })).not.toBeChecked();
     const count = (await app.runtime.googleRequests()).length;
     await settings.getByRole("button", { name: "Update now", exact: true }).click();
     await expect.poll(async () => (await app.runtime.googleRequests()).length).toBeGreaterThan(count);
+    const issueTabWrite = (await app.runtime.googleRequests())
+      .filter((request) => request.url.endsWith(":batchUpdate"))
+      .at(-1)!;
+    expect(issueTabWrite.body).toContain('"sheetId":0');
+    expect(issueTabWrite.body).toContain('"stringValue":"ID"');
+    expect(issueTabWrite.body).not.toContain('"stringValue":"ENG-1"');
+    await settings.getByRole("checkbox", { name: "Include issues", exact: true }).check();
+    await expect(settings.getByRole("checkbox", { name: "Include issues", exact: true })).toBeChecked();
+    await settings.getByRole("checkbox", { name: "Include projects", exact: true }).uncheck();
+    const reenabled = (await app.runtime.googleRequests()).length;
+    await settings.getByRole("button", { name: "Update now", exact: true }).click();
+    await expect.poll(async () => (await app.runtime.googleRequests()).length).toBeGreaterThan(reenabled);
+    const issuesOnly = (await app.runtime.googleRequests())
+      .filter((request) => request.url.endsWith(":batchUpdate"))
+      .at(-1)!;
+    expect(issuesOnly.body).toContain('"sheetId":1');
+    expect(issuesOnly.body).toContain('"stringValue":"ID"');
     await expect(settings.getByRole("button", { name: "Disconnect Google Sheets", exact: true })).toBeEnabled();
     await settings.getByRole("button", { name: "Disconnect Google Sheets", exact: true }).click();
     await expect(settings.getByRole("button", { name: "Connect Google Sheets", exact: true })).toBeVisible();

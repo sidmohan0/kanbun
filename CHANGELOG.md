@@ -5,6 +5,7 @@ preparation moves them to a dated version heading.
 
 ## [Unreleased]
 
+- Add an owner setting to include or exclude issue data from the Google Sheets export.
 - Let active workspace members manage their own Code & reviews preferences while keeping workspace administration and integration settings restricted to the owner.
 - Add opt-in public Slack channel replies for public-team issue identifiers, with independent settings, permission refresh, durable retries and 60-minute per-thread suppression.
 - Added a downloadable analytics and project-planning starter for all workspace members, with separate raw inputs, Google/CSV import guidance and validated workbook formulas.

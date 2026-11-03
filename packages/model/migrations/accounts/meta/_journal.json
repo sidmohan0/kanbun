@@ -57,6 +57,13 @@
       "when": 1793602492904,
       "tag": "0007_fearless_microbe",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793671173837,
+      "tag": "0008_lonely_talon",
+      "breakpoints": true
     }
   ]
 }
