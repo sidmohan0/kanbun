@@ -9,6 +9,7 @@ preparation moves them to a dated version heading.
 - Let active workspace members manage their own Code & reviews preferences while keeping workspace administration and integration settings restricted to the owner.
 - Add opt-in public Slack channel replies for public-team issue identifiers, with independent settings, permission refresh, durable retries and 60-minute per-thread suppression.
 - Added a downloadable analytics and project-planning starter for all workspace members, with separate raw inputs, Google/CSV import guidance and validated workbook formulas.
+- Extend Issue analytics with Created-to-Started time-to-start averages and explicit missing/invalid timestamp counts.
 
 - Add issue attachments for pasted Slack message links, with team-scoped access and no thread synchronization.
 - Add owner-controlled Slack previews for public-team issue links, with durable retry delivery, permission refresh, and private-team protection.
