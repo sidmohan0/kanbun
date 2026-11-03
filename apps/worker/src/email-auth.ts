@@ -1,4 +1,5 @@
 import { uuidv7 } from "@kanbun/model";
+import { canonicalSlackMessageUrl } from "@kanbun/mutators";
 import { z } from "zod";
 import {
   configuration,
@@ -18,10 +19,25 @@ const LINK_LIFETIME_MS = 30 * 60 * 1000;
 const SESSION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const SESSION_INACTIVITY_MS = 14 * 24 * 60 * 60 * 1000;
 const tokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+function validSlackLinkReturnTo(value: string): boolean {
+  const prefix = "#slack-link?";
+  if (!value.startsWith(prefix)) return false;
+  const params = new URLSearchParams(value.slice(prefix.length));
+  const url = params.get("url");
+  if ([...params.keys()].length !== 1 || !url) return false;
+  try {
+    return canonicalSlackMessageUrl(url) === url;
+  } catch {
+    return false;
+  }
+}
+const applicationReturnToPattern =
+  /^#(?:issues(?:\/[A-Za-z0-9_-]+)?|invite\/[A-Za-z0-9_-]{43}|settings(?:\/integrations)?|members|inbox|my-issues)$/;
 const returnToSchema = z
   .string()
-  .regex(
-    /^#(?:issues(?:\/[A-Za-z0-9_-]+)?|invite\/[A-Za-z0-9_-]{43}|settings(?:\/integrations)?|members|inbox|my-issues)$/,
+  .refine(
+    (value) => applicationReturnToPattern.test(value) || validSlackLinkReturnTo(value),
+    "Invalid sign-in destination",
   );
 const signInUnavailable = () =>
   new RequestError("This sign-in link is unavailable. Request a new one in this browser.", 401);

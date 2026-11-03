@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { uuidv7, type Row } from "@kanbun/model";
+import { canonicalSlackMessageUrl } from "@kanbun/mutators";
 import { issueIncarnation, type BootstrapResponse, type PushResponse, type WorkspaceContext } from "@kanbun/sync";
 import { emailLink, linkToken, nativeAgent, startEmailRuntime, LOGIN_COOKIE, SESSION_COOKIE } from "./email-runtime";
 
@@ -24,6 +25,36 @@ async function signIn(
   expect((await agent.consume(token)).status).toBe(200);
   return token;
 }
+
+it("allows only canonical Slack issue-picker hashes through the email sign-in round trip", async () => {
+  const runtime = await startEmailRuntime();
+  try {
+    const browser = nativeAgent(runtime);
+    const url = canonicalSlackMessageUrl(
+      "https://example.slack.com/archives/C123ABC/p1234567890123456?thread_ts=1234567890.123456",
+    );
+    const returnTo = `#slack-link?url=${encodeURIComponent(url)}`;
+    const accepted = await browser.requestLink(runtime.ownerEmail, returnTo);
+    expect(accepted.status).toBe(202);
+    const link = emailLink((await runtime.capturedEmails()).at(-1)!);
+    expect(
+      decodeURIComponent(
+        link.hash
+          .slice(link.hash.indexOf("/") + 1)
+          .split("/")
+          .slice(1)
+          .join("/"),
+      ),
+    ).toBe(returnTo);
+    for (const invalid of [
+      "#slack-link?url=https%3A%2F%2Fevil.example%2F",
+      `#slack-link?url=${encodeURIComponent(url)}&next=%23issues`,
+    ])
+      expect((await browser.requestLink(runtime.ownerEmail, invalid)).ok).toBe(false);
+  } finally {
+    await runtime.close();
+  }
+});
 
 it("returns uniform request responses with nonce-bound single-use links and hashed credentials", async () => {
   const runtime = await startEmailRuntime();

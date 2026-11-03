@@ -6,6 +6,7 @@ import { authTokenHash } from "./email-auth";
 import { body, query, RequestError } from "./requests";
 import { slackDestinationSchema, type SlackUnfurls } from "./slack-unfurls";
 import { slackIssueIdentifiers } from "./slack-replies";
+import { canonicalSlackMessageUrl } from "@kanbun/mutators";
 
 export interface SlackEnvironment {
   SLACK_CLIENT_ID?: string;
@@ -570,6 +571,125 @@ export async function slackEventRoute(request: Request, env: Env): Promise<Respo
       );
   }
   return json({ ok: true });
+}
+
+/** Signed Slack message shortcut. Linking is completed in Kanbun, where the active member is verified. */
+export async function slackInteractionRoute(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response | null> {
+  if (new URL(request.url).pathname !== prefix + "/interactions") return null;
+  if (env.BACKUP_RESTORE_ISOLATED === "true" || !env.SLACK_SIGNING_SECRET) throw unavailable();
+  if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  const timestamp = request.headers.get("x-slack-request-timestamp") ?? "";
+  const signature = request.headers.get("x-slack-signature") ?? "";
+  if (
+    !/^\d+$/.test(timestamp) ||
+    Math.abs(Date.now() / 1000 - Number(timestamp)) > 300 ||
+    !/^v0=[a-f0-9]{64}$/.test(signature)
+  )
+    throw new RequestError("Invalid Slack signature", 403);
+  const raw = await request.text();
+  if (raw.length > 64 * 1024) throw new RequestError("Slack action is too large", 413);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(env.SLACK_SIGNING_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  const bytes = Uint8Array.from(signature.slice(3).match(/../g)!, (v) => parseInt(v, 16));
+  if (!(await crypto.subtle.verify("HMAC", key, bytes, new TextEncoder().encode(`v0:${timestamp}:${raw}`))))
+    throw new RequestError("Invalid Slack signature", 403);
+  const form = new URLSearchParams(raw);
+  const encoded = form.get("payload");
+  if (!encoded || [...form.keys()].some((field) => field !== "payload"))
+    throw new RequestError("Invalid Slack action", 400);
+  const payload = z
+    .object({
+      type: z.enum(["message_action", "message_shortcut"]),
+      api_app_id: z.string(),
+      team: z.object({ id: z.string().regex(/^T[A-Z0-9]+$/) }),
+      user: z.object({ id: z.string().regex(/^U[A-Z0-9]+$/) }),
+      channel: z.object({ id: z.string().regex(/^[CGD][A-Z0-9]+$/) }),
+      message_ts: z
+        .string()
+        .regex(/^\d+\.\d{6}$/)
+        .optional(),
+      message: z.object({ ts: z.string().regex(/^\d+\.\d{6}$/) }).optional(),
+      response_url: z.string().url(),
+    })
+    .parse(JSON.parse(encoded));
+  if (payload.api_app_id !== env.SLACK_APP_ID) throw new RequestError("Slack app does not match", 403);
+  const ts = payload.message_ts ?? payload.message?.ts;
+  if (!ts) return json({});
+  const connection = await database(env)
+    .prepare("SELECT * FROM slack_connections WHERE team_id=?")
+    .bind(payload.team.id)
+    .first<SlackConnection>();
+  const responseUrl = new URL(payload.response_url);
+  if (
+    responseUrl.protocol !== "https:" ||
+    responseUrl.hostname !== "hooks.slack.com" ||
+    responseUrl.port ||
+    responseUrl.username ||
+    responseUrl.password ||
+    responseUrl.hash ||
+    responseUrl.search ||
+    !responseUrl.pathname.startsWith("/actions/")
+  )
+    throw new RequestError("Invalid Slack response URL", 400);
+  ctx.waitUntil(
+    (async () => {
+      let message: Record<string, unknown>;
+      try {
+        if (!connection) throw new Error("not_connected");
+        const token = await openSlackToken(env, connection.workspace_id, connection.token_ciphertext);
+        const permalink = z
+          .object({ ok: z.literal(true), permalink: z.string().url() })
+          .parse(await api(env, "chat.getPermalink", { token, channel: payload.channel.id, message_ts: ts })).permalink;
+        const safe = canonicalSlackMessageUrl(permalink);
+        const url = new URL(configuration(env).appOrigin);
+        url.hash = `slack-link?url=${encodeURIComponent(safe)}`;
+        const prompt =
+          "Choose an existing Kanbun issue. Your Kanbun sign-in and team access are checked before the link is saved.";
+        message = {
+          response_type: "ephemeral",
+          text: prompt,
+          blocks: [
+            {
+              type: "section",
+              text: { type: "mrkdwn", text: prompt },
+            },
+            {
+              type: "actions",
+              elements: [{ type: "button", text: { type: "plain_text", text: "Choose an issue" }, url: url.href }],
+            },
+          ],
+        };
+      } catch {
+        message = {
+          response_type: "ephemeral",
+          text: connection
+            ? "Could not open this message link. Paste its Slack URL into Kanbun instead."
+            : "Connect this Slack workspace to Kanbun first.",
+        };
+      }
+      try {
+        const request = new Request(responseUrl.href, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(message),
+        });
+        const response = await (env.SLACK_TRANSPORT ? env.SLACK_TRANSPORT.fetch(request) : fetch(request));
+        if (!response.ok) console.error("slack_interaction_response_failed");
+      } catch {
+        console.error("slack_interaction_response_failed");
+      }
+    })(),
+  );
+  return json({});
 }
 
 /** Serialized with connection mutations; resolve current public issue only after credential I/O. */

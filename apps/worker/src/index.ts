@@ -1,6 +1,7 @@
 import {
   slackRoute,
   slackEventRoute,
+  slackInteractionRoute,
   slackCommand,
   slackCommandSchema,
   slackConnection,
@@ -1212,7 +1213,7 @@ export class WorkspaceDO extends DurableObject<Env> {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
       const runtimeMode = mode(env);
       const url = new URL(request.url);
@@ -1243,6 +1244,8 @@ export default {
       if (localRoute(url.pathname)) return json({ error: "Not found" }, 404);
       const slackEvent = await slackEventRoute(request, env);
       if (slackEvent) return slackEvent;
+      const slackInteraction = await slackInteractionRoute(request, env, ctx);
+      if (slackInteraction) return slackInteraction;
       const webhook = await githubWebhookRoute(request, env);
       if (webhook) return webhook;
       if (env.AUTH_MODE === "email" && !(url.pathname.startsWith("/api/") || syncRoute(url.pathname)))

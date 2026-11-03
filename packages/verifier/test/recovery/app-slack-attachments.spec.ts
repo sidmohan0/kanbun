@@ -36,3 +36,21 @@ test("adds literal Slack links without syncing, survives reload and removes them
     await secondContext.close();
   }
 });
+
+test("the Slack message action deep link requires Kanbun issue selection before saving", async ({ browser, app }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const url = "https://example.slack.com/archives/C123ABC/p1234567890123456";
+  try {
+    await page.goto(`${app.origin}/#slack-link?url=${encodeURIComponent(url)}`);
+    await expect(page.getByRole("heading", { name: "Link Slack message to an issue" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Link to ENG-1/ })).toBeVisible();
+    await page.getByRole("button", { name: /Link to ENG-1/ }).click();
+    await expect(page).toHaveURL(new RegExp(`#issues/${app.issueId}`));
+    const links = page.getByRole("region", { name: "Slack message links", exact: true });
+    await expect(links.getByRole("link", { name: "Slack message", exact: true })).toHaveAttribute("href", url);
+    await expect(links.getByText("sync comments", { exact: false })).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
