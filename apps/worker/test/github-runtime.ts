@@ -81,6 +81,12 @@ export function githubResponses(pr = githubPullRequest()): GithubFixtureResponse
     },
     {
       method: "GET",
+      path: `/repos/example/pilot/deployments?sha=${sha}&per_page=100&page=1`,
+      authorization: app,
+      body: [],
+    },
+    {
+      method: "GET",
       path: `/repos/example/pilot/commits/${sha}/check-runs?per_page=100&page=1`,
       authorization: app,
       body: { total_count: 0, check_runs: [] },
