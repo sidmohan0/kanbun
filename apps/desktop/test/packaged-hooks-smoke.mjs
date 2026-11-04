@@ -37,7 +37,7 @@ try {
     );
 
     const command = hookCommand(provider, executable, script, spool);
-    const hookEnvironment = { ...process.env, KANBUN_HOOK_DIAGNOSTICS: "1" };
+    const hookEnvironment = { ...process.env, KANBUN_HOOK_DIAGNOSTICS: "1", TMPDIR: temporaryRoot };
     if (process.platform === "darwin") delete hookEnvironment.ELECTRON_RUN_AS_NODE;
     else hookEnvironment.ELECTRON_RUN_AS_NODE = "1";
     const delivered = spawnSync(command, {
@@ -55,6 +55,15 @@ try {
       delivered.status,
       0,
       JSON.stringify({ error: delivered.error?.message, stdout: delivered.stdout, stderr: delivered.stderr }),
+    );
+    assert.match(delivered.stderr, /stdin copied\n/u, delivered.stderr);
+    assert.match(delivered.stderr, /app exited\n/u, delivered.stderr);
+    assert.equal(
+      (await (await import("node:fs/promises")).readdir(temporaryRoot)).some((name) =>
+        name.startsWith("kanbun-session-hook."),
+      ),
+      false,
+      "generated hook command removes its temporary FIFO directory",
     );
     const statuses = await readHookStatuses(spool);
     assert.equal(statuses.get(`${provider}:packaged-${provider}`), "running");

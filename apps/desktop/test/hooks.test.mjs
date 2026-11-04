@@ -121,7 +121,7 @@ test("macOS packaged hook command runs in the application main process", () => {
   assert.match(command, /mkfifo "\$input_dir\/input"/u);
   assert.match(
     command,
-    /'\/Applications\/Kanbun\.app\/Contents\/MacOS\/kanbun' --kanbun-session-hook 'codex' '\/tmp\/observer' "\$input_dir\/input" & hook_pid=\$!/u,
+    /'\/Applications\/Kanbun\.app\/Contents\/MacOS\/kanbun' kanbun-session-hook 'codex' '\/tmp\/observer' "\$input_dir\/input" & hook_pid=\$!/u,
   );
   assert.match(command, /cat > "\$input_dir\/input"/u);
   assert.match(command, /wait "\$hook_pid"/u);
