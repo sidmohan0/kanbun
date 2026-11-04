@@ -154,6 +154,7 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [linkbackStatus, setLinkbackStatus] = useState<string | null>(null);
   const team = snapshot.teams.find((candidate) => candidate.id === issue.teamId);
   const member = snapshot.members.find((candidate) => candidate.id === snapshot.context?.actor.id);
   const gitBranch = team
@@ -283,6 +284,14 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
           {error}
         </p>
       )}
+      {linkbackStatus && <p role="status">{linkbackStatus}</p>}
+      {links.length > 0 && (
+        <p className="github-linkback-help">
+          Posting issue context sends the current description and attachment links to GitHub and notifies PR
+          subscribers.
+          {team?.visibility === "private" ? " The private-team title is omitted." : " The issue title is included."}
+        </p>
+      )}
       <ul className="github-pr-cards">
         {links.map((pr) => {
           const repository = repositories.find((binding) => binding.id === pr.repositoryBindingId)!;
@@ -349,6 +358,28 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
                   }
                 >
                   {busy === pr.id ? "Refreshing…" : "Refresh"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={Boolean(busy)}
+                  aria-label={`Post issue context to PR #${pr.number}`}
+                  onClick={() =>
+                    void perform(`linkback:${pr.id}`, async () => {
+                      const result = await membershipRequest("/api/integrations/github/pull-requests/linkback", {
+                        linkId: pr.id,
+                      });
+                      const created =
+                        result && typeof result === "object" && "created" in result && result.created === true;
+                      setLinkbackStatus(
+                        created
+                          ? `Issue context posted to PR #${pr.number}.`
+                          : `Issue context is already on PR #${pr.number}.`,
+                      );
+                    })
+                  }
+                >
+                  {busy === `linkback:${pr.id}` ? "Posting…" : "Post issue context"}
                 </Button>
                 <Button
                   variant="ghost"

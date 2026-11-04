@@ -17,6 +17,7 @@ preparation moves them to a dated version heading.
 - Extend Issue analytics with Created-to-Started time-to-start averages and explicit missing/invalid timestamp counts.
 - Show recent HTTPS Markdown preview links from linked PR descriptions and eligible comments, with host-based icons and 30-day inactivity expiry.
 - Detect successful transient GitHub deployments from Vercel, Netlify, Cloudflare, and AWS Amplify on linked PR heads when their URLs appear in GitHub deployment records.
+- Let a team member explicitly post the current issue context to a linked GitHub PR, omitting private-team titles and including safe HTTPS attachment links.
 
 - Add issue attachments for pasted Slack message links, with team-scoped access and no thread synchronization.
 - Add owner-controlled Slack previews for public-team issue links, with durable retry delivery, permission refresh, and private-team protection.
