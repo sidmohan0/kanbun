@@ -8,6 +8,7 @@ preparation moves them to a dated version heading.
 - Explain that GitHub, Slack and Google provider app credentials stay with the Kanbun service while workspace owners authorize access in integration settings, including from the downloaded desktop app.
 - Add an owner-only CSV issue import with browser-side schema matching, row preview, validation, duplicate-ID skipping, and team-authorized issue creation.
 - Add opt-in self-hosted setup for workspace-owned GitHub, Slack and Google OAuth app credentials, encrypted server-side and configured from integrations settings.
+- Smoke-test packaged macOS and Windows session hooks and record installer footprint in CI.
 - Add an owner setting to include or exclude issue data from the Google Sheets export.
 - Add a Slack message shortcut that lets signed-in workspace members link messages to existing issues without syncing threads.
 - Show each linked PR's current-head reviewer identities and their approval or change-request decision using existing read-only GitHub access.

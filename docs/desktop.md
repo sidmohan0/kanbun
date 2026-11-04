@@ -63,6 +63,13 @@ install frozen dependencies without lifecycle scripts, and package without recom
 source. Native jobs only package the compiled output. Mac jobs use macOS 15; Windows jobs use
 Windows Server 2025. CI uploads the packages as workflow artifacts, with no release publication.
 
+On native macOS and Windows runners, packaging also smoke-tests the hook entry point from inside the
+packaged `app.asar`, using the packaged Electron executable. The smoke test enables and invokes both
+provider hooks, confirms that only session metadata is written, checks that observations become
+stale after the freshness window across a separate process start, then disables hooks and verifies
+that provider-owned settings are preserved. The same jobs list installer artifact sizes in their
+workflow summary; this is measurement evidence, not a size limit or a public-release check.
+
 Web deployment waits only for core `ci`, which retains the full verifier and public audits. Desktop
 packaging failures do not block web deployment, test-qualification reuse, or web health reporting.
 Desktop packages remain separate checks; inspect them before distributing desktop builds.
