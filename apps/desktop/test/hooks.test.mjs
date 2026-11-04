@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import test from "node:test";
 import { configureHooks, hookCommand } from "../dist/hook-setup.js";
 import electronPath from "electron";
@@ -52,6 +52,41 @@ test("real hook command stores only metadata and collector expires evidence", as
     assert.doesNotMatch(await readFile(path.join(spool, names[0]), "utf8"), /private content/);
     assert.equal((await readHookStatuses(spool, now + 86400001)).size, 0);
   } finally {
+    await rm(spool, { recursive: true, force: true });
+  }
+});
+
+test("hook reader exits after a complete payload even if stdin stays open", async () => {
+  const spool = await mkdtemp(path.join(tmpdir(), "kanbun-session-observer-"));
+  const runtime = new URL("../dist/hook-runtime.js", import.meta.url).href;
+  const child = spawn(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `const { runHookFromStdin } = await import(${JSON.stringify(runtime)}); await runHookFromStdin("codex", process.env.KANBUN_SMOKE_SPOOL); process.exit(0);`,
+    ],
+    {
+      env: { ...process.env, KANBUN_SMOKE_SPOOL: spool },
+      stdio: ["pipe", "ignore", "pipe"],
+    },
+  );
+  const stderr = [];
+  child.stderr.setEncoding("utf8").on("data", (chunk) => stderr.push(chunk));
+  child.stdin.write(JSON.stringify({ session_id: "open-pipe", hook_event_name: "UserPromptSubmit" }));
+  try {
+    let timeout;
+    const result = await Promise.race([
+      new Promise((resolve) => child.once("exit", (status, signal) => resolve({ status, signal }))),
+      new Promise((resolve) => (timeout = setTimeout(() => resolve("timeout"), 5000))),
+    ]);
+    clearTimeout(timeout);
+    if (result === "timeout") child.kill("SIGKILL");
+    assert.notEqual(result, "timeout", "hook reader waited for stdin to close");
+    assert.deepEqual(result, { status: 0, signal: null }, stderr.join(""));
+    assert.equal((await readHookStatuses(spool)).get("codex:open-pipe"), "running");
+  } finally {
+    child.kill("SIGKILL");
     await rm(spool, { recursive: true, force: true });
   }
 });

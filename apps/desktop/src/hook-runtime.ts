@@ -34,6 +34,15 @@ export async function runHookFromStdin(provider: string, directory: string): Pro
   for await (const chunk of process.stdin) {
     input += String(chunk);
     if (input.length > 1_000_000) return;
+    try {
+      const payload = JSON.parse(input) as Record<string, unknown>;
+      if (typeof payload.session_id === "string" && typeof payload.hook_event_name === "string") {
+        await runHook(provider, directory, input);
+        return;
+      }
+    } catch {
+      // The payload may still be arriving in later chunks.
+    }
   }
   await runHook(provider, directory, input);
 }
