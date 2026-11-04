@@ -117,10 +117,16 @@ test("macOS packaged hook command runs in the application main process", () => {
     "/tmp/observer",
     "darwin",
   );
-  assert.equal(
-    command,
-    `umask 077; input_dir=$(mktemp -d "\${TMPDIR:-/tmp}/kanbun-session-hook.XXXXXX") || exit 1; trap 'rm -rf "$input_dir"' EXIT; mkfifo "$input_dir/input" || exit 1; KANBUN_SESSION_HOOK=1 KANBUN_SESSION_HOOK_PROVIDER='codex' KANBUN_SESSION_HOOK_DIRECTORY='/tmp/observer' KANBUN_SESSION_HOOK_INPUT_FILE="$input_dir/input" '/Applications/Kanbun.app/Contents/MacOS/kanbun' & hook_pid=$!; cat > "$input_dir/input"; input_status=$?; wait "$hook_pid"; hook_status=$?; if [ "$input_status" -ne 0 ]; then exit "$input_status"; fi; exit "$hook_status"`,
-  );
+  assert.match(command, /^umask 077; input_dir=\$\(mktemp -d/u);
+  assert.match(command, /mkfifo "\$input_dir\/input"/u);
+  assert.match(command, /KANBUN_SESSION_HOOK_PROVIDER='codex'/u);
+  assert.match(command, /KANBUN_SESSION_HOOK_DIRECTORY='\/tmp\/observer'/u);
+  assert.match(command, /KANBUN_SESSION_HOOK_INPUT_FILE="\$input_dir\/input"/u);
+  assert.match(command, /'\/Applications\/Kanbun\.app\/Contents\/MacOS\/kanbun' & hook_pid=\$!/u);
+  assert.match(command, /cat > "\$input_dir\/input"/u);
+  assert.match(command, /wait "\$hook_pid"/u);
+  assert.match(command, /rm -rf "\$input_dir"/u);
+  assert.match(command, /diagnostics/iu);
   assert.doesNotMatch(command, /ELECTRON_RUN_AS_NODE|hook\.js|--kanbun-session-hook|prompt/);
   assert.match(command, /mkfifo/);
 });

@@ -25,8 +25,27 @@ export function hookCommand(
   spool: string,
   platform = process.platform,
 ): string {
-  if (platform === "darwin")
-    return `umask 077; input_dir=$(mktemp -d "\${TMPDIR:-/tmp}/kanbun-session-hook.XXXXXX") || exit 1; trap 'rm -rf "$input_dir"' EXIT; mkfifo "$input_dir/input" || exit 1; KANBUN_SESSION_HOOK=1 KANBUN_SESSION_HOOK_PROVIDER=${quote(provider)} KANBUN_SESSION_HOOK_DIRECTORY=${quote(spool)} KANBUN_SESSION_HOOK_INPUT_FILE="$input_dir/input" ${quote(executable)} & hook_pid=$!; cat > "$input_dir/input"; input_status=$?; wait "$hook_pid"; hook_status=$?; if [ "$input_status" -ne 0 ]; then exit "$input_status"; fi; exit "$hook_status"`;
+  if (platform === "darwin") {
+    const diagnostic = (message: string) =>
+      `if [ "\${KANBUN_HOOK_DIAGNOSTICS:-}" = "1" ]; then printf '%s\\n' '${message}' >&2; fi`;
+    return [
+      `umask 077`,
+      `input_dir=$(mktemp -d "\${TMPDIR:-/tmp}/kanbun-session-hook.XXXXXX") || exit 1`,
+      `trap 'rm -rf "$input_dir"' EXIT`,
+      `mkfifo "$input_dir/input" || exit 1`,
+      diagnostic("fifo created"),
+      `KANBUN_SESSION_HOOK=1 KANBUN_SESSION_HOOK_PROVIDER=${quote(provider)} KANBUN_SESSION_HOOK_DIRECTORY=${quote(spool)} KANBUN_SESSION_HOOK_INPUT_FILE="$input_dir/input" ${quote(executable)} & hook_pid=$!`,
+      diagnostic("app launched"),
+      `cat > "$input_dir/input"`,
+      `input_status=$?`,
+      diagnostic("stdin copied"),
+      `wait "$hook_pid"`,
+      `hook_status=$?`,
+      diagnostic("app exited"),
+      `if [ "$input_status" -ne 0 ]; then exit "$input_status"; fi`,
+      `exit "$hook_status"`,
+    ].join("; ");
+  }
   const command = `${quote(executable)} ${quote(script)} ${provider} ${quote(spool)}`;
   return platform === "win32"
     ? `cmd /d /s /c "set ELECTRON_RUN_AS_NODE=1&& ${command}"`

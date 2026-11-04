@@ -60,5 +60,10 @@ export async function runHookFromStdin(provider: string, directory: string): Pro
 }
 
 export async function runHookFromFile(provider: string, directory: string, filename: string): Promise<void> {
-  await runHookFromStream(provider, directory, createReadStream(filename), false);
+  const stream = createReadStream(filename);
+  if (process.env.KANBUN_HOOK_DIAGNOSTICS === "1") {
+    stream.once("open", () => process.stderr.write("hook fifo opened\n"));
+    stream.once("end", () => process.stderr.write("hook fifo reached EOF\n"));
+  }
+  await runHookFromStream(provider, directory, stream, false);
 }
