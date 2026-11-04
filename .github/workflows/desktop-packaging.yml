@@ -119,7 +119,7 @@ jobs:
             executable="apps/desktop/release/$package_directory/Kanbun.app/Contents/MacOS/kanbun"
             test -x "$executable"
             file "$executable"
-            lipo -verify_arch "$package_arch" "$executable"
+            lipo "$executable" -verify_arch "$package_arch"
           else
             executable="apps/desktop/release/win-unpacked/kanbun.exe"
           fi
