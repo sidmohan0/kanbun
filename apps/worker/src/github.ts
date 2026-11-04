@@ -7,7 +7,7 @@ import { activeMember } from "./directory";
 import { authTokenHash } from "./email-auth";
 import { body, query, RequestError } from "./requests";
 import { githubRpcValue } from "./github-rpc";
-import { githubPreviewLinks } from "./github-previews";
+import { githubDeploymentPreviewLinks, githubPreviewLinks, mergeGitHubPreviewLinks } from "./github-previews";
 
 export interface GithubEnvironment {
   GITHUB_APP_ID?: string;
@@ -141,7 +141,7 @@ async function installationToken(env: GithubEnvironment, source: GitHubRepositor
       method: "POST",
       input: {
         repository_ids: [source.repositoryId],
-        permissions: { pull_requests: "read", checks: "read", statuses: "read" },
+        permissions: { pull_requests: "read", checks: "read", statuses: "read", deployments: "read" },
       },
     });
     return z.object({ token: z.string().min(1) }).parse(result).token;
@@ -242,6 +242,49 @@ export async function readGitHubPullRequest(
     ],
     new Date(observedAt),
   );
+  const deploymentValues = await pages(env, token, `${repo}/deployments?sha=${encodeURIComponent(pull.head.sha)}`);
+  const deploymentSchema = z.object({
+    id: number,
+    sha: z.string().regex(/^[a-f0-9]{40,64}$/i),
+    created_at: z.iso.datetime({ offset: true }),
+    transient_environment: z.boolean().default(false),
+  });
+  const deploymentCandidates = deploymentValues
+    .map((value) => deploymentSchema.parse(value))
+    .filter(
+      (deployment) => deployment.sha.toLowerCase() === pull.head.sha.toLowerCase() && deployment.transient_environment,
+    )
+    .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))
+    .slice(0, 25);
+  const deploymentPreviews = await Promise.all(
+    deploymentCandidates.map(async (deployment) => {
+      const values = await pages(env, token, `${repo}/deployments/${deployment.id}/statuses`);
+      const statuses = values.map((value) =>
+        z
+          .object({
+            state: z.string(),
+            environment_url: z.string().nullable().optional(),
+            updated_at: z.iso.datetime({ offset: true }),
+          })
+          .parse(value),
+      );
+      return {
+        id: deployment.id,
+        sha: deployment.sha,
+        createdAt: deployment.created_at,
+        transientEnvironment: deployment.transient_environment,
+        statuses: statuses.map((status) => ({
+          state: status.state,
+          environmentUrl: status.environment_url ?? null,
+          updatedAt: status.updated_at,
+        })),
+      };
+    }),
+  );
+  const visiblePreviews = mergeGitHubPreviewLinks(
+    previews,
+    githubDeploymentPreviewLinks(deploymentPreviews, pull.head.sha, new Date(observedAt)),
+  );
   // A push while the independent review/check requests ran must not label a new commit with old evidence.
   const after = pullSchema.parse(await github(env, token, pullPath));
   if (
@@ -269,7 +312,7 @@ export async function readGitHubPullRequest(
     reviewStatus,
     reviewHeadSha: pull.head.sha,
     reviewers,
-    previewLinks: previews,
+    previewLinks: visiblePreviews,
     checksStatus,
     checksHeadSha: pull.head.sha,
     checksUrl: url + "/checks",
@@ -590,6 +633,7 @@ export async function githubWebhookRoute(request: Request, env: Env): Promise<Re
       issue: z.object({ number, pull_request: z.object({ url: z.string().url() }).optional() }).optional(),
       check_run: z.object({ head_sha: z.string() }).optional(),
       check_suite: z.object({ head_sha: z.string() }).optional(),
+      deployment: z.object({ sha: z.string() }).optional(),
       sha: z.string().optional(),
     })
     .safeParse(value);
@@ -631,8 +675,8 @@ export async function githubWebhookRoute(request: Request, env: Env): Promise<Re
         number: item.issue.number,
       }),
     );
-  else if (["check_run", "check_suite", "status"].includes(event ?? "") && item.repository) {
-    const headSha = item.check_run?.head_sha ?? item.check_suite?.head_sha ?? item.sha;
+  else if (["check_run", "check_suite", "status", "deployment_status"].includes(event ?? "") && item.repository) {
+    const headSha = item.check_run?.head_sha ?? item.check_suite?.head_sha ?? item.deployment?.sha ?? item.sha;
     if (headSha && /^[a-f0-9]{40,64}$/i.test(headSha))
       await githubRpcValue(
         authority.githubWebhook(workspaceId, {

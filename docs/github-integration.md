@@ -37,13 +37,20 @@ actions. Existing installations need no permission change or reauthorization for
 Linked PRs also show selected HTTPS Markdown links labeled with a name ending in `Preview`, read
 from the PR description and comments by the PR author or GitHub bots. Kanbun stores only the selected
 link metadata, never the full PR description or comment text; links expire from the UI after 30 days
-without activity. Subscribe to `issue_comment` so a comment edit or deletion refreshes the linked PR.
+without activity. Kanbun also reads the linked PR head's GitHub deployment records and successful
+transient deployment status URLs for Vercel (`*.vercel.app`), Netlify (`*.netlify.app`), Cloudflare
+Pages/Workers (`*.pages.dev`, `*.workers.dev`) and AWS Amplify (`*.amplifyapp.com`). This automatic
+discovery works only when a provider publishes a matching transient deployment and environment URL
+to GitHub; synthetic fixtures do not prove live provider setup. Configure **Deployments: read** for
+the GitHub App and selected repositories. Existing installations must accept the added permission
+before deployment data can be read. Subscribe to `issue_comment` so a comment edit or deletion
+refreshes custom links, and `deployment_status` so a provider update refreshes the linked PR head.
 The integration remains read-only and requests no source-code write permission or diff access. Subscribe
-to `pull_request`, `pull_request_review`, `issue_comment`, `check_run`, `check_suite` and `status`.
+to `pull_request`, `pull_request_review`, `issue_comment`, `deployment_status`, `check_run`, `check_suite` and `status`.
 The handler also consumes App installation and installation-repository revocation deliveries. Keep
 webhook TLS verification enabled. Follow GitHub's
 [App registration guidance](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app)
-for the provider settings; do not expand permissions to work around a failed connection.
+for the provider settings; do not add write or source-code permissions to work around a failed connection.
 
 | Worker configuration       | Classification                                        |
 | -------------------------- | ----------------------------------------------------- |
@@ -96,13 +103,14 @@ The webhook endpoint is public to GitHub and does not require a browser session.
 `X-Hub-Signature-256` with HMAC-SHA256 over the original request bytes before processing them,
 following [GitHub's signature contract](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries).
 It then validates installation/repository identity and delivery type. Invalid signatures are denied;
-the public endpoint does not let a caller supply trusted projection state. PR/review/check/status
-deliveries enqueue canonical API reads. PR/review deliveries can discover new links from canonical
-branch names and PR titles, only for existing issues in teams explicitly mapped to that repository.
-Check/status deliveries refresh known PRs and can discover additional matching issues in those
+the public endpoint does not let a caller supply trusted projection state. PR/review/check/status/
+deployment-status deliveries enqueue canonical API reads. PR/review deliveries can discover new links
+from canonical branch names and PR titles, only for existing issues in teams explicitly mapped to that repository.
+Check/status/deployment-status deliveries refresh known PRs and can discover additional matching issues in those
 mapped teams. Identifier matching is case-insensitive and accepts separators such as underscores,
-without treating partial words or numbers as references. There are no PR-body reads, issue creation,
-assignment/status changes, linkback comments or additional GitHub permissions in this behavior.
+without treating partial words or numbers as references. Automatic issue linking does not parse PR
+descriptions; preview extraction is limited to the selected link parser documented above. Issue
+creation, assignment/status changes and linkback comments are not performed in this behavior.
 Installation suspension/deletion or repository removal retires the affected bindings.
 
 The DO deduplicates by installation and delivery ID and persists jobs in `scheduled_job`. A job

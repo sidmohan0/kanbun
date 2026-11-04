@@ -79,47 +79,71 @@ test("links real GitHub PR context and converges after signed webhook updates in
     await loginEmail(second, app, app.runtime.ownerEmail, `#issues/${issueId}`);
     const development = (page: typeof first) => page.getByRole("region", { name: "Development", exact: true });
     const previewActivity = new Date().toISOString();
-    await app.runtime.setGithubResponses(
-      githubResponses(
-        githubPullRequest({
-          body: "[Staging Preview](https://kanbun-staging.vercel.app)",
-          updated_at: previewActivity,
-        }),
-      ).map((response) =>
-        response.path.includes("/reviews?")
+    const previewResponses = githubResponses(
+      githubPullRequest({
+        body: "[Staging Preview](https://kanbun-staging.vercel.app)",
+        updated_at: previewActivity,
+      }),
+    )
+      .map((response) =>
+        response.path.includes("/deployments?sha=")
           ? {
               ...response,
               body: [
-                { id: 1, state: "APPROVED", commit_id: "a".repeat(40), user: { id: 301, login: "reviewer-one" } },
                 {
-                  id: 2,
-                  state: "CHANGES_REQUESTED",
-                  commit_id: "a".repeat(40),
-                  user: { id: 302, login: "reviewer-two" },
+                  id: 704,
+                  sha: "a".repeat(40),
+                  created_at: previewActivity,
+                  transient_environment: true,
                 },
               ],
             }
-          : response.path.includes("/issues/42/comments?")
+          : response.path.includes("/reviews?")
             ? {
                 ...response,
                 body: [
+                  { id: 1, state: "APPROVED", commit_id: "a".repeat(40), user: { id: 301, login: "reviewer-one" } },
                   {
-                    body: "[Author Preview](https://kanbun-author.netlify.app)",
-                    created_at: previewActivity,
-                    updated_at: previewActivity,
-                    user: { login: "contributor", type: "User" },
-                  },
-                  {
-                    body: "[Bot Preview](https://kanbun-bot.pages.dev)",
-                    created_at: previewActivity,
-                    updated_at: previewActivity,
-                    user: { login: "deploy-preview[bot]", type: "Bot" },
+                    id: 2,
+                    state: "CHANGES_REQUESTED",
+                    commit_id: "a".repeat(40),
+                    user: { id: 302, login: "reviewer-two" },
                   },
                 ],
               }
-            : response,
-      ),
-    );
+            : response.path.includes("/issues/42/comments?")
+              ? {
+                  ...response,
+                  body: [
+                    {
+                      body: "[Author Preview](https://kanbun-author.netlify.app)",
+                      created_at: previewActivity,
+                      updated_at: previewActivity,
+                      user: { login: "contributor", type: "User" },
+                    },
+                    {
+                      body: "[Bot Preview](https://kanbun-bot.pages.dev)",
+                      created_at: previewActivity,
+                      updated_at: previewActivity,
+                      user: { login: "deploy-preview[bot]", type: "Bot" },
+                    },
+                  ],
+                }
+              : response,
+      )
+      .concat({
+        method: "GET",
+        path: "/repos/example/pilot/deployments/704/statuses?per_page=100&page=1",
+        authorization: "Bearer fixture-installation-token",
+        body: [
+          {
+            state: "success",
+            environment_url: "https://kanbun-provider.vercel.app",
+            updated_at: previewActivity,
+          },
+        ],
+      });
+    await app.runtime.setGithubResponses(previewResponses);
     await development(first)
       .getByRole("textbox", { name: "Pull request URL", exact: true })
       .fill("https://github.com/example/pilot/pull/42");
@@ -132,12 +156,16 @@ test("links real GitHub PR context and converges after signed webhook updates in
     await expect(card).toContainText("feature/pilot");
     await expect(card).toContainText(/reviewer-one\s*Approved/);
     await expect(card).toContainText(/reviewer-two\s*Changes requested/);
-    const previews = card.getByText("Preview links (3)", { exact: true });
+    const previews = card.getByText("Preview links (4)", { exact: true });
     await expect(previews).toBeVisible();
     await previews.click();
     await expect(card.getByRole("link", { name: "Staging Preview", exact: true })).toHaveAttribute(
       "href",
       "https://kanbun-staging.vercel.app/",
+    );
+    await expect(card.getByRole("link", { name: "Vercel Preview", exact: true })).toHaveAttribute(
+      "href",
+      "https://kanbun-provider.vercel.app/",
     );
     await expect(card.getByRole("link", { name: "Author Preview", exact: true })).toBeVisible();
     await expect(card.getByRole("link", { name: "Bot Preview", exact: true })).toBeVisible();

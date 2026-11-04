@@ -392,6 +392,71 @@ it("accepts only signed webhook facts and fetches canonical PR context once per 
     ).toBe(202);
     await expect.poll(async () => (await previewLinks()).length, { timeout: 15000 }).toBe(1);
     expect((await previewLinks())[0]!.label).toBe("Staging Preview");
+    const deployedResponses = githubResponses(previewPr)
+      .map((response) =>
+        response.path.includes("/deployments?sha=")
+          ? {
+              ...response,
+              body: [
+                {
+                  id: 701,
+                  sha: "a".repeat(40),
+                  created_at: "2026-11-03T11:30:00Z",
+                  transient_environment: true,
+                },
+                {
+                  id: 702,
+                  sha: "a".repeat(40),
+                  created_at: "2026-11-03T11:30:00Z",
+                  transient_environment: false,
+                },
+              ],
+            }
+          : response,
+      )
+      .concat({
+        method: "GET",
+        path: "/repos/example/pilot/deployments/701/statuses?per_page=100&page=1",
+        authorization: "Bearer fixture-installation-token",
+        body: [
+          {
+            state: "success",
+            environment_url: "https://kanbun-pr.vercel.app",
+            updated_at: "2026-11-03T11:31:00Z",
+          },
+        ],
+      });
+    await runtime.setGithubResponses(deployedResponses);
+    const deploymentStatus = JSON.stringify({
+      action: "success",
+      installation: { id: GITHUB_INSTALLATION_ID },
+      repository: { id: GITHUB_REPOSITORY_ID },
+      deployment: { sha: "a".repeat(40) },
+      deployment_status: { state: "success" },
+    });
+    expect(
+      (
+        await runtime.fetch(
+          "/api/integrations/github/webhook",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-GitHub-Event": "deployment_status",
+              "X-GitHub-Delivery": uuidv7(),
+              "X-Hub-Signature-256": githubSignature(deploymentStatus),
+            },
+            body: deploymentStatus,
+          },
+          null,
+        )
+      ).status,
+    ).toBe(202);
+    await expect
+      .poll(async () => (await previewLinks()).some((preview) => preview.label === "Vercel Preview"), {
+        timeout: 15000,
+      })
+      .toBe(true);
     await runtime.setGithubResponses(
       githubResponses().map((response) =>
         response.path.includes("/reviews?")
@@ -584,7 +649,7 @@ it("accepts only signed webhook facts and fetches canonical PR context once per 
     for (const request of installationRequests) {
       expect(JSON.parse(request.body)).toEqual({
         repository_ids: [GITHUB_REPOSITORY_ID],
-        permissions: { pull_requests: "read", checks: "read", statuses: "read" },
+        permissions: { pull_requests: "read", checks: "read", statuses: "read", deployments: "read" },
       });
     }
     const beforeUnlinkFetch = (await runtime.githubRequests()).filter(
