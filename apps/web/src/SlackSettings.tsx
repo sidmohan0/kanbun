@@ -3,6 +3,7 @@ import { Button } from "./components/ui/button";
 import { membershipRequest } from "./membership";
 import type { WorkspaceSnapshot } from "./workspace";
 import { DesktopIntegrationSettings, isDesktopApplication } from "./DesktopIntegrationSettings";
+import { IntegrationSetupHelp } from "./IntegrationSetupHelp";
 
 type Connection = {
   configured: boolean;
@@ -89,8 +90,23 @@ function OwnerSlackSettings() {
         </p>
       )}
       {!value && !error && <p role="status">Loading Slack connection…</p>}
-      {value && !value.configured && <p>Slack is not configured.</p>}
+      {value && !value.configured && (
+        <>
+          <p>Slack is not configured.</p>
+          <IntegrationSetupHelp provider="Slack" unavailable />
+        </>
+      )}
       {value?.connection && <p>Connected to {value.connection.teamName}.</p>}
+      {value?.configured && (
+        <IntegrationSetupHelp
+          provider="Slack"
+          authorization={{
+            label: value.connection ? "Update Slack authorization" : "Connect Slack",
+            busy,
+            onAuthorize: () => void action(false),
+          }}
+        />
+      )}
       {value?.connection && (
         <>
           <label>
@@ -122,11 +138,6 @@ function OwnerSlackSettings() {
             <p>Update Slack authorization to allow public-channel message events for issue replies.</p>
           )}
         </>
-      )}
-      {value?.configured && (
-        <Button variant="outline" disabled={busy} onClick={() => void action(false)}>
-          {busy ? "Please wait…" : value.connection ? "Update Slack authorization" : "Connect Slack"}
-        </Button>
       )}
       {value?.connection && (
         <Button variant="ghost" disabled={busy} onClick={() => void action(true)}>

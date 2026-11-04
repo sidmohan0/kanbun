@@ -21,6 +21,7 @@ test("legacy desktop integration settings expose a browser fallback before creat
     );
     await expect(connection.getByRole("button", { name: "Connect GitHub", exact: true })).toHaveCount(0);
     await expect(connection).toContainText("Sign in there");
+    await expect(connection).toContainText("Provider app credentials belong to the Kanbun service");
     // Existing installed builds advertise this UA but cannot intercept the one-click marker.
     await expect(connection).toContainText("copy this address and paste it into your browser");
     await expect(connection.locator("code")).toHaveText(`${app.origin}/#settings/integrations`);

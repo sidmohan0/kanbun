@@ -1,4 +1,5 @@
 import { Button } from "./components/ui/button";
+import { IntegrationSetupHelp, type IntegrationProvider } from "./IntegrationSetupHelp";
 
 export function isDesktopApplication(userAgent = navigator.userAgent): boolean {
   return userAgent.includes("KanbunDesktop/");
@@ -9,11 +10,12 @@ export function browserIntegrationSettingsUrl(origin = location.origin): string 
   return new URL("/?kanbun-browser=integrations#settings/integrations", origin).href;
 }
 
-export function DesktopIntegrationSettings({ name }: { name: string }) {
+export function DesktopIntegrationSettings({ name }: { name: IntegrationProvider }) {
   return (
     <section className="github-settings" aria-label={`${name} connection`}>
       <h2>{name}</h2>
       <p>Manage this connection in your browser. Sign in there, then connect your account.</p>
+      <IntegrationSetupHelp provider={name} />
       <Button variant="outline" asChild>
         <a href={browserIntegrationSettingsUrl()} target="_blank" rel="noreferrer">
           Manage {name} in browser

@@ -18,6 +18,9 @@ test("unconfigured command gives settings guidance without starting OAuth", asyn
     // The destination must remain usable once the dialog is dismissed.
     await page.keyboard.press("Escape");
     await expect(page.getByRole("link", { name: "Manage Google Sheets in browser", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Google Sheets connection", exact: true })).toContainText(
+      "Provider app credentials belong to the Kanbun service",
+    );
     expect(requests).toEqual([]);
   } finally {
     await context.close();

@@ -20,6 +20,7 @@ test("hands desktop Slack setup to browser settings before creating an OAuth gra
       `${app.origin}/?kanbun-browser=integrations#settings/integrations`,
     );
     await expect(settings.getByRole("button", { name: "Connect Slack", exact: true })).toHaveCount(0);
+    await expect(settings).toContainText("Provider app credentials belong to the Kanbun service");
     expect(integrationRequests).toEqual([]);
   } finally {
     await context.close();

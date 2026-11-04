@@ -12,6 +12,7 @@ import {
 } from "./github";
 import "./styles/github.css";
 import { DesktopIntegrationSettings, isDesktopApplication } from "./DesktopIntegrationSettings";
+import { IntegrationSetupHelp } from "./IntegrationSetupHelp";
 
 function OwnerGitHubSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
   const [connection, setConnection] = useState<GitHubConnection | null>(null);
@@ -109,26 +110,32 @@ function OwnerGitHubSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
         </p>
       )}
       {!connection && !error && <p role="status">Loading GitHub connection…</p>}
-      {connection && !connection.configured && <h3>GitHub not configured</h3>}
+      {connection && !connection.configured && (
+        <>
+          <h3>GitHub not configured</h3>
+          <IntegrationSetupHelp provider="GitHub" unavailable />
+        </>
+      )}
       {connection?.configured && (
         <>
+          <IntegrationSetupHelp
+            provider="GitHub"
+            authorization={{
+              label: connection.authorizationRequired ? "Connect GitHub" : "Update GitHub authorization",
+              busy,
+              onAuthorize: () => void connect(),
+            }}
+          />
           {!connection.authorizationRequired && <p>Connected to {connection.appName ?? "the GitHub App"}.</p>}
-          <div className="github-connection-actions">
-            {installUrl && (
+          {installUrl && (
+            <div className="github-connection-actions">
               <Button variant="outline" asChild>
                 <a className="button" href={installUrl} target="_blank" rel="noreferrer">
                   Install on GitHub
                 </a>
               </Button>
-            )}
-            <Button variant="outline" className="button" disabled={busy} onClick={() => void connect()}>
-              {busy
-                ? "Please wait…"
-                : connection.authorizationRequired
-                  ? "Connect GitHub"
-                  : "Update GitHub authorization"}
-            </Button>
-          </div>
+            </div>
+          )}
           <form className="github-bind-form" onSubmit={bind}>
             <h3>Share a repository with a team</h3>
             <label htmlFor="github-repository">GitHub repository</label>
