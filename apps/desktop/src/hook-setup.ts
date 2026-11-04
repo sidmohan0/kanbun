@@ -28,20 +28,22 @@ export function hookCommand(
   if (platform === "darwin") {
     const diagnostic = (message: string) =>
       `if [ "\${KANBUN_HOOK_DIAGNOSTICS:-}" = "1" ]; then printf '%s\\n' '${message}' >&2; fi`;
+    const launch = `${quote(executable)} kanbun-session-hook ${quote(provider)} ${quote(spool)} "$input_dir/input"`;
     return [
       `umask 077`,
       `input_dir=$(mktemp -d "\${TMPDIR:-/tmp}/kanbun-session-hook.XXXXXX") || exit 1`,
       `trap 'rm -rf "$input_dir"' EXIT`,
       `mkfifo "$input_dir/input" || exit 1`,
       diagnostic("fifo created"),
-      `${quote(executable)} kanbun-session-hook ${quote(provider)} ${quote(spool)} "$input_dir/input" & hook_pid=$!`,
+      `if [ "\${KANBUN_HOOK_DIAGNOSTICS:-}" = "1" ]; then ${launch} "kanbun-hook-diagnostics=\${input_dir}/dispatcher.json" & hook_pid=$!; else ${launch} & hook_pid=$!; fi`,
       diagnostic("app launched"),
-      `if [ "\${KANBUN_HOOK_DIAGNOSTICS:-}" = "1" ]; then sleep 2; ps -ww -p "$hook_pid" -o pid=,ppid=,stat=,command= >&2 || true; lsof -n "$input_dir/input" >&2 || true; fi`,
+      `if [ "\${KANBUN_HOOK_DIAGNOSTICS:-}" = "1" ]; then sleep 2; ps -ww -p "$hook_pid" -o pid=,ppid=,stat=,command= >&2 || true; lsof -n "$input_dir/input" >&2 || true; if [ -f "$input_dir/dispatcher.json" ]; then printf '%s\\n' 'dispatcher details:' >&2; cat "$input_dir/dispatcher.json" >&2; else printf '%s\\n' 'dispatcher diagnostics missing' >&2; fi; fi`,
       `cat > "$input_dir/input"`,
       `input_status=$?`,
       diagnostic("stdin copied"),
       `wait "$hook_pid"`,
       `hook_status=$?`,
+      `if [ "\${KANBUN_HOOK_DIAGNOSTICS:-}" = "1" ]; then if [ -f "$input_dir/dispatcher.json" ]; then printf '%s\\n' 'dispatcher details:' >&2; cat "$input_dir/dispatcher.json" >&2; else printf '%s\\n' 'dispatcher diagnostics missing' >&2; fi; fi`,
       diagnostic("app exited"),
       `if [ "$input_status" -ne 0 ]; then exit "$input_status"; fi`,
       `exit "$hook_status"`,

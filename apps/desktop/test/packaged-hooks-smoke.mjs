@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { configureHooks, hookCommand } from "../dist/hook-setup.js";
@@ -14,6 +15,17 @@ const resources =
     ? path.resolve(path.dirname(executable), "../Resources")
     : path.join(path.dirname(executable), "resources");
 const script = path.join(resources, "app.asar", "dist/hook.js");
+if (process.platform === "darwin") {
+  const require = createRequire(import.meta.url);
+  const builderEntry = require.resolve("electron-builder");
+  const asar = require(require.resolve("@electron/asar", { paths: [builderEntry] }));
+  const archive = path.join(resources, "app.asar");
+  const packageJson = JSON.parse(asar.extractFile(archive, "package.json").toString());
+  const mainSource = asar.extractFile(archive, packageJson.main).toString();
+  assert.equal(packageJson.main, "dist/main.js");
+  assert.match(mainSource, /kanbun-session-hook/u);
+  console.log(`packaged main entry verified: ${packageJson.main}`);
+}
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "kanbun packaged observer "));
 const home = path.join(temporaryRoot, "provider home with spaces");
 const spool = path.join(temporaryRoot, "kanbun-session-observer with spaces");
@@ -59,6 +71,8 @@ try {
     if (process.platform === "darwin") {
       assert.match(delivered.stderr, /stdin copied\n/u, delivered.stderr);
       assert.match(delivered.stderr, /app exited\n/u, delivered.stderr);
+      assert.match(delivered.stderr, /dispatcher details:/u, delivered.stderr);
+      assert.match(delivered.stderr, /"hookDispatch":true/u, delivered.stderr);
       assert.equal(
         (await (await import("node:fs/promises")).readdir(temporaryRoot)).some((name) =>
           name.startsWith("kanbun-session-hook."),
