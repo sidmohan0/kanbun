@@ -66,8 +66,10 @@ Windows Server 2025. CI uploads the packages as workflow artifacts, with no rele
 On native macOS and Windows runners, packaging also smoke-tests the packaged hook entry point using
 the packaged Electron executable. macOS dispatches hook events through an early main-process command
 path before loading the tray and history collector, so hook startup avoids unrelated desktop
-dependencies and does not depend on Electron's Node compatibility mode. The smoke test enables and invokes both
-provider hooks, confirms that only session metadata is written, checks that observations become
+dependencies and does not depend on Electron's Node compatibility mode. Its generated shell command
+streams stdin through a private temporary FIFO, which the shell removes when the hook exits. The
+smoke test enables and invokes both provider hooks, confirms that only session metadata is written,
+checks that observations become
 stale after the freshness window across a separate process start, then disables hooks and verifies
 that provider-owned settings are preserved. The same jobs list installer artifact sizes in their
 workflow summary; this is measurement evidence, not a size limit or a public-release check.

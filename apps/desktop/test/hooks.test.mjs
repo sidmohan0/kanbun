@@ -119,7 +119,8 @@ test("macOS packaged hook command runs in the application main process", () => {
   );
   assert.equal(
     command,
-    "KANBUN_SESSION_HOOK=1 KANBUN_SESSION_HOOK_PROVIDER='codex' KANBUN_SESSION_HOOK_DIRECTORY='/tmp/observer' '/Applications/Kanbun.app/Contents/MacOS/kanbun'",
+    `umask 077; input_dir=$(mktemp -d "\${TMPDIR:-/tmp}/kanbun-session-hook.XXXXXX") || exit 1; trap 'rm -rf "$input_dir"' EXIT; mkfifo "$input_dir/input" || exit 1; KANBUN_SESSION_HOOK=1 KANBUN_SESSION_HOOK_PROVIDER='codex' KANBUN_SESSION_HOOK_DIRECTORY='/tmp/observer' KANBUN_SESSION_HOOK_INPUT_FILE="$input_dir/input" '/Applications/Kanbun.app/Contents/MacOS/kanbun' & hook_pid=$!; cat > "$input_dir/input"; input_status=$?; wait "$hook_pid"; hook_status=$?; if [ "$input_status" -ne 0 ]; then exit "$input_status"; fi; exit "$hook_status"`,
   );
-  assert.doesNotMatch(command, /ELECTRON_RUN_AS_NODE|hook\.js|--kanbun-session-hook/);
+  assert.doesNotMatch(command, /ELECTRON_RUN_AS_NODE|hook\.js|--kanbun-session-hook|prompt/);
+  assert.match(command, /mkfifo/);
 });

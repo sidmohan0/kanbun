@@ -1,3 +1,4 @@
+import { createReadStream } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -29,20 +30,35 @@ export async function runHook(provider: string, directory: string, input: string
   }
 }
 
-export async function runHookFromStdin(provider: string, directory: string): Promise<void> {
+async function runHookFromStream(
+  provider: string,
+  directory: string,
+  stream: AsyncIterable<unknown>,
+  stopOnComplete: boolean,
+): Promise<void> {
   let input = "";
-  for await (const chunk of process.stdin) {
+  for await (const chunk of stream) {
     input += String(chunk);
     if (input.length > 1_000_000) return;
     try {
       const payload = JSON.parse(input) as Record<string, unknown>;
       if (typeof payload.session_id === "string" && typeof payload.hook_event_name === "string") {
-        await runHook(provider, directory, input);
-        return;
+        if (stopOnComplete) {
+          await runHook(provider, directory, input);
+          return;
+        }
       }
     } catch {
       // The payload may still be arriving in later chunks.
     }
   }
   await runHook(provider, directory, input);
+}
+
+export async function runHookFromStdin(provider: string, directory: string): Promise<void> {
+  await runHookFromStream(provider, directory, process.stdin, true);
+}
+
+export async function runHookFromFile(provider: string, directory: string, filename: string): Promise<void> {
+  await runHookFromStream(provider, directory, createReadStream(filename), false);
 }
