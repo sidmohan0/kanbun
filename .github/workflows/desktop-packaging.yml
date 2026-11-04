@@ -109,7 +109,17 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ matrix.platform }}" == "mac" ]]; then
-            executable="$(find apps/desktop/release -path '*/Contents/MacOS/*' -iname 'kanbun' -type f -print -quit)"
+            if [[ "$(uname -m)" == "arm64" ]]; then
+              package_arch=arm64
+              package_directory=mac-arm64
+            else
+              package_arch=x86_64
+              package_directory=mac
+            fi
+            executable="apps/desktop/release/$package_directory/Kanbun.app/Contents/MacOS/kanbun"
+            test -x "$executable"
+            file "$executable"
+            lipo -verify_arch "$package_arch" "$executable"
           else
             executable="apps/desktop/release/win-unpacked/kanbun.exe"
           fi
