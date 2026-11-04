@@ -36,6 +36,22 @@ test("hook setup preserves existing provider hooks and removes only Kanbun handl
   }
 });
 
+test("hook cleanup preserves a user command that resembles the macOS FIFO wrapper", async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "kanbun-hooks-user-command-"));
+  try {
+    const directory = path.join(home, ".claude");
+    await mkdir(directory);
+    const file = path.join(directory, "settings.json");
+    const userCommand = "user-script kanbun-session-hook mkfifo";
+    const initial = { hooks: { Stop: [{ hooks: [{ type: "command", command: userCommand }] }] } };
+    await writeFile(file, JSON.stringify(initial));
+    await configureHooks("claude", false, "/electron", "/app/hook.js", "/tmp/user-owned-spool", home);
+    assert.deepEqual(JSON.parse(await readFile(file, "utf8")).hooks.Stop, initial.hooks.Stop);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("real hook command stores only metadata and collector expires evidence", async () => {
   const spool = await mkdtemp(path.join(tmpdir(), "kanbun-session-observer-"));
   try {

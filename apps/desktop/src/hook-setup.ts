@@ -93,7 +93,7 @@ export async function configureHooks(
         return !(
           typeof command === "string" &&
           ((command.includes(marker) && command.includes("hook.js")) ||
-            (command.includes("kanbun-session-hook") && command.includes("mkfifo")) ||
+            (command.includes("kanbun-session-hook") && command.includes("mkfifo") && command.includes(marker)) ||
             command.includes("--kanbun-session-hook") ||
             command.includes("KANBUN_SESSION_HOOK=1"))
         );
