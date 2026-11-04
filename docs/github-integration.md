@@ -8,6 +8,11 @@ GitHub login button.
 
 ## App and Worker configuration
 
+The maintained hosted service uses its deployment-owned App credentials. Self-hosted installations
+can opt into encrypted, workspace-owned app settings from the browser; see
+[self-hosted provider app setup](provider-app-credentials.md) for the mode flag, encryption key,
+workspace-specific webhook URL and rotation lifecycle.
+
 Register an installer-owned GitHub App with the destinations below, replacing `<APP_ORIGIN>`
 with the exact HTTPS origin in your installation configuration, without a trailing slash. The
 maintainer preview uses `https://kanbun.ai`; independent installations use their own origin.

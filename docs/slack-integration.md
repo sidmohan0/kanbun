@@ -9,6 +9,11 @@ Grid. Slack authorization is separate from Kanbun sign-in.
 
 ## App setup
 
+The hosted service uses deployment-managed Slack app settings. Self-hosted installations can opt into
+workspace-owned credentials in the browser. See
+[self-hosted provider app setup](provider-app-credentials.md) for enabling that mode and configuring
+workspace-specific Events and Interactivity URLs.
+
 Create a Slack app for the installation's HTTPS origin and configure:
 
 - OAuth redirect: `<APP_ORIGIN>/api/integrations/slack/callback`

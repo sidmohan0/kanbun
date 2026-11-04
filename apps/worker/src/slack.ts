@@ -7,14 +7,21 @@ import { body, query, RequestError } from "./requests";
 import { slackDestinationSchema, type SlackUnfurls } from "./slack-unfurls";
 import { slackIssueIdentifiers } from "./slack-replies";
 import { canonicalSlackMessageUrl } from "@kanbun/mutators";
+import {
+  integrationCredentials,
+  markIntegrationCredentialsVerified,
+  workspaceCredentialsMode,
+  type IntegrationAppConfig,
+} from "./integration-apps";
 
 export interface SlackEnvironment {
   SLACK_CLIENT_ID?: string;
   SLACK_CLIENT_SECRET?: string;
   SLACK_SIGNING_SECRET?: string;
   SLACK_APP_ID?: string;
-  /** Base64-encoded, independently generated 32-byte AES key. */
+  /** Optional dedicated base64-encoded 32-byte token key; self-hosted setup can use its deployment key. */
   SLACK_TOKEN_ENCRYPTION_KEY?: string;
+  INTEGRATION_CREDENTIALS_ENCRYPTION_KEY?: string;
   SLACK_TRANSPORT?: Fetcher;
 }
 const prefix = "/api/integrations/slack";
@@ -32,14 +39,35 @@ const json = (value: unknown, status = 200, cookie?: string) =>
       ...(cookie ? { "set-cookie": cookie } : {}),
     },
   });
-function configured(env: SlackEnvironment) {
+type SlackAppCredentials = IntegrationAppConfig & {
+  clientId: string;
+  clientSecret: string;
+  appId: string;
+  signingSecret: string;
+};
+async function appCredentials(env: Env, workspaceId: string): Promise<SlackAppCredentials | null> {
+  return (await integrationCredentials(env, workspaceId, "slack", {
+    clientId: env.SLACK_CLIENT_ID ?? "",
+    clientSecret: env.SLACK_CLIENT_SECRET ?? "",
+    appId: env.SLACK_APP_ID ?? "",
+    signingSecret: env.SLACK_SIGNING_SECRET ?? "",
+  })) as SlackAppCredentials | null;
+}
+function configured(env: SlackEnvironment, app: SlackAppCredentials | null) {
   return !!(
-    env.SLACK_CLIENT_ID &&
-    env.SLACK_CLIENT_SECRET &&
-    env.SLACK_APP_ID &&
-    env.SLACK_SIGNING_SECRET &&
-    env.SLACK_TOKEN_ENCRYPTION_KEY
+    app?.clientId &&
+    app.clientSecret &&
+    app.appId &&
+    app.signingSecret &&
+    (env.SLACK_TOKEN_ENCRYPTION_KEY || env.INTEGRATION_CREDENTIALS_ENCRYPTION_KEY)
   );
+}
+function requireAppCredentials(
+  env: SlackEnvironment,
+  app: SlackAppCredentials | null,
+): asserts app is SlackAppCredentials {
+  if (!configured(env, app))
+    throw new RequestError("Configure the Slack app for this workspace before connecting.", 503);
 }
 function database(env: Env) {
   if (!env.ACCOUNTS) throw unavailable();
@@ -86,7 +114,7 @@ const encode = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
 const decode = (text: string) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
 async function encryptionKey(env: SlackEnvironment) {
   try {
-    const bytes = decode(env.SLACK_TOKEN_ENCRYPTION_KEY!);
+    const bytes = decode(env.SLACK_TOKEN_ENCRYPTION_KEY ?? env.INTEGRATION_CREDENTIALS_ENCRYPTION_KEY!);
     if (bytes.length !== 32) throw unavailable();
     return await crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
   } catch {
@@ -139,6 +167,19 @@ export async function slackConnection(env: Env, workspaceId: string) {
     .bind(workspaceId)
     .first<SlackConnection>();
 }
+function webhookWorkspace(url: URL, suffix: "events" | "interactions", env: Env) {
+  const legacy = `${prefix}/${suffix}`;
+  if (url.pathname === legacy) return configuration(env).workspaceId;
+  const match = new RegExp(`^${prefix}/${suffix}/([0-9a-f-]{36})$`, "i").exec(url.pathname);
+  if (match && !workspaceCredentialsMode(env)) return null;
+  return match ? z.uuidv7().parse(match[1]) : null;
+}
+async function connectionForTeam(env: Env, workspaceId: string, teamId: string) {
+  return database(env)
+    .prepare("SELECT * FROM slack_connections WHERE workspace_id=? AND team_id=?")
+    .bind(workspaceId, teamId)
+    .first<SlackConnection>();
+}
 export const slackVersion = (row: SlackConnection) =>
   authTokenHash(JSON.stringify([row.team_id, row.token_ciphertext, row.unfurl_generation]));
 export const slackReplyVersion = (row: SlackConnection) =>
@@ -149,8 +190,9 @@ export const slackUnfurlsReady = (row: SlackConnection) =>
   ["links:read", "links:write"].every((scope) => row.scopes.split(",").includes(scope));
 export async function slackStatus(env: Env, workspaceId: string) {
   const row = await slackConnection(env, workspaceId);
+  const app = await appCredentials(env, workspaceId);
   return {
-    configured: configured(env),
+    configured: configured(env, app),
     connection: row
       ? {
           teamId: row.team_id,
@@ -288,7 +330,8 @@ export async function sendSlackUnfurls(
       .run();
 }
 async function connect(env: Env, principal: HostedPrincipal) {
-  if (!configured(env)) throw unavailable();
+  const app = await appCredentials(env, principal.workspaceId);
+  requireAppCredentials(env, app);
   if (!principal.sessionId) throw new RequestError("Native email sign-in is required to connect Slack", 401);
   await encryptionKey(env);
   const state = encode(crypto.getRandomValues(new Uint8Array(32)))
@@ -302,7 +345,7 @@ async function connect(env: Env, principal: HostedPrincipal) {
   const url = new URL("https://slack.com/oauth/v2/authorize");
   const connection = await slackConnection(env, principal.workspaceId);
   url.search = new URLSearchParams({
-    client_id: env.SLACK_CLIENT_ID!,
+    client_id: app.clientId,
     scope: [...scopes, ...(connection?.issue_replies_enabled ? ["channels:history"] : [])].join(","),
     state,
     redirect_uri: configuration(env).appOrigin + callbackPath,
@@ -347,28 +390,41 @@ async function callback(request: Request, env: Env, principal: HostedPrincipal) 
         "set-cookie": `${cookieName}=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`,
       },
     });
-  if (!configured(env) || !input.code) throw unavailable();
-  const result = z
-    .object({
-      access_token: z.string().min(1),
-      token_type: z.literal("bot"),
-      app_id: z.string(),
-      scope: z.string(),
-      team: z.object({ id: z.string().regex(/^T[A-Z0-9]+$/), name: z.string().min(1) }),
-      bot_user_id: z.string().min(1),
-      is_enterprise_install: z.literal(false),
-      refresh_token: z.never().optional(),
-    })
-    .parse(
-      await api(env, "oauth.v2.access", {
-        client_id: env.SLACK_CLIENT_ID!,
-        client_secret: env.SLACK_CLIENT_SECRET!,
-        code: input.code,
-        redirect_uri: configuration(env).appOrigin + callbackPath,
-      }),
+  const app = await appCredentials(env, principal.workspaceId);
+  requireAppCredentials(env, app);
+  if (!input.code) throw unavailable();
+  let grant: unknown;
+  try {
+    grant = await api(env, "oauth.v2.access", {
+      client_id: app.clientId,
+      client_secret: app.clientSecret,
+      code: input.code,
+      redirect_uri: configuration(env).appOrigin + callbackPath,
+    });
+  } catch {
+    throw new RequestError(
+      "Slack rejected the app credentials or callback URL. Check its OAuth settings and reconnect.",
+      503,
     );
-  if (result.app_id !== env.SLACK_APP_ID || !scopes.every((scope) => result.scope.split(",").includes(scope)))
-    throw unavailable();
+  }
+  const slackGrantSchema = z.object({
+    access_token: z.string().min(1),
+    token_type: z.literal("bot"),
+    app_id: z.string(),
+    scope: z.string(),
+    team: z.object({ id: z.string().regex(/^T[A-Z0-9]+$/), name: z.string().min(1) }),
+    bot_user_id: z.string().min(1),
+    is_enterprise_install: z.literal(false),
+    refresh_token: z.never().optional(),
+  });
+  let result: z.infer<typeof slackGrantSchema>;
+  try {
+    result = slackGrantSchema.parse(grant);
+  } catch {
+    throw new RequestError("Slack returned an incomplete authorization. Check the app scopes and reconnect.", 503);
+  }
+  if (result.app_id !== app.appId || !scopes.every((scope) => result.scope.split(",").includes(scope)))
+    throw new RequestError("Slack app identity or scopes do not match. Check its settings and reconnect.", 503);
   await rpcValue(
     env.WORKSPACES.getByName(principal.workspaceId).slackConnectionCommand(principal, {
       kind: "connect",
@@ -379,6 +435,7 @@ async function callback(request: Request, env: Env, principal: HostedPrincipal) 
       scopes: result.scope,
     }),
   );
+  await markIntegrationCredentialsVerified(env, principal.workspaceId, "slack", app);
   return new Response(null, {
     status: 303,
     headers: {
@@ -437,8 +494,12 @@ export async function slackRoute(request: Request, env: Env, principal: HostedPr
 }
 /** Authenticate the raw bytes before parsing even URL-verification requests. */
 export async function slackEventRoute(request: Request, env: Env): Promise<Response | null> {
-  if (new URL(request.url).pathname !== prefix + "/events") return null;
-  if (env.BACKUP_RESTORE_ISOLATED === "true" || !env.SLACK_SIGNING_SECRET) throw unavailable();
+  const url = new URL(request.url);
+  const workspaceId = webhookWorkspace(url, "events", env);
+  if (!workspaceId) return null;
+  if (env.BACKUP_RESTORE_ISOLATED === "true") throw unavailable();
+  const app = await appCredentials(env, workspaceId);
+  if (!app?.signingSecret) throw unavailable();
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const timestamp = request.headers.get("x-slack-request-timestamp") ?? "";
   const signature = request.headers.get("x-slack-signature") ?? "";
@@ -452,7 +513,7 @@ export async function slackEventRoute(request: Request, env: Env): Promise<Respo
   const raw = await request.text();
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(env.SLACK_SIGNING_SECRET),
+    new TextEncoder().encode(app.signingSecret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["verify"],
@@ -470,13 +531,13 @@ export async function slackEventRoute(request: Request, env: Env): Promise<Respo
       event: z.object({ type: z.string() }).optional(),
     })
     .parse(JSON.parse(raw));
-  if (input.type === "url_verification" && input.challenge) return json({ challenge: input.challenge });
-  if (input.api_app_id !== env.SLACK_APP_ID) throw new RequestError("Slack app does not match", 403);
+  if (input.type === "url_verification" && input.challenge) {
+    if (input.api_app_id && input.api_app_id !== app.appId) throw new RequestError("Slack app does not match", 403);
+    return json({ challenge: input.challenge });
+  }
+  if (input.api_app_id !== app.appId) throw new RequestError("Slack app does not match", 403);
   if (input.type === "event_callback" && input.event?.type === "app_uninstalled" && input.team_id) {
-    const connection = await database(env)
-      .prepare("SELECT * FROM slack_connections WHERE team_id=?")
-      .bind(input.team_id)
-      .first<SlackConnection>();
+    const connection = await connectionForTeam(env, workspaceId, input.team_id);
     if (connection) {
       await rpcValue(
         env.WORKSPACES.getByName(connection.workspace_id).slackUninstalled(connection.workspace_id, connection.team_id),
@@ -501,10 +562,7 @@ export async function slackEventRoute(request: Request, env: Env): Promise<Respo
         : { kind: "message", channel: event.channel, ts: event.message_ts },
     );
     if (!destination.success) return json({ ok: true });
-    const connection = await database(env)
-      .prepare("SELECT * FROM slack_connections WHERE team_id=?")
-      .bind(input.team_id)
-      .first<SlackConnection>();
+    const connection = await connectionForTeam(env, workspaceId, input.team_id);
     if (connection)
       await rpcValue(
         env.WORKSPACES.getByName(connection.workspace_id).slackUnfurl(connection.workspace_id, {
@@ -554,10 +612,7 @@ export async function slackEventRoute(request: Request, env: Env): Promise<Respo
       return json({ ok: true });
     const identifiers = slackIssueIdentifiers(event.text);
     if (!identifiers.length) return json({ ok: true });
-    const connection = await database(env)
-      .prepare("SELECT * FROM slack_connections WHERE team_id=?")
-      .bind(input.team_id)
-      .first<SlackConnection>();
+    const connection = await connectionForTeam(env, workspaceId, input.team_id);
     if (connection && event.user !== connection.bot_user_id)
       await rpcValue(
         env.WORKSPACES.getByName(connection.workspace_id).slackIssueReplies(connection.workspace_id, {
@@ -579,8 +634,12 @@ export async function slackInteractionRoute(
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response | null> {
-  if (new URL(request.url).pathname !== prefix + "/interactions") return null;
-  if (env.BACKUP_RESTORE_ISOLATED === "true" || !env.SLACK_SIGNING_SECRET) throw unavailable();
+  const url = new URL(request.url);
+  const workspaceId = webhookWorkspace(url, "interactions", env);
+  if (!workspaceId) return null;
+  if (env.BACKUP_RESTORE_ISOLATED === "true") throw unavailable();
+  const app = await appCredentials(env, workspaceId);
+  if (!app?.signingSecret) throw unavailable();
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const timestamp = request.headers.get("x-slack-request-timestamp") ?? "";
   const signature = request.headers.get("x-slack-signature") ?? "";
@@ -594,7 +653,7 @@ export async function slackInteractionRoute(
   if (raw.length > 64 * 1024) throw new RequestError("Slack action is too large", 413);
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(env.SLACK_SIGNING_SECRET),
+    new TextEncoder().encode(app.signingSecret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["verify"],
@@ -621,13 +680,10 @@ export async function slackInteractionRoute(
       response_url: z.string().url(),
     })
     .parse(JSON.parse(encoded));
-  if (payload.api_app_id !== env.SLACK_APP_ID) throw new RequestError("Slack app does not match", 403);
+  if (payload.api_app_id !== app.appId) throw new RequestError("Slack app does not match", 403);
   const ts = payload.message_ts ?? payload.message?.ts;
   if (!ts) return json({});
-  const connection = await database(env)
-    .prepare("SELECT * FROM slack_connections WHERE team_id=?")
-    .bind(payload.team.id)
-    .first<SlackConnection>();
+  const connection = await connectionForTeam(env, workspaceId, payload.team.id);
   const responseUrl = new URL(payload.response_url);
   if (
     responseUrl.protocol !== "https:" ||

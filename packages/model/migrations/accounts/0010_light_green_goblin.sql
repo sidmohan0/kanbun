@@ -1,0 +1,1 @@
+ALTER TABLE `integration_app_credentials` ADD `verified_at` text;

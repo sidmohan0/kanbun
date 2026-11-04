@@ -111,7 +111,8 @@ export async function captureDirectory(database: D1Database): Promise<DatabaseSn
       snapshotTable(
         name,
         results[index * 2 + 1]!.results.map((column) => String(column["name"])),
-        results[index * 2 + 2]!.results,
+        // Provider app credentials can be re-entered by the owner and are never backup material.
+        name === "integration_app_credentials" ? [] : results[index * 2 + 2]!.results,
       ),
     ),
   };
@@ -197,6 +198,7 @@ export async function restoreDirectory(database: D1Database, source: DatabaseSna
         "github_setups",
         "slack_connections",
         "google_sheets_connections",
+        "integration_app_credentials",
       ].includes(table.name)
         ? []
         : table.rows

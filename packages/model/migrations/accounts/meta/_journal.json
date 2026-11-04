@@ -64,6 +64,20 @@
       "when": 1793671173837,
       "tag": "0008_lonely_talon",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1793757614366,
+      "tag": "0009_nice_leader",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1793758363504,
+      "tag": "0010_light_green_goblin",
+      "breakpoints": true
     }
   ]
 }

@@ -37,18 +37,19 @@ Runtime secrets must be stored using the provider's Worker secret interface.
 
 ## Private Worker secrets
 
-| Secret                        | Source                                  | Required when                     |
-| ----------------------------- | --------------------------------------- | --------------------------------- |
-| `RESEND_API_KEY`              | Resend API key for the verified sender  | Email sign-in                     |
-| `TURNSTILE_SECRET_KEY`        | Turnstile widget secret                 | Email sign-in                     |
-| `GITHUB_APP_CLIENT_SECRET`    | Your GitHub App                         | GitHub integration enabled        |
-| `GITHUB_APP_PRIVATE_KEY`      | Your GitHub App PKCS8 PEM               | GitHub integration enabled        |
-| `GITHUB_WEBHOOK_SECRET`       | Random secret matching your App webhook | GitHub integration enabled        |
-| `SLACK_CLIENT_SECRET`         | Your Slack app client secret            | Slack integration enabled         |
-| `SLACK_SIGNING_SECRET`        | Your Slack app signing secret           | Slack integration enabled         |
-| `SLACK_TOKEN_ENCRYPTION_KEY`  | Independent random 32-byte key, base64  | Slack integration enabled         |
-| `GOOGLE_SHEETS_CLIENT_SECRET` | Your Google OAuth web client secret     | Google Sheets integration enabled |
-| `GOOGLE_SHEETS_TOKEN_KEY`     | Independent random 32-byte key, base64  | Google Sheets integration enabled |
+| Secret                                   | Source                                        | Required when                                                           |
+| ---------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------- |
+| `RESEND_API_KEY`                         | Resend API key for the verified sender        | Email sign-in                                                           |
+| `TURNSTILE_SECRET_KEY`                   | Turnstile widget secret                       | Email sign-in                                                           |
+| `GITHUB_APP_CLIENT_SECRET`               | Your GitHub App                               | GitHub integration enabled                                              |
+| `GITHUB_APP_PRIVATE_KEY`                 | Your GitHub App PKCS8 PEM                     | GitHub integration enabled                                              |
+| `GITHUB_WEBHOOK_SECRET`                  | Random secret matching your App webhook       | GitHub integration enabled                                              |
+| `SLACK_CLIENT_SECRET`                    | Your Slack app client secret                  | Slack integration enabled                                               |
+| `SLACK_SIGNING_SECRET`                   | Your Slack app signing secret                 | Slack integration enabled                                               |
+| `SLACK_TOKEN_ENCRYPTION_KEY`             | Optional dedicated random 32-byte key, base64 | Slack integration; optional when self-host mode uses the deployment key |
+| `GOOGLE_SHEETS_CLIENT_SECRET`            | Your Google OAuth web client secret           | Google Sheets integration enabled                                       |
+| `GOOGLE_SHEETS_TOKEN_KEY`                | Optional dedicated random 32-byte key, base64 | Google Sheets; optional when self-host mode uses the deployment key     |
+| `INTEGRATION_CREDENTIALS_ENCRYPTION_KEY` | Independent random 32-byte key, base64        | Self-hosted provider setup enabled                                      |
 
 The following public provider identifiers are Worker configuration, not private secrets:
 
@@ -69,12 +70,13 @@ Slack public identifiers `SLACK_APP_ID` and `SLACK_CLIENT_ID` belong in the inst
 Wrangler vars after setup. See [Slack setup](slack-integration.md) for callback, scope and lifecycle
 configuration. The installer does not collect Slack credentials automatically.
 
-Configure each provider's public identifiers and private secrets together. GitHub, Slack and Google
-credentials identify the provider apps owned by this Kanbun
-installation; workspace owners authorize their own provider access from **Settings → Integrations**.
-The web and downloadable desktop clients never ask users to paste provider app secrets. The desktop
-app opens the hosted integration settings in the system browser; private app credentials remain on
-the service and must never be bundled into the desktop package or renderer.
+The default installation uses platform-managed app credentials; workspace owners separately authorize
+their own provider access from **Settings → Integrations**. A self-hosted installation can instead set
+`INTEGRATION_CREDENTIALS_MODE=workspace` and the deployment-owned encryption key above. Workspace
+owners can then enter their own app credentials in **Provider app setup**. See the
+[BYO provider app guide](provider-app-credentials.md) for callback URLs, scopes and rotation. In both
+modes, provider secrets are stored server-side and never bundled into the desktop package or renderer;
+the desktop app opens integration setup in the system browser.
 
 The tracked `.dev.vars.example` contains comments-only guidance. Keep active sample credential
 assignments out of it: the deployment wizard treats such assignments as required secret inputs.

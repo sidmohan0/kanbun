@@ -6,11 +6,16 @@ import { activeMember } from "./directory";
 import { authTokenHash } from "./email-auth";
 import { body, query, RequestError } from "./requests";
 import { sheetsExport, sheetsWriteRequests } from "./sheets-export";
+import {
+  integrationCredentials,
+  markIntegrationCredentialsVerified,
+  type IntegrationAppConfig,
+} from "./integration-apps";
 
 export interface GoogleSheetsEnvironment {
   GOOGLE_SHEETS_CLIENT_ID?: string;
   GOOGLE_SHEETS_CLIENT_SECRET?: string;
-  /** Base64-encoded 32-byte AES key stored as a Worker secret. */
+  /** Optional dedicated base64-encoded 32-byte token key; self-hosted setup can use its deployment key. */
   GOOGLE_SHEETS_TOKEN_KEY?: string;
   GOOGLE_SHEETS_TRANSPORT?: Fetcher;
 }
@@ -30,8 +35,22 @@ type Connection = {
   last_synced_at: string | null;
   error: string | null;
 };
-const configured = (env: Env) =>
-  !!(env.ACCOUNTS && env.GOOGLE_SHEETS_CLIENT_ID && env.GOOGLE_SHEETS_CLIENT_SECRET && env.GOOGLE_SHEETS_TOKEN_KEY);
+type SheetsAppCredentials = IntegrationAppConfig & { clientId: string; clientSecret: string };
+async function appCredentials(env: Env, workspaceId: string): Promise<SheetsAppCredentials | null> {
+  return (await integrationCredentials(env, workspaceId, "google-sheets", {
+    clientId: env.GOOGLE_SHEETS_CLIENT_ID ?? "",
+    clientSecret: env.GOOGLE_SHEETS_CLIENT_SECRET ?? "",
+  })) as SheetsAppCredentials | null;
+}
+async function configured(env: Env, workspaceId: string) {
+  const app = await appCredentials(env, workspaceId);
+  return !!(
+    env.ACCOUNTS &&
+    app?.clientId &&
+    app.clientSecret &&
+    (env.GOOGLE_SHEETS_TOKEN_KEY || env.INTEGRATION_CREDENTIALS_ENCRYPTION_KEY)
+  );
+}
 const unavailable = () => new RequestError("Google Sheets could not be updated. Try again or reconnect Google.", 503);
 function database(env: Env) {
   if (!env.ACCOUNTS) throw unavailable();
@@ -54,7 +73,10 @@ const random = () =>
     .replaceAll("/", "_")
     .replaceAll("=", "");
 async function tokenKey(env: Env) {
-  const bytes = Uint8Array.from(atob(env.GOOGLE_SHEETS_TOKEN_KEY ?? ""), (c) => c.charCodeAt(0));
+  const bytes = Uint8Array.from(
+    atob(env.GOOGLE_SHEETS_TOKEN_KEY ?? env.INTEGRATION_CREDENTIALS_ENCRYPTION_KEY ?? ""),
+    (c) => c.charCodeAt(0),
+  );
   if (bytes.length !== 32) throw unavailable();
   return crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
@@ -85,23 +107,29 @@ async function transport(env: Env, url: string, init: RequestInit) {
   if (!result.ok) throw unavailable();
   return result;
 }
-async function tokenRequest(env: Env, input: Record<string, string>) {
+async function tokenRequest(env: Env, workspaceId: string, input: Record<string, string>) {
+  const app = await appCredentials(env, workspaceId);
+  if (!app) throw unavailable();
   const result = await transport(env, "https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: env.GOOGLE_SHEETS_CLIENT_ID!,
-      client_secret: env.GOOGLE_SHEETS_CLIENT_SECRET!,
+      client_id: app.clientId,
+      client_secret: app.clientSecret,
       ...input,
     }),
   });
-  return z
-    .object({
-      access_token: z.string().min(1),
-      refresh_token: z.string().min(1).optional(),
-      scope: z.string().optional(),
-    })
-    .parse(await result.json());
+  try {
+    return z
+      .object({
+        access_token: z.string().min(1),
+        refresh_token: z.string().min(1).optional(),
+        scope: z.string().optional(),
+      })
+      .parse(await result.json());
+  } catch {
+    throw unavailable();
+  }
 }
 async function google(env: Env, token: string, path: string, input: object) {
   const result = await transport(env, "https://sheets.googleapis.com/v4/spreadsheets" + path, {
@@ -120,7 +148,7 @@ export async function sheetsConnection(env: Env, workspaceId: string) {
 export async function sheetsStatus(env: Env, workspaceId: string) {
   const row = env.ACCOUNTS ? await sheetsConnection(env, workspaceId) : null;
   return {
-    configured: configured(env),
+    configured: await configured(env, workspaceId),
     connected: !!row,
     spreadsheetUrl: row?.spreadsheet_id ? `https://docs.google.com/spreadsheets/d/${row.spreadsheet_id}/edit` : null,
     issuesEnabled: row ? !!row.issues_enabled : true,
@@ -163,7 +191,7 @@ export async function syncSheets(env: Env, workspaceId: string, store: Store, se
   if (!row) return false;
   if (!force && row.last_synced_seq === String(seq())) return true;
   try {
-    const token = await tokenRequest(env, {
+    const token = await tokenRequest(env, workspaceId, {
       grant_type: "refresh_token",
       refresh_token: await decryptToken(env, workspaceId, row.refresh_token),
     });
@@ -202,7 +230,8 @@ export async function syncSheets(env: Env, workspaceId: string, store: Store, se
 }
 
 async function connect(env: Env, principal: HostedPrincipal) {
-  if (!configured(env)) throw new RequestError("Google Sheets is not configured yet.", 503);
+  if (!(await configured(env, principal.workspaceId)))
+    throw new RequestError("Configure Google OAuth for this workspace before connecting.", 503);
   if (!principal.sessionId) throw new RequestError("Native email sign-in is required to connect Google Sheets", 401);
   await tokenKey(env);
   const state = random(),
@@ -224,7 +253,7 @@ async function connect(env: Env, principal: HostedPrincipal) {
     .replaceAll("=", "");
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.search = new URLSearchParams({
-    client_id: env.GOOGLE_SHEETS_CLIENT_ID!,
+    client_id: (await appCredentials(env, principal.workspaceId))!.clientId,
     redirect_uri: configuration(env).appOrigin + callbackPath,
     response_type: "code",
     scope,
@@ -273,9 +302,11 @@ async function callback(request: Request, env: Env, principal: HostedPrincipal) 
     .first();
   if (!claimed) throw new RequestError("Google authorization expired or was already used. Connect again.", 403);
   if (input.error || !input.code) throw new RequestError("Google authorization was declined. Connect again.");
+  const app = await appCredentials(env, principal.workspaceId);
+  if (!app) throw new RequestError("Configure Google OAuth for this workspace, then connect again.", 503);
   let token: Awaited<ReturnType<typeof tokenRequest>>;
   try {
-    token = await tokenRequest(env, {
+    token = await tokenRequest(env, principal.workspaceId, {
       grant_type: "authorization_code",
       code: input.code,
       redirect_uri: configuration(env).appOrigin + callbackPath,
@@ -283,7 +314,10 @@ async function callback(request: Request, env: Env, principal: HostedPrincipal) 
     });
     if (!token.refresh_token || (token.scope && !token.scope.split(" ").includes(scope))) throw unavailable();
   } catch {
-    throw unavailable();
+    throw new RequestError(
+      "Google rejected the OAuth client or callback. Check this workspace's client settings and reconnect.",
+      503,
+    );
   }
   await sheetsRpcValue(
     env.WORKSPACES.getByName(principal.workspaceId).googleSheetsCommand(principal, {
@@ -291,6 +325,7 @@ async function callback(request: Request, env: Env, principal: HostedPrincipal) 
       token: token.refresh_token,
     }),
   );
+  await markIntegrationCredentialsVerified(env, principal.workspaceId, "google-sheets", app);
   return new Response(null, {
     status: 303,
     headers: {

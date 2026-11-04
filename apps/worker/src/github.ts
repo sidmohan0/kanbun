@@ -8,6 +8,12 @@ import { authTokenHash } from "./email-auth";
 import { body, query, RequestError } from "./requests";
 import { githubRpcValue } from "./github-rpc";
 import { githubDeploymentPreviewLinks, githubPreviewLinks, mergeGitHubPreviewLinks } from "./github-previews";
+import {
+  integrationCredentials,
+  markIntegrationCredentialsVerified,
+  workspaceCredentialsMode,
+  type IntegrationAppConfig,
+} from "./integration-apps";
 
 export interface GithubEnvironment {
   GITHUB_APP_ID?: string;
@@ -37,19 +43,37 @@ const sourceSchema = z.object({
 const catalogSchema = z.array(sourceSchema);
 type Setup = { account_id: string; session_id: string; expires_at: string; catalog: string; error: string | null };
 const unavailable = () => new RequestError("GitHub is unavailable. Try connecting or refreshing again.", 503);
-function configured(env: GithubEnvironment) {
-  return !!(
-    env.GITHUB_APP_ID &&
-    env.GITHUB_APP_CLIENT_ID &&
-    env.GITHUB_APP_SLUG &&
-    env.GITHUB_APP_CLIENT_SECRET &&
-    env.GITHUB_APP_PRIVATE_KEY &&
-    env.GITHUB_WEBHOOK_SECRET
+type GithubAppCredentials = IntegrationAppConfig & {
+  appId: string;
+  appSlug: string;
+  clientId: string;
+  clientSecret: string;
+  privateKey: string;
+  webhookSecret: string;
+};
+async function appCredentials(env: Env, workspaceId: string): Promise<GithubAppCredentials | null> {
+  return (await integrationCredentials(env, workspaceId, "github", {
+    appId: env.GITHUB_APP_ID ?? "",
+    appSlug: env.GITHUB_APP_SLUG ?? "",
+    clientId: env.GITHUB_APP_CLIENT_ID ?? "",
+    clientSecret: env.GITHUB_APP_CLIENT_SECRET ?? "",
+    privateKey: env.GITHUB_APP_PRIVATE_KEY ?? "",
+    webhookSecret: env.GITHUB_WEBHOOK_SECRET ?? "",
+  })) as GithubAppCredentials | null;
+}
+function requireConfiguration(config: GithubAppCredentials | null): asserts config is GithubAppCredentials {
+  if (!githubConfigured(config))
+    throw new RequestError("GitHub App settings are incomplete. Check the saved app fields and try again.", 503);
+}
+const githubConfigured = (config: GithubAppCredentials | null) =>
+  !!(
+    config?.appId &&
+    config.appSlug &&
+    config.clientId &&
+    config.clientSecret &&
+    config.privateKey &&
+    config.webhookSecret
   );
-}
-function requireConfiguration(env: GithubEnvironment) {
-  if (!configured(env)) throw new RequestError("The GitHub App is not configured yet.", 503);
-}
 function response(value: unknown, status = 200, cookie?: string) {
   return new Response(JSON.stringify(value), {
     status,
@@ -125,15 +149,16 @@ async function pages(env: GithubEnvironment, token: string, path: string, proper
     if (rows.length < 100) return values;
   }
 }
-async function installationToken(env: GithubEnvironment, source: GitHubRepositorySource) {
-  requireConfiguration(env);
+async function installationToken(env: Env, workspaceId: string, source: GitHubRepositorySource) {
+  const config = await appCredentials(env, workspaceId);
+  requireConfiguration(config);
   try {
-    const key = await importPKCS8(env.GITHUB_APP_PRIVATE_KEY!, "RS256");
+    const key = await importPKCS8(config.privateKey, "RS256");
     const now = Math.floor(Date.now() / 1000);
     // GitHub requires RS256, permits at most 10 minutes, and recommends 60s of clock-skew allowance.
     const jwt = await new SignJWT({})
       .setProtectedHeader({ alg: "RS256" })
-      .setIssuer(env.GITHUB_APP_CLIENT_ID!)
+      .setIssuer(config.clientId)
       .setIssuedAt(now - 60)
       .setExpirationTime(now + 600)
       .sign(key);
@@ -167,14 +192,15 @@ const pullSchema = z.object({
 
 /** Canonical reads, never webhook payloads, supply visible evidence. All evidence is tied to the captured head. */
 export async function readGitHubPullRequest(
-  env: GithubEnvironment,
+  env: Env,
+  workspaceId: string,
   source: GitHubRepositorySource,
   pullNumber: number,
 ): Promise<GitHubPullRequestSnapshot> {
   const observedAt = new Date().toISOString();
   sourceSchema.parse(source);
   number.parse(pullNumber);
-  const token = await installationToken(env, source);
+  const token = await installationToken(env, workspaceId, source);
   const repo = `/repos/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.name)}`;
   const pullPath = `${repo}/pulls/${pullNumber}`;
   const pull = pullSchema.parse(await github(env, token, pullPath));
@@ -363,7 +389,8 @@ async function saveSetup(
     .run();
 }
 async function connect(env: Env, principal: HostedPrincipal) {
-  requireConfiguration(env);
+  const config = await appCredentials(env, principal.workspaceId);
+  requireConfiguration(config);
   if (!principal.sessionId) throw new RequestError("Native email sign-in is required to connect GitHub", 401);
   const state = random(),
     verifier = random();
@@ -380,7 +407,7 @@ async function connect(env: Env, principal: HostedPrincipal) {
     .run();
   const url = new URL("https://github.com/login/oauth/authorize");
   url.search = new URLSearchParams({
-    client_id: env.GITHUB_APP_CLIENT_ID!,
+    client_id: config.clientId,
     redirect_uri: configuration(env).appOrigin + callbackPath,
     state,
     code_challenge: bytes64(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)))),
@@ -428,7 +455,8 @@ async function callback(request: Request, env: Env, principal: HostedPrincipal) 
     .first();
   if (!claimed) throw new RequestError("This GitHub authorization was already used. Connect again.", 403);
   try {
-    requireConfiguration(env);
+    const config = await appCredentials(env, principal.workspaceId);
+    requireConfiguration(config);
     if (input.error || !input.code) throw unavailable();
     const result = await transport(
       env,
@@ -437,8 +465,8 @@ async function callback(request: Request, env: Env, principal: HostedPrincipal) 
         redirect: "manual",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify({
-          client_id: env.GITHUB_APP_CLIENT_ID,
-          client_secret: env.GITHUB_APP_CLIENT_SECRET,
+          client_id: config.clientId,
+          client_secret: config.clientSecret,
           code: input.code,
           redirect_uri: configuration(env).appOrigin + callbackPath,
           code_verifier: verifier,
@@ -454,7 +482,7 @@ async function callback(request: Request, env: Env, principal: HostedPrincipal) 
       const installation = z
         .object({ id: number, app_id: number, suspended_at: z.string().nullable().optional() })
         .parse(value);
-      if (String(installation.app_id) !== env.GITHUB_APP_ID || installation.suspended_at) continue;
+      if (String(installation.app_id) !== config.appId || installation.suspended_at) continue;
       const repositories = await pages(
         env,
         token,
@@ -476,9 +504,15 @@ async function callback(request: Request, env: Env, principal: HostedPrincipal) 
       }
     }
     await saveSetup(env, principal, catalog);
+    await markIntegrationCredentialsVerified(env, principal.workspaceId, "github", config);
   } catch {
     console.error({ event: "kanbun.github.authorization_failed", errorId: crypto.randomUUID() });
-    await saveSetup(env, principal, [], "GitHub authorization could not be completed. Connect again.");
+    await saveSetup(
+      env,
+      principal,
+      [],
+      "GitHub authorization failed. Check this workspace's App credentials, callback URL and installation, then connect again.",
+    );
   }
   return redirect(env);
 }
@@ -498,11 +532,12 @@ export async function githubRoute(request: Request, env: Env, principal: HostedP
   query(z.strictObject({}), url);
   if (url.pathname === prefix && request.method === "GET") {
     await owner(env, principal);
+    const app = await appCredentials(env, principal.workspaceId);
     const grant = await setup(env, principal);
     return response({
-      configured: configured(env),
-      appName: env.GITHUB_APP_SLUG ?? null,
-      installUrl: env.GITHUB_APP_SLUG ? `https://github.com/apps/${env.GITHUB_APP_SLUG}/installations/new` : null,
+      configured: githubConfigured(app),
+      appName: app?.appSlug ?? null,
+      installUrl: app?.appSlug ? `https://github.com/apps/${app.appSlug}/installations/new` : null,
       repositories: await githubRpcValue(authority.githubRepositories(principal)),
       catalog: grant ? catalogSchema.parse(JSON.parse(grant.catalog)) : [],
       authorizationRequired: !grant,
@@ -568,7 +603,7 @@ export async function githubRoute(request: Request, env: Env, principal: HostedP
       match[2]!.toLowerCase() !== source.name.toLowerCase()
     )
       throw new RequestError("Use a pull request URL from the selected repository.");
-    const snapshot = await readGitHubPullRequest(env, source, number.parse(Number(match[3])));
+    const snapshot = await readGitHubPullRequest(env, principal.workspaceId, source, number.parse(Number(match[3])));
     return response(
       await githubRpcValue(authority.linkGitHubPullRequest(principal, { ...lookup, snapshot, revision })),
     );
@@ -576,7 +611,7 @@ export async function githubRoute(request: Request, env: Env, principal: HostedP
   if (url.pathname === prefix + "/pull-requests/refresh") {
     const { linkId } = await body(z.strictObject({ linkId: z.uuidv7() }), request);
     const link = await githubRpcValue(authority.refreshGitHubPullRequest(principal, linkId));
-    const snapshot = await readGitHubPullRequest(env, link.source, link.number);
+    const snapshot = await readGitHubPullRequest(env, principal.workspaceId, link.source, link.number);
     return response(
       await githubRpcValue(
         authority.linkGitHubPullRequest(principal, {
@@ -596,18 +631,22 @@ export async function githubRoute(request: Request, env: Env, principal: HostedP
 /** This is the only public integration endpoint. Authenticate exact bytes before parsing or invoking a DO. */
 export async function githubWebhookRoute(request: Request, env: Env): Promise<Response | null> {
   const url = new URL(request.url);
-  if (url.pathname !== prefix + "/webhook") return null;
+  const targeted = new RegExp(`^${prefix}/webhook/([0-9a-f-]{36})$`, "i").exec(url.pathname);
+  if (url.pathname !== prefix + "/webhook" && !targeted) return null;
+  if (targeted && !workspaceCredentialsMode(env)) return response({ error: "Not found" }, 404);
   if (env.BACKUP_RESTORE_ISOLATED === "true")
     throw new RequestError("GitHub integration is disabled on isolated recovery targets", 503);
   if (request.method !== "POST") return response({ error: "Method not allowed" }, 405);
   if (url.search) throw new RequestError("Unexpected query parameters");
-  if (!env.GITHUB_WEBHOOK_SECRET) throw new RequestError("GitHub webhook is not configured", 503);
+  const workspaceId = targeted ? z.uuidv7().parse(targeted[1]) : configuration(env).workspaceId;
+  const app = await appCredentials(env, workspaceId);
+  requireConfiguration(app);
   const signature = request.headers.get("X-Hub-Signature-256");
   if (!signature || !/^sha256=[a-f0-9]{64}$/.test(signature)) throw new RequestError("Invalid GitHub signature", 401);
   const raw = await request.arrayBuffer();
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(env.GITHUB_WEBHOOK_SECRET),
+    new TextEncoder().encode(app.webhookSecret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["verify"],
@@ -639,7 +678,6 @@ export async function githubWebhookRoute(request: Request, env: Env): Promise<Re
     .safeParse(value);
   if (!parsed.success) return response({ ok: true }, 202);
   const item = parsed.data;
-  const workspaceId = configuration(env).workspaceId;
   const authority = env.WORKSPACES.getByName(workspaceId);
   const base = { deliveryId, installationId: item.installation.id };
   if (event === "installation" && ["deleted", "suspend"].includes(item.action ?? ""))
