@@ -65,8 +65,9 @@ Windows Server 2025. Pull-request macOS jobs produce unsigned development artifa
 notarization credentials. A push to `main` runs a separate macOS job in the `macos-notarization`
 GitHub Actions environment. That job signs with a Developer ID Application certificate, notarizes
 and staples the app, verifies the signature and ticket, then uploads the DMG and ZIP as workflow
-artifacts. It does not publish a release. Configure the environment to allow `main` deployments and
-require a reviewer. Store `CSC_LINK` (a base64-encoded Developer ID Application PKCS#12
+artifacts. It does not publish a release. The environment's deployment branch allowlist permits
+only `main`. Add required reviewer protection if another trusted reviewer is available. Store
+`CSC_LINK` (a base64-encoded Developer ID Application PKCS#12
 certificate), `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`
 as environment secrets. Remove any repository-level `APPLE_APP_SPECIFIC_PASSWORD` secret after
 the environment secret is in place so pull-request workflows cannot access it. CI continues to
