@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import test from "node:test";
 import { configureHooks, hookCommand } from "../dist/hook-setup.js";
 import electronPath from "electron";
@@ -36,6 +36,22 @@ test("hook setup preserves existing provider hooks and removes only Kanbun handl
   }
 });
 
+test("hook cleanup preserves a user command that resembles the macOS FIFO wrapper", async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "kanbun-hooks-user-command-"));
+  try {
+    const directory = path.join(home, ".claude");
+    await mkdir(directory);
+    const file = path.join(directory, "settings.json");
+    const userCommand = "user-script kanbun-session-hook mkfifo";
+    const initial = { hooks: { Stop: [{ hooks: [{ type: "command", command: userCommand }] }] } };
+    await writeFile(file, JSON.stringify(initial));
+    await configureHooks("claude", false, "/electron", "/app/hook.js", "/tmp/user-owned-spool", home);
+    assert.deepEqual(JSON.parse(await readFile(file, "utf8")).hooks.Stop, initial.hooks.Stop);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("real hook command stores only metadata and collector expires evidence", async () => {
   const spool = await mkdtemp(path.join(tmpdir(), "kanbun-session-observer-"));
   try {
@@ -56,6 +72,41 @@ test("real hook command stores only metadata and collector expires evidence", as
   }
 });
 
+test("hook reader exits after a complete payload even if stdin stays open", async () => {
+  const spool = await mkdtemp(path.join(tmpdir(), "kanbun-session-observer-"));
+  const runtime = new URL("../dist/hook-runtime.js", import.meta.url).href;
+  const child = spawn(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `const { runHookFromStdin } = await import(${JSON.stringify(runtime)}); await runHookFromStdin("codex", process.env.KANBUN_SMOKE_SPOOL); process.exit(0);`,
+    ],
+    {
+      env: { ...process.env, KANBUN_SMOKE_SPOOL: spool },
+      stdio: ["pipe", "ignore", "pipe"],
+    },
+  );
+  const stderr = [];
+  child.stderr.setEncoding("utf8").on("data", (chunk) => stderr.push(chunk));
+  child.stdin.write(JSON.stringify({ session_id: "open-pipe", hook_event_name: "UserPromptSubmit" }));
+  try {
+    let timeout;
+    const result = await Promise.race([
+      new Promise((resolve) => child.once("exit", (status, signal) => resolve({ status, signal }))),
+      new Promise((resolve) => (timeout = setTimeout(() => resolve("timeout"), 5000))),
+    ]);
+    clearTimeout(timeout);
+    if (result === "timeout") child.kill("SIGKILL");
+    assert.notEqual(result, "timeout", "hook reader waited for stdin to close");
+    assert.deepEqual(result, { status: 0, signal: null }, stderr.join(""));
+    assert.equal((await readHookStatuses(spool)).get("codex:open-pipe"), "running");
+  } finally {
+    child.kill("SIGKILL");
+    await rm(spool, { recursive: true, force: true });
+  }
+});
+
 test("configured command runs through the Electron binary", async () => {
   const spool = await mkdtemp(path.join(tmpdir(), "kanbun-session-observer-"));
   try {
@@ -72,4 +123,26 @@ test("configured command runs through the Electron binary", async () => {
   } finally {
     await rm(spool, { recursive: true, force: true });
   }
+});
+
+test("macOS packaged hook command runs in the application main process", () => {
+  const command = hookCommand(
+    "codex",
+    "/Applications/Kanbun.app/Contents/MacOS/kanbun",
+    "/unused/hook.js",
+    "/tmp/observer",
+    "darwin",
+  );
+  assert.match(command, /^umask 077; input_dir=\$\(mktemp -d/u);
+  assert.match(command, /mkfifo "\$input_dir\/input"/u);
+  assert.match(
+    command,
+    /'\/Applications\/Kanbun\.app\/Contents\/MacOS\/kanbun' kanbun-session-hook 'codex' '\/tmp\/observer' "\$input_dir\/input" & hook_pid=\$!/u,
+  );
+  assert.match(command, /cat > "\$input_dir\/input"/u);
+  assert.match(command, /wait "\$hook_pid"/u);
+  assert.match(command, /rm -rf "\$input_dir"/u);
+  assert.match(command, /diagnostics/iu);
+  assert.doesNotMatch(command, /ELECTRON_RUN_AS_NODE|hook\.js|KANBUN_SESSION_HOOK=1|prompt/);
+  assert.match(command, /mkfifo/);
 });

@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
+import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { _electron as electron, expect } from "@playwright/test";
 import executablePath from "electron";
+import { readHookStatuses } from "../dist/hook-store.js";
+import { hookCommand } from "../dist/hook-setup.js";
 
 test("an email callback delivered by the OS returns to the requesting desktop session", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "kanbun-desktop-signin-"));
@@ -61,6 +63,72 @@ test("an email callback delivered by the OS returns to the requesting desktop se
   } finally {
     await desktop?.close();
     await new Promise((resolve) => server.close(resolve));
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("the early hook bootstrap handles events without waiting for stdin EOF", async () => {
+  const spool = await mkdtemp(path.join(tmpdir(), "kanbun-desktop-hook-"));
+  const child = spawn(executablePath, ["--no-sandbox", fileURLToPath(new URL("../dist/main.js", import.meta.url))], {
+    env: {
+      ...process.env,
+      KANBUN_SESSION_HOOK: "1",
+      KANBUN_SESSION_HOOK_PROVIDER: "codex",
+      KANBUN_SESSION_HOOK_DIRECTORY: spool,
+    },
+    stdio: ["pipe", "ignore", "pipe"],
+  });
+  const stderr = [];
+  child.stderr.setEncoding("utf8").on("data", (chunk) => stderr.push(chunk));
+  child.stdin.write(JSON.stringify({ session_id: "early-hook", hook_event_name: "UserPromptSubmit" }));
+  try {
+    let timeout;
+    const result = await Promise.race([
+      new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code, signal }))),
+      new Promise((resolve) => (timeout = setTimeout(() => resolve("timeout"), 5000))),
+    ]);
+    clearTimeout(timeout);
+    if (result === "timeout") child.kill("SIGKILL");
+    assert.notEqual(result, "timeout", `hook bootstrap did not exit: ${stderr.join("")}`);
+    assert.deepEqual(result, { code: 0, signal: null }, stderr.join(""));
+    assert.equal((await readHookStatuses(spool)).get("codex:early-hook"), "running");
+  } finally {
+    child.kill("SIGKILL");
+    await rm(spool, { recursive: true, force: true });
+  }
+});
+
+test("the macOS generated command streams hook input through a temporary FIFO", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "kanbun packaged fifo "));
+  const spool = path.join(directory, "kanbun observer with spaces");
+  const launcher = path.join(directory, "kanbun hook launcher");
+  const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
+  const main = fileURLToPath(new URL("../dist/main.js", import.meta.url));
+  try {
+    await writeFile(launcher, `#!/bin/sh\nexec ${quote(executablePath)} --no-sandbox ${quote(main)} "$@"\n`);
+    await chmod(launcher, 0o700);
+    const command = hookCommand("codex", launcher, "unused", spool, "darwin");
+    const result = spawnSync(command, {
+      shell: true,
+      input: JSON.stringify({
+        session_id: "fifo-hook",
+        hook_event_name: "UserPromptSubmit",
+        prompt: "private fifo fixture",
+      }),
+      encoding: "utf8",
+      timeout: 10000,
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      env: { ...process.env, TMPDIR: directory },
+    });
+    assert.equal(result.status, 0, result.stderr || String(result.error));
+    assert.equal((await readHookStatuses(spool)).get("codex:fifo-hook"), "running");
+    const records = await readdir(spool);
+    assert.doesNotMatch(await readFile(path.join(spool, records[0]), "utf8"), /private fifo fixture/);
+    assert.equal(
+      (await readdir(directory)).some((name) => name.startsWith("kanbun-session-hook.")),
+      false,
+    );
+  } finally {
     await rm(directory, { recursive: true, force: true });
   }
 });

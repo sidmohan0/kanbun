@@ -56,6 +56,8 @@ jobs:
           path: apps/desktop/dist
       - name: Build Linux desktop packages
         run: ./scripts/devcontainer.sh exec pnpm --filter @kanbun/desktop exec electron-builder --config electron-builder.json --linux --publish never
+      - name: Smoke test packaged session hooks
+        run: ./scripts/devcontainer.sh exec env KANBUN_DESKTOP_EXECUTABLE=/workspaces/kanbun/apps/desktop/release/linux-unpacked/kanbun node apps/desktop/test/packaged-hooks-smoke.mjs
       - name: Smoke test packaged Linux application
         run: ./scripts/devcontainer.sh exec env KANBUN_DESKTOP_EXECUTABLE=/workspaces/kanbun/apps/desktop/release/linux-unpacked/kanbun xvfb-run -a node --test apps/desktop/test/shell.test.mjs
       - name: Upload development packages
@@ -103,6 +105,52 @@ jobs:
       - name: Package desktop application
         shell: bash
         run: pnpm --filter @kanbun/desktop exec electron-builder --config electron-builder.json --${{ matrix.platform }} --publish never
+      - name: Smoke test packaged session hooks
+        shell: bash
+        run: |
+          if [[ "${{ matrix.platform }}" == "mac" ]]; then
+            if [[ "$(uname -m)" == "arm64" ]]; then
+              package_arch=arm64
+              package_directory=mac-arm64
+            else
+              package_arch=x86_64
+              package_directory=mac
+            fi
+            executable="apps/desktop/release/$package_directory/Kanbun.app/Contents/MacOS/kanbun"
+            test -x "$executable"
+            file "$executable"
+            lipo "$executable" -verify_arch "$package_arch"
+          else
+            executable="apps/desktop/release/win-unpacked/kanbun.exe"
+          fi
+          test -n "$executable"
+          KANBUN_DESKTOP_EXECUTABLE="$executable" node apps/desktop/test/packaged-hooks-smoke.mjs
+      - name: Report native package footprint
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readdirSync, statSync } from 'node:fs';
+          import path from 'node:path';
+          const root = 'apps/desktop/release';
+          const files = [];
+          const visit = (directory) => {
+            for (const entry of readdirSync(directory, { withFileTypes: true })) {
+              const filename = path.join(directory, entry.name);
+              if (entry.isDirectory()) visit(filename);
+              else if (/\.(dmg|zip)$/iu.test(entry.name) || /-setup\.exe$/iu.test(entry.name)) {
+                files.push({ path: filename, bytes: statSync(filename).size });
+              }
+            }
+          };
+          visit(root);
+          if (!files.length) throw new Error('No native installer artifacts found');
+          const lines = ['### Native desktop package footprint', '', '| Artifact | Bytes | MiB |', '| --- | ---: | ---: |'];
+          for (const file of files.sort((a, b) => a.path.localeCompare(b.path))) {
+            lines.push(`| ${file.path} | ${file.bytes} | ${(file.bytes / 1024 / 1024).toFixed(1)} |`);
+            console.log(`${file.path}: ${file.bytes} bytes (${(file.bytes / 1024 / 1024).toFixed(1)} MiB)`);
+          }
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
+          NODE
       - name: Upload unsigned development packages
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
