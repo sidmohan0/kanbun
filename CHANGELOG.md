@@ -9,6 +9,7 @@ preparation moves them to a dated version heading.
 - Add an owner-only CSV issue import with browser-side schema matching, row preview, validation, duplicate-ID skipping, and team-authorized issue creation.
 - Add opt-in self-hosted setup for workspace-owned GitHub, Slack and Google OAuth app credentials, encrypted server-side and configured from integrations settings.
 - Route packaged macOS hook events through an early app dispatcher and private FIFO, smoke-test hooks on macOS and Windows, and record installer footprint in CI.
+- Remove generated macOS FIFO hook commands from provider settings when the desktop observer is disabled, while preserving user commands.
 - Add an owner setting to include or exclude issue data from the Google Sheets export.
 - Add a Slack message shortcut that lets signed-in workspace members link messages to existing issues without syncing threads.
 - Show each linked PR's current-head reviewer identities and their approval or change-request decision using existing read-only GitHub access.
