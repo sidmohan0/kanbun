@@ -63,8 +63,9 @@ install frozen dependencies without lifecycle scripts, and package without recom
 source. Native jobs only package the compiled output. Mac jobs use macOS 15; Windows jobs use
 Windows Server 2025. CI uploads the packages as workflow artifacts, with no release publication.
 
-On native macOS and Windows runners, packaging also smoke-tests the hook entry point from inside the
-packaged `app.asar`, using the packaged Electron executable. The smoke test enables and invokes both
+On native macOS and Windows runners, packaging also smoke-tests the packaged hook entry point using
+the packaged Electron executable. macOS dispatches hook events through an early main-process command
+path so the hook does not depend on Electron's Node compatibility mode. The smoke test enables and invokes both
 provider hooks, confirms that only session metadata is written, checks that observations become
 stale after the freshness window across a separate process start, then disables hooks and verifies
 that provider-owned settings are preserved. The same jobs list installer artifact sizes in their

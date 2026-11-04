@@ -18,9 +18,16 @@ const marker = "kanbun-session-observer";
 function quote(s: string): string {
   return process.platform === "win32" ? `"${s.replaceAll('"', '\\"')}"` : `'${s.replaceAll("'", "'\\''")}'`;
 }
-export function hookCommand(provider: Provider, executable: string, script: string, spool: string): string {
+export function hookCommand(
+  provider: Provider,
+  executable: string,
+  script: string,
+  spool: string,
+  platform = process.platform,
+): string {
+  if (platform === "darwin") return `${quote(executable)} --kanbun-session-hook ${provider} ${quote(spool)}`;
   const command = `${quote(executable)} ${quote(script)} ${provider} ${quote(spool)}`;
-  return process.platform === "win32"
+  return platform === "win32"
     ? `cmd /d /s /c "set ELECTRON_RUN_AS_NODE=1&& ${command}"`
     : `ELECTRON_RUN_AS_NODE=1 ${command}`;
 }
@@ -58,21 +65,24 @@ export async function configureHooks(
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [entry];
       const group = entry as Record<string, unknown>;
       if (!Array.isArray(group.hooks)) return [entry];
-      const remaining = group.hooks.filter(
-        (item: unknown) =>
-          !(
-            item &&
-            typeof item === "object" &&
-            typeof (item as Record<string, unknown>).command === "string" &&
-            ((item as Record<string, unknown>).command as string).includes(marker) &&
-            ((item as Record<string, unknown>).command as string).includes("hook.js")
-          ),
-      );
+      const remaining = group.hooks.filter((item: unknown) => {
+        const command = item && typeof item === "object" ? (item as Record<string, unknown>).command : null;
+        return !(
+          typeof command === "string" &&
+          ((command.includes(marker) && command.includes("hook.js")) || command.includes("--kanbun-session-hook"))
+        );
+      });
       return remaining.length ? [{ ...group, hooks: remaining }] : [];
     });
     if (enabled)
       retained.push({
-        hooks: [{ type: "command", command: hookCommand(provider, executable, script, spool), timeout: 2 }],
+        hooks: [
+          {
+            type: "command",
+            command: hookCommand(provider, executable, script, spool),
+            timeout: process.platform === "darwin" ? 5 : 2,
+          },
+        ],
       });
     if (retained.length) next[event] = retained;
     else delete next[event];

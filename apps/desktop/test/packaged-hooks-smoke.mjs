@@ -45,7 +45,7 @@ try {
         prompt: "private fixture text",
       }),
       encoding: "utf8",
-      timeout: 15000,
+      timeout: 30000,
       env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
     });
     assert.equal(delivered.status, 0, delivered.stderr || delivered.stdout || String(delivered.error));

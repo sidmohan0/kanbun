@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectSessions, type Collection } from "./collector.js";
 import { configureHooks } from "./hook-setup.js";
+import { runHookFromStdin } from "./hook-runtime.js";
 import { readHookStatuses } from "./hook-store.js";
 import { linuxAutostart } from "./autostart.js";
 import type { MenuItemConstructorOptions } from "electron";
@@ -294,7 +295,15 @@ function createWindow(destination = pendingSignIn ?? application.href) {
   void current.loadURL(destination).catch(() => {});
 }
 
-if (!app.requestSingleInstanceLock()) {
+const hookArgumentIndex = process.argv.indexOf("--kanbun-session-hook");
+if (hookArgumentIndex >= 0) {
+  const provider = process.argv[hookArgumentIndex + 1] ?? "";
+  const directory = process.argv[hookArgumentIndex + 2] ?? "";
+  void app.whenReady().then(async () => {
+    await runHookFromStdin(provider, directory);
+    app.exit(0);
+  });
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else if (process.platform === "darwin" && process.argv.includes("--remove-startup")) {
   // A running instance can exit after handling this command before the new

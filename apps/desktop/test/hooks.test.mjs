@@ -73,3 +73,15 @@ test("configured command runs through the Electron binary", async () => {
     await rm(spool, { recursive: true, force: true });
   }
 });
+
+test("macOS packaged hook command runs in the application main process", () => {
+  const command = hookCommand(
+    "codex",
+    "/Applications/Kanbun.app/Contents/MacOS/kanbun",
+    "/unused/hook.js",
+    "/tmp/observer",
+    "darwin",
+  );
+  assert.equal(command, "'/Applications/Kanbun.app/Contents/MacOS/kanbun' --kanbun-session-hook codex '/tmp/observer'");
+  assert.doesNotMatch(command, /ELECTRON_RUN_AS_NODE|hook\.js/);
+});
