@@ -33,7 +33,7 @@ export type WorkspaceSnapshot = {
   pending: number;
   pendingIssueIds: string[];
   issues: Row<"issue">[];
-  issueIdentifiers: string[];
+  issueIdentifiers: { teamId: string; identifier: string }[];
   organization: Row<"organization"> | null;
   comments: Row<"comment">[];
   notifications: Row<"notification">[];
@@ -222,7 +222,7 @@ function publish() {
         : client.list("issue").flatMap((issue) => {
             if (!visibleTeamIds.includes(issue.teamId) || issue.number < 1) return [];
             const team = client!.get("team", issue.teamId);
-            return team ? [`${team.key}-${issue.number}`] : [];
+            return team ? [{ teamId: team.id, identifier: `${team.key}-${issue.number}` }] : [];
           }),
     teams:
       (authenticationRequired ? undefined : client)

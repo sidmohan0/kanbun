@@ -122,7 +122,7 @@ export function proposeColumnMapping(headers: string[]): Record<ImportField, num
 function parsePriority(value: string): 0 | 1 | 2 | 3 | 4 | null {
   const text = normalized(value);
   const named: Record<string, 0 | 1 | 2 | 3 | 4> = { none: 0, urgent: 1, high: 2, medium: 3, normal: 3, low: 4 };
-  if (text in named) return named[text]!;
+  if (Object.hasOwn(named, text)) return named[text]!;
   if (/^[0-4]$/.test(value.trim())) return Number(value.trim()) as 0 | 1 | 2 | 3 | 4;
   return null;
 }
@@ -130,8 +130,11 @@ function parsePriority(value: string): 0 | 1 | 2 | 3 | 4 | null {
 function validDate(value: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
   if (!match) return false;
-  const date = new Date(`${value.trim()}T00:00:00.000Z`);
-  return date.toISOString().slice(0, 10) === value.trim();
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
 export function previewCsvImport(
@@ -140,7 +143,7 @@ export function previewCsvImport(
   team: Row<"team">,
   states: Row<"workflowState">[],
   members: Row<"user">[],
-  existingIdentifiers: string[],
+  existingIdentifiers: { teamId: string; identifier: string }[],
   labels: Row<"issueLabel">[] = [],
 ): ImportPreviewRow[] {
   if (mapping.title === null) throw new Error("Map a CSV column to Title before continuing.");
@@ -170,7 +173,9 @@ export function previewCsvImport(
     const key = normalized(label.name);
     labelsByName.set(key, [...(labelsByName.get(key) ?? []), label]);
   }
-  const existingTeamIdentifiers = new Set(existingIdentifiers.map((identifier) => identifier.toUpperCase()));
+  const existingTeamIdentifiers = new Set(
+    existingIdentifiers.filter((entry) => entry.teamId === team.id).map((entry) => entry.identifier.toUpperCase()),
+  );
   const seenIdentifiers = new Set<string>();
   return parsed.rows.map((cells, index) => {
     const value = (field: ImportField) => {
@@ -220,21 +225,32 @@ export function previewCsvImport(
         );
       else record.assigneeId = matches[0]!.id;
     }
-    const labelNames = value("labels")
-      .split(",")
-      .map((name) => name.trim())
-      .filter(Boolean);
-    if (labelNames.length) {
+    const labelsValue = value("labels");
+    if (labelsValue) {
       const labelIds: string[] = [];
       const singleSelectGroups = new Set<string>();
-      for (const name of labelNames) {
-        const matches = labelsByName.get(normalized(name)) ?? [];
-        if (matches.length !== 1)
-          errors.push(
-            matches.length ? `Label “${name}” is ambiguous.` : `Label “${name}” is not available in this team.`,
-          );
-        else {
-          const label = matches[0]!;
+      const cells = labelsValue.split(",").map((part) => part.trim());
+      const paths: Row<"issueLabel">[][] = [];
+      const findPaths = (start: number, path: Row<"issueLabel">[]) => {
+        if (paths.length > 1) return;
+        if (start === cells.length) {
+          paths.push(path);
+          return;
+        }
+        for (let end = start; end < cells.length; end += 1) {
+          const name = cells.slice(start, end + 1).join(", ");
+          for (const label of labelsByName.get(normalized(name)) ?? []) findPaths(end + 1, [...path, label]);
+        }
+      };
+      findPaths(0, []);
+      if (paths.length !== 1) {
+        errors.push(
+          paths.length > 1
+            ? `Labels “${labelsValue}” are ambiguous; adjust the CSV value so it maps to one unique set of labels.`
+            : `Label “${labelsValue}” is not available in this team.`,
+        );
+      } else {
+        for (const label of paths[0]!) {
           if (labelIds.includes(label.id)) continue;
           const group = label.parentId ? labels.find((candidate) => candidate.id === label.parentId) : undefined;
           if (group?.groupType === "single" && singleSelectGroups.has(group.id))

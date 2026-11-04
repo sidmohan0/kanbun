@@ -48,7 +48,7 @@ describe("issue CSV import preview", () => {
     const members = [
       { id: "ada", active: true, displayName: "Ada Lovelace", name: "Ada", email: "ada@example.com", archivedAt: null },
     ] as Row<"user">[];
-    const preview = previewCsvImport(parsed, mapping, team, states, members, ["KAN-1"]);
+    const preview = previewCsvImport(parsed, mapping, team, states, members, [{ teamId: "team", identifier: "KAN-1" }]);
     expect(preview[0]).toMatchObject({ duplicate: true, errors: [] });
     expect(preview[1]).toMatchObject({
       duplicate: false,
@@ -71,6 +71,44 @@ describe("issue CSV import preview", () => {
         "Assignee “Missing Person” is not available.",
       ]),
     );
+  });
+
+  it("rejects inherited object property names as priority values", () => {
+    const parsed = parseCsv("Title,Priority\nTask,constructor\nTask,toString\n");
+    const mapping = proposeColumnMapping(parsed.headers);
+    const team = { id: "team", key: "KAN" } as Row<"team">;
+
+    const preview = previewCsvImport(parsed, mapping, team, [], [], []);
+
+    expect(preview.map((row) => row.errors)).toEqual([
+      ["Priority “constructor” is not recognized (use 0–4, none, urgent, high, medium, or low)."],
+      ["Priority “toString” is not recognized (use 0–4, none, urgent, high, medium, or low)."],
+    ]);
+    expect(preview.map((row) => row.record?.priority)).toEqual([undefined, undefined]);
+  });
+
+  it("scopes duplicate identifiers to the selected team", () => {
+    const parsed = parseCsv("ID,Title\nOTHER-1,Task\n");
+    const mapping = proposeColumnMapping(parsed.headers);
+    const team = { id: "team-b", key: "B" } as Row<"team">;
+
+    const preview = previewCsvImport(parsed, mapping, team, [], [], [{ teamId: "team-a", identifier: "OTHER-1" }]);
+
+    expect(preview[0]?.duplicate).toBe(false);
+  });
+
+  it("reports impossible ISO dates without throwing away the preview", () => {
+    const parsed = parseCsv("Title,Due Date\nTask,9999-99-99\n");
+    const preview = previewCsvImport(
+      parsed,
+      proposeColumnMapping(parsed.headers),
+      { id: "team", key: "KAN" } as Row<"team">,
+      [],
+      [],
+      [],
+    );
+
+    expect(preview[0]?.errors).toContain("Due date “9999-99-99” must use YYYY-MM-DD.");
   });
 
   it("requires title mapping and rejects ambiguous status or member values", () => {
@@ -101,5 +139,56 @@ describe("issue CSV import preview", () => {
     ] as Row<"issueLabel">[]);
     expect(preview[0]?.record?.labelIds).toEqual(["label"]);
     expect(preview[0]?.errors).toEqual([]);
+  });
+
+  it("matches comma-containing exported labels and reports ambiguous segmentations", () => {
+    const parsed = parseCsv('Title,Labels\nTask,"priority, high, customer request"\nTask,"one, two, three"\n');
+    const mapping = proposeColumnMapping(parsed.headers);
+    const team = { id: "team", key: "KAN" } as Row<"team">;
+    const labels = [
+      {
+        id: "one-comma",
+        teamId: "team",
+        name: "priority, high",
+        isGroup: false,
+        archivedAt: null,
+        retiredAt: null,
+        parentId: null,
+      },
+      {
+        id: "customer",
+        teamId: "team",
+        name: "customer request",
+        isGroup: false,
+        archivedAt: null,
+        retiredAt: null,
+        parentId: null,
+      },
+      { id: "one", teamId: "team", name: "one", isGroup: false, archivedAt: null, retiredAt: null, parentId: null },
+      {
+        id: "two-comma-three",
+        teamId: "team",
+        name: "two, three",
+        isGroup: false,
+        archivedAt: null,
+        retiredAt: null,
+        parentId: null,
+      },
+      {
+        id: "one-comma-two",
+        teamId: "team",
+        name: "one, two",
+        isGroup: false,
+        archivedAt: null,
+        retiredAt: null,
+        parentId: null,
+      },
+      { id: "three", teamId: "team", name: "three", isGroup: false, archivedAt: null, retiredAt: null, parentId: null },
+    ] as Row<"issueLabel">[];
+
+    const preview = previewCsvImport(parsed, mapping, team, [], [], [], labels);
+
+    expect(preview[0]).toMatchObject({ record: { labelIds: ["one-comma", "customer"] }, errors: [] });
+    expect(preview[1]?.errors[0]).toMatch(/are ambiguous/);
   });
 });
