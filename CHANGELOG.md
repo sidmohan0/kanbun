@@ -5,6 +5,7 @@ preparation moves them to a dated version heading.
 
 ## [Unreleased]
 
+- Explain that GitHub, Slack and Google provider app credentials stay with the Kanbun service while workspace owners authorize access in integration settings, including from the downloaded desktop app.
 - Add an owner setting to include or exclude issue data from the Google Sheets export.
 - Add a Slack message shortcut that lets signed-in workspace members link messages to existing issues without syncing threads.
 - Show each linked PR's current-head reviewer identities and their approval or change-request decision using existing read-only GitHub access.

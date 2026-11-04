@@ -3,6 +3,7 @@ import type { WorkspaceSnapshot } from "./workspace";
 import { membershipRequest } from "./membership";
 import { Button } from "./components/ui/button";
 import { DesktopIntegrationSettings, isDesktopApplication } from "./DesktopIntegrationSettings";
+import { IntegrationSetupHelp } from "./IntegrationSetupHelp";
 
 type Connection = {
   configured: boolean;
@@ -103,12 +104,23 @@ function OwnerGoogleSheetsSettings() {
         </p>
       )}
       {!state && !error && <p role="status">Loading Google Sheets connection…</p>}
-      {state && !state.configured && <p>Google Sheets is not configured for this installation.</p>}
+      {state && !state.configured && (
+        <>
+          <p>Google Sheets is not configured for this installation.</p>
+          <IntegrationSetupHelp provider="Google Sheets" unavailable />
+        </>
+      )}
       {state?.configured && (
         <>
-          <Button disabled={busy} onClick={() => void action("connect")}>
-            {state.connected ? "Reconnect Google" : "Connect Google Sheets"}
-          </Button>
+          <IntegrationSetupHelp
+            provider="Google Sheets"
+            authorization={{
+              label: state.connected ? "Reconnect Google" : "Connect Google Sheets",
+              busy,
+              onAuthorize: () => void action("connect"),
+              variant: "default",
+            }}
+          />
           {state.connected && (
             <>
               {state.spreadsheetUrl && (

@@ -37,24 +37,44 @@ Runtime secrets must be stored using the provider's Worker secret interface.
 
 ## Private Worker secrets
 
-| Secret                       | Source                                  | Required when              |
-| ---------------------------- | --------------------------------------- | -------------------------- |
-| `RESEND_API_KEY`             | Resend API key for the verified sender  | Email sign-in              |
-| `TURNSTILE_SECRET_KEY`       | Turnstile widget secret                 | Email sign-in              |
-| `GITHUB_APP_CLIENT_SECRET`   | Your GitHub App                         | GitHub integration enabled |
-| `GITHUB_APP_PRIVATE_KEY`     | Your GitHub App PKCS8 PEM               | GitHub integration enabled |
-| `GITHUB_WEBHOOK_SECRET`      | Random secret matching your App webhook | GitHub integration enabled |
-| `SLACK_CLIENT_SECRET`        | Your Slack app client secret            | Slack integration enabled  |
-| `SLACK_SIGNING_SECRET`       | Your Slack app signing secret           | Slack integration enabled  |
-| `SLACK_TOKEN_ENCRYPTION_KEY` | Independent random 32-byte key, base64  | Slack integration enabled  |
+| Secret                        | Source                                  | Required when                     |
+| ----------------------------- | --------------------------------------- | --------------------------------- |
+| `RESEND_API_KEY`              | Resend API key for the verified sender  | Email sign-in                     |
+| `TURNSTILE_SECRET_KEY`        | Turnstile widget secret                 | Email sign-in                     |
+| `GITHUB_APP_CLIENT_SECRET`    | Your GitHub App                         | GitHub integration enabled        |
+| `GITHUB_APP_PRIVATE_KEY`      | Your GitHub App PKCS8 PEM               | GitHub integration enabled        |
+| `GITHUB_WEBHOOK_SECRET`       | Random secret matching your App webhook | GitHub integration enabled        |
+| `SLACK_CLIENT_SECRET`         | Your Slack app client secret            | Slack integration enabled         |
+| `SLACK_SIGNING_SECRET`        | Your Slack app signing secret           | Slack integration enabled         |
+| `SLACK_TOKEN_ENCRYPTION_KEY`  | Independent random 32-byte key, base64  | Slack integration enabled         |
+| `GOOGLE_SHEETS_CLIENT_SECRET` | Your Google OAuth web client secret     | Google Sheets integration enabled |
+| `GOOGLE_SHEETS_TOKEN_KEY`     | Independent random 32-byte key, base64  | Google Sheets integration enabled |
 
-GitHub's public App ID, client ID and slug are documented in [GitHub setup](github-integration.md).
-Add them only after the initial installation succeeds. Public site keys and App identifiers are
-configuration; API keys, private keys, session tokens and webhook secrets belong outside Git.
+The following public provider identifiers are Worker configuration, not private secrets:
+
+| Public Worker variable    | Provider setting           | Required when              |
+| ------------------------- | -------------------------- | -------------------------- |
+| `GITHUB_APP_ID`           | GitHub App ID              | GitHub integration enabled |
+| `GITHUB_APP_CLIENT_ID`    | GitHub App OAuth client ID | GitHub integration enabled |
+| `GITHUB_APP_SLUG`         | GitHub App URL slug        | GitHub integration enabled |
+| `SLACK_APP_ID`            | Slack app ID               | Slack integration enabled  |
+| `SLACK_CLIENT_ID`         | Slack OAuth client ID      | Slack integration enabled  |
+| `GOOGLE_SHEETS_CLIENT_ID` | Google OAuth web client ID | Google Sheets enabled      |
+
+Add provider app identifiers only after the initial installation succeeds. Public site keys and App
+identifiers are configuration; API keys, private keys, session tokens and webhook secrets belong
+outside Git.
 
 Slack public identifiers `SLACK_APP_ID` and `SLACK_CLIENT_ID` belong in the installation’s reviewed
 Wrangler vars after setup. See [Slack setup](slack-integration.md) for callback, scope and lifecycle
 configuration. The installer does not collect Slack credentials automatically.
+
+Configure each provider's public identifiers and private secrets together. GitHub, Slack and Google
+credentials identify the provider apps owned by this Kanbun
+installation; workspace owners authorize their own provider access from **Settings → Integrations**.
+The web and downloadable desktop clients never ask users to paste provider app secrets. The desktop
+app opens the hosted integration settings in the system browser; private app credentials remain on
+the service and must never be bundled into the desktop package or renderer.
 
 The tracked `.dev.vars.example` contains comments-only guidance. Keep active sample credential
 assignments out of it: the deployment wizard treats such assignments as required secret inputs.

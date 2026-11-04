@@ -49,6 +49,21 @@
 .github-link-form .button {
   justify-self: start;
 }
+.integration-setup-help {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-left: 2px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+.integration-setup-help p {
+  margin: 0;
+}
+.integration-setup-help p + p {
+  margin-top: 6px;
+}
 .github-connection-actions,
 .github-branch-copy,
 .github-card-actions {
