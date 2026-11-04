@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Row } from "@kanbun/model";
 import { eventSchema } from "@kanbun/events";
 import {
+  activePreviewLinks,
   checksStatus,
   githubAuthorizationUrl,
   githubConnection,
@@ -57,6 +58,24 @@ describe("GitHub source context", () => {
     expect(reviewStatus(pr)).toBe("unknown");
     expect(checksStatus({ ...pr, checksHeadSha: "current" })).toBe("passing");
     expect(reviewStatus({ ...pr, reviewHeadSha: "current" })).toBe("approved");
+  });
+  it("hides preview links after 30 days without activity", () => {
+    const now = Date.parse("2026-11-03T12:00:00.000Z");
+    const previews = [
+      {
+        label: "Fresh Preview",
+        url: "https://fresh.example.org/",
+        icon: "external",
+        updatedAt: "2026-10-20T12:00:00.000Z",
+      },
+      {
+        label: "Expired Preview",
+        url: "https://expired.example.org/",
+        icon: "external",
+        updatedAt: "2026-10-04T11:59:59.000Z",
+      },
+    ] as Row<"issuePullRequest">["previewLinks"];
+    expect(activePreviewLinks(previews, now).map((preview) => preview.label)).toEqual(["Fresh Preview"]);
   });
   it("validates the owner catalog instead of treating malformed configuration as connected", () => {
     const source = {

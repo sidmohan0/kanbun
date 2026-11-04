@@ -7,6 +7,7 @@ import { activeMember } from "./directory";
 import { authTokenHash } from "./email-auth";
 import { body, query, RequestError } from "./requests";
 import { githubRpcValue } from "./github-rpc";
+import { githubPreviewLinks } from "./github-previews";
 
 export interface GithubEnvironment {
   GITHUB_APP_ID?: string;
@@ -155,6 +156,11 @@ const pullSchema = z.object({
   draft: z.boolean().optional(),
   merged: z.boolean(),
   updated_at: z.iso.datetime({ offset: true }),
+  body: z.string().nullable().optional(),
+  user: z
+    .object({ login: z.string().min(1) })
+    .nullable()
+    .optional(),
   head: z.object({ ref: z.string(), sha: z.string().regex(/^[a-f0-9]{40,64}$/i) }),
   base: z.object({ ref: z.string(), repo: z.object({ id: number }) }),
 });
@@ -173,11 +179,19 @@ export async function readGitHubPullRequest(
   const pullPath = `${repo}/pulls/${pullNumber}`;
   const pull = pullSchema.parse(await github(env, token, pullPath));
   if (pull.number !== pullNumber || pull.base.repo.id !== source.repositoryId) throw unavailable();
-  const [reviewValues, checkValues, statusValues] = await Promise.all([
+  const [reviewValues, checkValues, statusValues, commentValues] = await Promise.all([
     pages(env, token, pullPath + "/reviews"),
     pages(env, token, `${repo}/commits/${pull.head.sha}/check-runs`, "check_runs"),
     pages(env, token, `${repo}/commits/${pull.head.sha}/status`, "statuses"),
+    pages(env, token, `${repo}/issues/${pullNumber}/comments`),
   ]);
+  const commentSchema = z.object({
+    body: z.string().nullable(),
+    created_at: z.iso.datetime({ offset: true }),
+    updated_at: z.iso.datetime({ offset: true }),
+    user: z.object({ login: z.string().min(1), type: z.string() }).nullable(),
+  });
+  const comments = commentValues.map((value) => commentSchema.parse(value));
   const latest = new Map<number, { state: string; commit_id: string; login: string | undefined }>();
   const reviewSchema = z.object({
     id: number,
@@ -219,6 +233,15 @@ export async function readGitHubPullRequest(
       : currentChecks.length + statuses.length
         ? "passing"
         : "unknown";
+  const previews = githubPreviewLinks(
+    [
+      { body: pull.body ?? null, updatedAt: pull.updated_at },
+      ...comments
+        .filter((comment) => comment.user && (comment.user.login === pull.user?.login || comment.user.type === "Bot"))
+        .map((comment) => ({ body: comment.body, updatedAt: comment.updated_at ?? comment.created_at })),
+    ],
+    new Date(observedAt),
+  );
   // A push while the independent review/check requests ran must not label a new commit with old evidence.
   const after = pullSchema.parse(await github(env, token, pullPath));
   if (
@@ -246,6 +269,7 @@ export async function readGitHubPullRequest(
     reviewStatus,
     reviewHeadSha: pull.head.sha,
     reviewers,
+    previewLinks: previews,
     checksStatus,
     checksHeadSha: pull.head.sha,
     checksUrl: url + "/checks",
@@ -563,6 +587,7 @@ export async function githubWebhookRoute(request: Request, env: Env): Promise<Re
       repository: z.object({ id: number }).optional(),
       repositories_removed: z.array(z.object({ id: number })).optional(),
       pull_request: z.object({ number }).optional(),
+      issue: z.object({ number, pull_request: z.object({ url: z.string().url() }).optional() }).optional(),
       check_run: z.object({ head_sha: z.string() }).optional(),
       check_suite: z.object({ head_sha: z.string() }).optional(),
       sha: z.string().optional(),
@@ -590,6 +615,20 @@ export async function githubWebhookRoute(request: Request, env: Env): Promise<Re
         kind: "pull_request",
         repositoryId: item.repository.id,
         number: item.pull_request.number,
+      }),
+    );
+  else if (
+    event === "issue_comment" &&
+    ["created", "edited", "deleted"].includes(item.action ?? "") &&
+    item.repository &&
+    item.issue?.pull_request
+  )
+    await githubRpcValue(
+      authority.githubWebhook(workspaceId, {
+        ...base,
+        kind: "pull_request",
+        repositoryId: item.repository.id,
+        number: item.issue.number,
       }),
     );
   else if (["check_run", "check_suite", "status"].includes(event ?? "") && item.repository) {

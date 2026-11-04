@@ -28,6 +28,7 @@ export function githubPullRequest(overrides: Record<string, unknown> = {}) {
     merged: false,
     merged_at: null,
     updated_at: "2026-10-30T10:00:00Z",
+    body: "",
     user: { login: "contributor", avatar_url: "https://avatars.githubusercontent.com/u/301" },
     head: { ref: "feature/pilot", sha: "a".repeat(40) },
     base: { ref: "main", repo: githubRepository },
@@ -72,6 +73,12 @@ export function githubResponses(pr = githubPullRequest()): GithubFixtureResponse
     },
     { method: "GET", path: "/repos/example/pilot/pulls/42", authorization: app, body: pr },
     { method: "GET", path: "/repos/example/pilot/pulls/42/reviews?per_page=100&page=1", authorization: app, body: [] },
+    {
+      method: "GET",
+      path: "/repos/example/pilot/issues/42/comments?per_page=100&page=1",
+      authorization: app,
+      body: [],
+    },
     {
       method: "GET",
       path: `/repos/example/pilot/commits/${sha}/check-runs?per_page=100&page=1`,

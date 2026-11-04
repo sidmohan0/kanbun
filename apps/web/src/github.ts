@@ -1,4 +1,5 @@
 import {
+  GITHUB_PREVIEW_MAX_AGE_MS,
   githubRepositorySourceSchema,
   type GitHubRepositorySource,
   type GitHubPullRequestSnapshot,
@@ -98,6 +99,15 @@ export function reviewStatus(
   pr: Pick<GitHubPullRequestSnapshot, "headSha" | "reviewHeadSha" | "reviewStatus">,
 ): GitHubPullRequestSnapshot["reviewStatus"] {
   return pr.reviewHeadSha === pr.headSha ? pr.reviewStatus : "unknown";
+}
+
+export function activePreviewLinks(previews: Row<"issuePullRequest">["previewLinks"], now = Date.now()) {
+  return previews.filter((preview) => {
+    const updatedAt = Date.parse(preview.updatedAt);
+    return (
+      Number.isFinite(updatedAt) && updatedAt <= now + 5 * 60 * 1000 && now - updatedAt < GITHUB_PREVIEW_MAX_AGE_MS
+    );
+  });
 }
 export const checksLabel = {
   unknown: "Checks unknown",

@@ -92,6 +92,13 @@
       "when": 1793672839497,
       "tag": "0012_gigantic_sinister_six",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1793750162212,
+      "tag": "0013_outstanding_red_wolf",
+      "breakpoints": true
     }
   ]
 }

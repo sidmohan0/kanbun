@@ -273,6 +273,8 @@ it("accepts only signed webhook facts and fetches canonical PR context once per 
     expect((await callback(owner, (await connect(owner)).state)).status).toBe(303);
     const bootstrap = async () =>
       (await (await owner.fetch("/sync/bootstrap?clientId=github-reader")).json()) as BootstrapResponse;
+    const previewLinks = async () =>
+      ((await bootstrap()).rows.issuePullRequest as Row<"issuePullRequest">[])[0]!.previewLinks;
     const teamId = String((await bootstrap()).rows.team![0]!.id);
     expect(
       (
@@ -307,6 +309,89 @@ it("accepts only signed webhook facts and fetches canonical PR context once per 
     expect(linked.status).toBe(200);
     const initial = (await bootstrap()).rows.issuePullRequest![0]!;
     expect(initial).toMatchObject({ title: "Ship the pilot", state: "open" });
+    const previewPr = githubPullRequest({
+      body: "[Staging Preview](https://kanbun-staging.vercel.app)\n[General link](https://example.org/docs)",
+      updated_at: "2026-11-03T11:00:00Z",
+    });
+    const previewResponses = githubResponses(previewPr).map((response) =>
+      response.path.includes("/issues/42/comments?")
+        ? {
+            ...response,
+            body: [
+              {
+                body: "[Author Preview](https://kanbun-author.netlify.app)",
+                created_at: "2026-11-01T11:00:00Z",
+                updated_at: "2026-11-01T11:00:00Z",
+                user: { login: "contributor", type: "User" },
+              },
+              {
+                body: "[Bot Preview](https://kanbun-bot.pages.dev)",
+                created_at: "2026-11-02T11:00:00Z",
+                updated_at: "2026-11-02T11:00:00Z",
+                user: { login: "deploy-preview[bot]", type: "Bot" },
+              },
+              {
+                body: "[Other user Preview](https://other.example.org)",
+                created_at: "2026-11-02T12:00:00Z",
+                updated_at: "2026-11-02T12:00:00Z",
+                user: { login: "not-contributor", type: "User" },
+              },
+            ],
+          }
+        : response,
+    );
+    await runtime.setGithubResponses(previewResponses);
+    expect((await owner.json("/api/integrations/github/pull-requests/refresh", { linkId: initial.id })).status).toBe(
+      200,
+    );
+    expect((await bootstrap()).rows.issuePullRequest![0]!.previewLinks).toEqual([
+      {
+        label: "Staging Preview",
+        url: "https://kanbun-staging.vercel.app/",
+        icon: "triangle",
+        updatedAt: "2026-11-03T11:00:00.000Z",
+      },
+      {
+        label: "Bot Preview",
+        url: "https://kanbun-bot.pages.dev/",
+        icon: "cloud",
+        updatedAt: "2026-11-02T11:00:00.000Z",
+      },
+      {
+        label: "Author Preview",
+        url: "https://kanbun-author.netlify.app/",
+        icon: "network",
+        updatedAt: "2026-11-01T11:00:00.000Z",
+      },
+    ]);
+    const commentEdit = JSON.stringify({
+      action: "edited",
+      installation: { id: GITHUB_INSTALLATION_ID },
+      repository: { id: GITHUB_REPOSITORY_ID },
+      issue: { number: 42, pull_request: { url: "https://api.github.com/repos/example/pilot/pulls/42" } },
+      comment: { id: 999 },
+    });
+    await runtime.setGithubResponses(githubResponses(previewPr));
+    expect(
+      (
+        await runtime.fetch(
+          "/api/integrations/github/webhook",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-GitHub-Event": "issue_comment",
+              "X-GitHub-Delivery": uuidv7(),
+              "X-Hub-Signature-256": githubSignature(commentEdit),
+            },
+            body: commentEdit,
+          },
+          null,
+        )
+      ).status,
+    ).toBe(202);
+    await expect.poll(async () => (await previewLinks()).length, { timeout: 15000 }).toBe(1);
+    expect((await previewLinks())[0]!.label).toBe("Staging Preview");
     await runtime.setGithubResponses(
       githubResponses().map((response) =>
         response.path.includes("/reviews?")
