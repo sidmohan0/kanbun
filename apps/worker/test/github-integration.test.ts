@@ -7,12 +7,173 @@ import {
   githubResponses,
   githubPullRequest,
   githubSignature,
+  GITHUB_INSTALLATION_TOKEN,
   GITHUB_INSTALLATION_ID,
   GITHUB_REPOSITORY_ID,
 } from "./github-runtime";
+import { githubLinkbackBody } from "../src/github-linkbacks";
 
 type Runtime = Awaited<ReturnType<typeof startGithubRuntime>>;
 type Agent = ReturnType<typeof nativeAgent>;
+
+it("formats GitHub linkback context with private-title omission and HTTPS attachments", () => {
+  const shared = {
+    issueId: uuidv7(),
+    incarnation: "issue-incarnation",
+    title: "Private issue title",
+    description: "Description with useful context",
+    attachments: [
+      { title: "Design", url: "https://example.org/design" },
+      { title: "Unsafe", url: "javascript:alert(1)" },
+    ],
+    issueUrl: "https://kanbun.ai/#issues/issue-id",
+  };
+  const privateBody = githubLinkbackBody({ ...shared, privateTeam: true });
+  expect(privateBody.body).not.toContain("Private issue title");
+  expect(privateBody.body).toContain("Description with useful context");
+  expect(privateBody.body).toContain("[Design](https://example.org/design)");
+  expect(privateBody.body).not.toContain("javascript:");
+  const publicBody = githubLinkbackBody({ ...shared, privateTeam: false });
+  expect(publicBody.body).toContain("**Private issue title**");
+});
+
+it("posts explicit, idempotent issue context to a linked PR after checking current private-team scope", async () => {
+  const runtime = await startGithubRuntime();
+  try {
+    const owner = nativeAgent(runtime);
+    await signIn(runtime, owner);
+    expect((await callback(owner, (await connect(owner)).state)).status).toBe(303);
+    const bootstrap = async () =>
+      (await (await owner.fetch("/sync/bootstrap?clientId=github-linkback-reader")).json()) as BootstrapResponse;
+    const team = (await bootstrap()).rows.team![0]!;
+    expect(
+      (
+        await owner.json("/api/integrations/github/repositories", {
+          teamId: team.id,
+          installationId: GITHUB_INSTALLATION_ID,
+          repositoryId: GITHUB_REPOSITORY_ID,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      await (
+        await owner.json("/sync/push", {
+          clientId: "github-linkback-private-team",
+          mutations: [
+            {
+              id: 1,
+              name: "teamUpdate",
+              ts: new Date().toISOString(),
+              args: { id: team.id, patch: { visibility: "private" } },
+            },
+          ],
+        })
+      ).json(),
+    ).toMatchObject({ rejected: [] });
+    const issueId = uuidv7();
+    expect(
+      await (
+        await owner.json("/sync/push", {
+          clientId: "github-linkback-issue",
+          mutations: [
+            {
+              id: 1,
+              name: "issueCreate",
+              ts: new Date().toISOString(),
+              args: {
+                id: issueId,
+                teamId: team.id,
+                title: "Private title omitted from GitHub",
+                description: "Context that the team chose to share.",
+                subscriptionId: uuidv7(),
+              },
+            },
+          ],
+        })
+      ).json(),
+    ).toMatchObject({ rejected: [] });
+    const issue = (await bootstrap()).rows.issue!.find((row) => row.id === issueId)!;
+    expect(
+      await (
+        await owner.json("/sync/push", {
+          clientId: "github-linkback-attachment",
+          mutations: [
+            {
+              id: 1,
+              name: "issueSlackMessageAttach",
+              ts: new Date().toISOString(),
+              args: {
+                id: uuidv7(),
+                issueId,
+                issueIncarnation: issueIncarnation(issue as Row<"issue">),
+                url: "https://example.slack.com/archives/C123/p1234567890123456",
+                title: "Decision thread",
+              },
+            },
+          ],
+        })
+      ).json(),
+    ).toMatchObject({ rejected: [] });
+    expect(
+      (
+        await owner.json("/api/integrations/github/pull-requests/link", {
+          issueId,
+          issueIncarnation: issueIncarnation(issue as Row<"issue">),
+          repositoryBindingId: (await bootstrap()).rows.githubRepository![0]!.id,
+          url: "https://github.com/example/pilot/pull/42",
+        })
+      ).status,
+    ).toBe(200);
+    await runtime.setGithubResponses([
+      ...githubResponses(),
+      {
+        method: "POST",
+        path: "/repos/example/pilot/issues/42/comments",
+        authorization: `Bearer ${GITHUB_INSTALLATION_TOKEN}`,
+        body: { id: 7001 },
+      },
+    ]);
+    const linked = (await bootstrap()).rows.issuePullRequest![0]!;
+    const first = await owner.json("/api/integrations/github/pull-requests/linkback", { linkId: linked.id });
+    expect(first.status).toBe(200);
+    const firstResult = (await first.json()) as { created: boolean };
+    expect(firstResult).toEqual({ created: true });
+    const post = (await runtime.githubRequests()).find(
+      (request) => request.method === "POST" && request.url.endsWith("/issues/42/comments"),
+    );
+    const writeTokenRequest = (await runtime.githubRequests()).find((request) => {
+      if (!request.url.endsWith("/access_tokens")) return false;
+      return JSON.parse(request.body).permissions.issues === "write";
+    });
+    expect(writeTokenRequest).toBeDefined();
+    expect(post?.body).toContain("Context that the team chose to share.");
+    expect(post?.body).not.toContain("Private title omitted from GitHub");
+    expect(post?.body).toContain("Decision thread");
+    expect(post?.body).toContain("https://example.slack.com/archives/C123/p1234567890123456");
+    const providerComment = JSON.parse(post!.body).body as string;
+    await runtime.setGithubResponses(
+      githubResponses().map((response) =>
+        response.path === "/repos/example/pilot/issues/42/comments?per_page=100&page=1"
+          ? { ...response, body: [{ body: providerComment }] }
+          : response,
+      ),
+    );
+    const beforeRepeat = (await runtime.githubRequests()).length;
+    const repeated = await owner.json("/api/integrations/github/pull-requests/linkback", { linkId: linked.id });
+    expect(repeated.status).toBe(200);
+    expect(await repeated.json()).toEqual({ created: false });
+    const afterRepeat = await runtime.githubRequests();
+    expect(afterRepeat.length).toBe(beforeRepeat + 2);
+    expect(
+      afterRepeat.some((request) => request.method === "POST" && request.url.endsWith("/issues/42/comments")),
+    ).toBe(true);
+    expect(
+      afterRepeat.filter((request) => request.method === "POST" && request.url.endsWith("/issues/42/comments")),
+    ).toHaveLength(1);
+  } finally {
+    await runtime.close();
+  }
+}, 30000);
 async function signIn(runtime: Runtime, agent: Agent, email = runtime.ownerEmail, admitted = true) {
   expect((await agent.requestLink(email)).status).toBe(202);
   const token = linkToken(emailLink((await runtime.capturedEmails()).at(-1)!));

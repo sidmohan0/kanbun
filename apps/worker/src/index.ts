@@ -540,6 +540,37 @@ export class WorkspaceDO extends DurableObject<Env> {
     });
   }
 
+  async githubPullRequestLinkback(principal: HostedPrincipal, linkId: string) {
+    return githubRpc(async () => {
+      const context = await this.githubPerson(principal);
+      const row = this.server!.store.get("issuePullRequest", z.uuidv7().parse(linkId));
+      if (!row) throw new RequestError("Pull request link is unavailable", 404);
+      const { issue, binding } = this.githubIssue(context, {
+        issueId: row.issueId,
+        issueIncarnation: row.issueIncarnation,
+        repositoryBindingId: row.repositoryBindingId,
+      });
+      if (row.teamId !== issue.teamId || row.archivedAt)
+        throw new RequestError("Pull request link is unavailable", 404);
+      const team = this.server!.store.get("team", issue.teamId);
+      if (!team || team.archivedAt || team.retiredAt)
+        throw new RequestError("Issue or repository connection is unavailable", 403);
+      return {
+        source: githubSource(binding),
+        number: row.number,
+        issueId: issue.id,
+        incarnation: issueIncarnation(issue),
+        title: issue.title,
+        description: issue.description,
+        privateTeam: team.visibility === "private",
+        attachments: this.server!.store.list("attachment", { issueId: issue.id })
+          .filter((attachment) => !attachment.archivedAt)
+          .map(({ title, url }) => ({ title, url })),
+        issueUrl: `${configuration(this.env).appOrigin}/#issues/${issue.id}`,
+      };
+    });
+  }
+
   async disconnectGitHubRepository(principal: HostedPrincipal, bindingId: string) {
     return githubRpc(async () => {
       const context = await this.githubPerson(principal);

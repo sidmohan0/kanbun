@@ -34,8 +34,12 @@ flow. The setup URL returns the installer to Settings and grants no workspace au
 GitHub distinguishes the [user-authorization callback](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/about-the-user-authorization-callback-url)
 from the setup URL. Use the exact origin and paths in the table; avoid wildcard callbacks.
 
-Use selected-repository installation and read-only repository permissions for **Metadata**,
-**Pull requests**, **Checks** and **Commit statuses**. Linked PR context shows individual reviewers
+Use selected-repository installation and **Issues: write** plus read-only repository permissions
+for **Metadata**, **Pull requests**, **Checks** and **Commit statuses**. Issues: write is used only
+when a team member explicitly chooses **Post issue context** on an already-linked PR; Kanbun does
+not automatically comment on PRs, commits or issues. Existing installations must accept the Issues:
+write permission before linkback comments can be posted. Linking, refreshing and all read-only
+context continue to use the documented read permissions. Linked PR context shows individual reviewers
 who approved or requested changes on the current PR head, using the existing Pull requests: read
 permission. Reviewer names are read-only context; Kanbun does not submit reviews or expose review
 actions. Existing installations need no permission change or reauthorization for reviewer identities.
@@ -115,7 +119,13 @@ Check/status/deployment-status deliveries refresh known PRs and can discover add
 mapped teams. Identifier matching is case-insensitive and accepts separators such as underscores,
 without treating partial words or numbers as references. Automatic issue linking does not parse PR
 descriptions; preview extraction is limited to the selected link parser documented above. Issue
-creation, assignment/status changes and linkback comments are not performed in this behavior.
+creation and assignment/status changes are not performed in this behavior. A member may explicitly
+post the linked issue's current plain-text description and attachment links as a PR comment. The
+comment includes the title for public teams and omits it for private teams, and includes a link to
+the Kanbun issue. Posting requires Issues: write and notifies GitHub subscribers. No automatic
+linkback is sent, so leaving the action unused suppresses that notification. This first slice only
+targets linked PRs; commit and GitHub issue comments, a workspace-wide opt-out, rich image-body
+embedding, and queued retry/delivery history remain follow-up work.
 Installation suspension/deletion or repository removal retires the affected bindings.
 
 The DO deduplicates by installation and delivery ID and persists jobs in `scheduled_job`. A job

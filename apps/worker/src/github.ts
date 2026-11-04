@@ -7,6 +7,7 @@ import { activeMember } from "./directory";
 import { authTokenHash } from "./email-auth";
 import { body, query, RequestError } from "./requests";
 import { githubRpcValue } from "./github-rpc";
+import { githubLinkbackBody } from "./github-linkbacks";
 import { githubDeploymentPreviewLinks, githubPreviewLinks, mergeGitHubPreviewLinks } from "./github-previews";
 import {
   integrationCredentials,
@@ -149,7 +150,12 @@ async function pages(env: GithubEnvironment, token: string, path: string, proper
     if (rows.length < 100) return values;
   }
 }
-async function installationToken(env: Env, workspaceId: string, source: GitHubRepositorySource) {
+async function installationToken(
+  env: Env,
+  workspaceId: string,
+  source: GitHubRepositorySource,
+  writeIssueComments = false,
+) {
   const config = await appCredentials(env, workspaceId);
   requireConfiguration(config);
   try {
@@ -166,13 +172,39 @@ async function installationToken(env: Env, workspaceId: string, source: GitHubRe
       method: "POST",
       input: {
         repository_ids: [source.repositoryId],
-        permissions: { pull_requests: "read", checks: "read", statuses: "read", deployments: "read" },
+        permissions: {
+          pull_requests: "read",
+          ...(writeIssueComments ? { issues: "write" } : {}),
+          checks: "read",
+          statuses: "read",
+          deployments: "read",
+        },
       },
     });
     return z.object({ token: z.string().min(1) }).parse(result).token;
   } catch {
     throw unavailable();
   }
+}
+
+async function postPullRequestLinkback(
+  env: Env,
+  workspaceId: string,
+  source: GitHubRepositorySource,
+  pullNumber: number,
+  content: { body: string; marker: string },
+) {
+  const token = await installationToken(env, workspaceId, source, true);
+  const repo = `/repos/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.name)}`;
+  const comments = await pages(env, token, `${repo}/issues/${pullNumber}/comments`);
+  const hasMarker = comments.some(
+    (value) =>
+      z.object({ body: z.string().nullable() }).safeParse(value).success &&
+      (value as { body: string | null }).body?.includes(content.marker),
+  );
+  if (hasMarker) return { created: false };
+  await github(env, token, `${repo}/issues/${pullNumber}/comments`, { method: "POST", input: { body: content.body } });
+  return { created: true };
 }
 const pullSchema = z.object({
   number,
@@ -624,6 +656,13 @@ export async function githubRoute(request: Request, env: Env, principal: HostedP
         }),
       ),
     );
+  }
+  if (url.pathname === prefix + "/pull-requests/linkback") {
+    const { linkId } = await body(z.strictObject({ linkId: z.uuidv7() }), request);
+    const link = await githubRpcValue(authority.githubPullRequestLinkback(principal, linkId));
+    const comment = githubLinkbackBody(link);
+    const result = await postPullRequestLinkback(env, principal.workspaceId, link.source, link.number, comment);
+    return response(result);
   }
   return response({ error: "Not found" }, 404);
 }

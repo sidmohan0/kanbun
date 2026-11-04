@@ -88,8 +88,10 @@ other open browsers through the existing synchronization stream.
 
 These are source facts, not merge permission. GitHub remains the authority for merging its PRs.
 A merged PR does not automatically mark a Kanbun issue Done in this slice; human issue status and
-GitHub context stay separate. The integration does not create branches, write code, post reviews,
-merge PRs or modify GitHub issues.
+GitHub context stay separate. The integration does not create branches, write code, post reviews or
+merge PRs. A member can explicitly post the issue's current context as a comment on a linked PR;
+this action requires the GitHub App's Issues: write permission and sends a GitHub notification.
+Automatic linkback comments and commit/issue comments are not part of this slice.
 
 ## Owner connection and team scope
 
