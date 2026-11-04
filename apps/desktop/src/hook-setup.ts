@@ -36,6 +36,7 @@ export function hookCommand(
       diagnostic("fifo created"),
       `${quote(executable)} kanbun-session-hook ${quote(provider)} ${quote(spool)} "$input_dir/input" & hook_pid=$!`,
       diagnostic("app launched"),
+      `if [ "\${KANBUN_HOOK_DIAGNOSTICS:-}" = "1" ]; then sleep 2; ps -ww -p "$hook_pid" -o pid=,ppid=,stat=,command= >&2 || true; lsof -n "$input_dir/input" >&2 || true; fi`,
       `cat > "$input_dir/input"`,
       `input_status=$?`,
       diagnostic("stdin copied"),

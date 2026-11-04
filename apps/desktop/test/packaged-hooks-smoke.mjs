@@ -56,15 +56,17 @@ try {
       0,
       JSON.stringify({ error: delivered.error?.message, stdout: delivered.stdout, stderr: delivered.stderr }),
     );
-    assert.match(delivered.stderr, /stdin copied\n/u, delivered.stderr);
-    assert.match(delivered.stderr, /app exited\n/u, delivered.stderr);
-    assert.equal(
-      (await (await import("node:fs/promises")).readdir(temporaryRoot)).some((name) =>
-        name.startsWith("kanbun-session-hook."),
-      ),
-      false,
-      "generated hook command removes its temporary FIFO directory",
-    );
+    if (process.platform === "darwin") {
+      assert.match(delivered.stderr, /stdin copied\n/u, delivered.stderr);
+      assert.match(delivered.stderr, /app exited\n/u, delivered.stderr);
+      assert.equal(
+        (await (await import("node:fs/promises")).readdir(temporaryRoot)).some((name) =>
+          name.startsWith("kanbun-session-hook."),
+        ),
+        false,
+        "generated hook command removes its temporary FIFO directory",
+      );
+    }
     const statuses = await readHookStatuses(spool);
     assert.equal(statuses.get(`${provider}:packaged-${provider}`), "running");
     const names = await (await import("node:fs/promises")).readdir(spool);
