@@ -24,6 +24,7 @@ import {
 } from "@kanbun/sync/client";
 import { resolveWorkspaceContext, workspacePersistenceKey, WorkspaceContextError } from "./context";
 import { rememberAuthentication, requireEmailSignIn } from "./authentication";
+import type { ImportRecord } from "./csv-issue-import";
 
 export type WorkspaceRejection = { id: string; issueId: string | null; message: string };
 export type WorkspaceSnapshot = {
@@ -32,6 +33,7 @@ export type WorkspaceSnapshot = {
   pending: number;
   pendingIssueIds: string[];
   issues: Row<"issue">[];
+  issueIdentifiers: string[];
   organization: Row<"organization"> | null;
   comments: Row<"comment">[];
   notifications: Row<"notification">[];
@@ -84,6 +86,7 @@ let snapshot: WorkspaceSnapshot = {
   pending: 0,
   pendingIssueIds: [],
   issues: [],
+  issueIdentifiers: [],
   organization: null,
   comments: [],
   notifications: [],
@@ -213,6 +216,14 @@ function publish() {
         ?.list("issue")
         .filter((issue) => !issue.trashed && !issue.archivedAt)
         .sort((a, b) => compare(a.sortOrder, b.sortOrder) || compare(a.id, b.id)) ?? [],
+    issueIdentifiers:
+      authenticationRequired || !client
+        ? []
+        : client.list("issue").flatMap((issue) => {
+            if (!visibleTeamIds.includes(issue.teamId) || issue.number < 1) return [];
+            const team = client!.get("team", issue.teamId);
+            return team ? [`${team.key}-${issue.number}`] : [];
+          }),
     teams:
       (authenticationRequired ? undefined : client)
         ?.list("team")
@@ -627,6 +638,47 @@ export const workspace = {
     });
     publish();
     flush(active);
+  },
+  importIssues(teamId: string, records: ImportRecord[]): string[] {
+    if (records.length > 1_000) throw new Error("An import can contain at most 1,000 issues.");
+    const active = editableClient();
+    const ids = records.map(() => uuidv7());
+    records.forEach((record, index) => {
+      const id = ids[index]!;
+      active.mutate("issueCreate", {
+        id,
+        teamId,
+        title: record.title,
+        subscriptionId: uuidv7(),
+        ...(record.description !== undefined ? { description: record.description } : {}),
+        ...(record.stateId ? { stateId: record.stateId } : {}),
+        ...(record.priority !== undefined ? { priority: record.priority } : {}),
+        ...(record.estimate !== undefined ? { estimate: record.estimate } : {}),
+        ...(record.dueDate !== undefined ? { dueDate: record.dueDate } : {}),
+        ...(record.assigneeId ? { assigneeId: record.assigneeId, assigneeSubscriptionId: uuidv7() } : {}),
+        ...(record.labelIds?.length
+          ? { labelIds: record.labelIds, labelLinkIds: record.labelIds.map(() => uuidv7()) }
+          : {}),
+      });
+    });
+    publish();
+    flush(active);
+    return ids;
+  },
+  waitForIssueImports(ids: string[]): Promise<{ accepted: number; rejected: WorkspaceRejection[] }> {
+    return new Promise((resolve) => {
+      const check = () => {
+        const pending = new Set(snapshot.pendingIssueIds);
+        if (ids.some((id) => pending.has(id))) return;
+        const rejected = snapshot.rejections.filter(
+          (rejection) => rejection.issueId !== null && ids.includes(rejection.issueId),
+        );
+        listeners.delete(check);
+        resolve({ accepted: ids.length - rejected.length, rejected });
+      };
+      listeners.add(check);
+      check();
+    });
   },
   setIssueParent(id: string, parentId: string | null): void {
     const active = editableClient();
