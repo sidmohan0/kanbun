@@ -21,3 +21,6 @@ there is no universal guarantee for every spreadsheet program or later re-saving
 The authenticated endpoint is `GET /api/exports.csv?type=issues` or `type=projects`. Downloads are
 marked as attachments and must not be cached. Local requests use the same explicit local actor
 selection as other workspace routes; hosted requests recheck the current native owner authority.
+
+Owners can also import issue rows from a local CSV file in the same Settings section. The browser
+previews field mapping and validation before creating issues; see the [CSV issue import guide](csv-issue-import.md).

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "./components/ui/button";
 import { requireEmailSignIn } from "./authentication";
 import type { WorkspaceSnapshot } from "./workspace";
+import { WorkspaceIssueImport } from "./WorkspaceIssueImport";
 
 export function WorkspaceExportSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
   const [busy, setBusy] = useState(false);
@@ -54,6 +55,7 @@ export function WorkspaceExportSettings({ snapshot }: { snapshot: WorkspaceSnaps
           Download projects CSV
         </Button>
       </div>
+      <WorkspaceIssueImport snapshot={snapshot} />
     </section>
   );
 }
