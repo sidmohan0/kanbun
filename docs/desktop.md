@@ -72,6 +72,8 @@ certificate), `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and
 as environment secrets. Remove any repository-level `APPLE_APP_SPECIFIC_PASSWORD` secret after
 the environment secret is in place so pull-request workflows cannot access it. CI continues to
 upload development and notarized packages only as workflow artifacts, with no release publication.
+The notarized job selects the certificate by its exact `CSC_NAME` identity and fails if code signing
+is skipped.
 
 On native macOS and Windows runners, packaging also smoke-tests the packaged hook entry point using
 the packaged Electron executable. macOS dispatches hook events through an early main-process command

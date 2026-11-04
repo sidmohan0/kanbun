@@ -6,5 +6,6 @@ if (notarization !== "true" && notarization !== "false") {
 }
 
 configuration.mac.notarize = notarization === "true";
+configuration.forceCodeSigning = notarization === "true";
 
 module.exports = configuration;
