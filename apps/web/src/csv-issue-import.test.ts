@@ -109,6 +109,17 @@ describe("issue CSV import preview", () => {
     );
 
     expect(preview[0]?.errors).toContain("Due date “9999-99-99” must use YYYY-MM-DD.");
+
+    const lowYear = parseCsv("Title,Due Date\nTask,0001-01-01\n");
+    const validPreview = previewCsvImport(
+      lowYear,
+      proposeColumnMapping(lowYear.headers),
+      { id: "team", key: "KAN" } as Row<"team">,
+      [],
+      [],
+      [],
+    );
+    expect(validPreview[0]).toMatchObject({ record: { dueDate: "0001-01-01" }, errors: [] });
   });
 
   it("requires title mapping and rejects ambiguous status or member values", () => {
