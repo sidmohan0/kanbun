@@ -74,11 +74,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15
-            platform: mac
-            artifacts: |
-              apps/desktop/release/*.dmg
-              apps/desktop/release/*.zip
           - os: windows-2025
             platform: win
             artifacts: apps/desktop/release/*-setup.exe
@@ -156,4 +151,185 @@ jobs:
         with:
           name: desktop-${{ matrix.platform }}-${{ github.sha }}
           path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+  desktop-macos-development:
+    if: github.event_name == 'pull_request'
+    needs: prepare-desktop
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      KANBUN_MAC_NOTARIZE: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Bootstrap pinned package manager
+        shell: bash
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+      - name: Install frozen packaging dependencies
+        shell: bash
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Download verified desktop JavaScript
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: desktop-compiled-${{ github.sha }}
+          path: apps/desktop/dist
+      - name: Build unsigned macOS development packages
+        shell: bash
+        run: pnpm --filter @kanbun/desktop exec electron-builder --config electron-builder.config.cjs --mac --publish never
+      - name: Smoke test packaged session hooks
+        shell: bash
+        run: |
+          if [[ "$(uname -m)" == "arm64" ]]; then
+            package_arch=arm64
+            package_directory=mac-arm64
+          else
+            package_arch=x86_64
+            package_directory=mac
+          fi
+          executable="apps/desktop/release/$package_directory/Kanbun.app/Contents/MacOS/kanbun"
+          test -x "$executable"
+          file "$executable"
+          lipo "$executable" -verify_arch "$package_arch"
+          KANBUN_DESKTOP_EXECUTABLE="$executable" node apps/desktop/test/packaged-hooks-smoke.mjs
+      - name: Report native package footprint
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readdirSync, statSync } from 'node:fs';
+          import path from 'node:path';
+          const root = 'apps/desktop/release';
+          const files = [];
+          const visit = (directory) => {
+            for (const entry of readdirSync(directory, { withFileTypes: true })) {
+              const filename = path.join(directory, entry.name);
+              if (entry.isDirectory()) visit(filename);
+              else if (/\.(dmg|zip)$/iu.test(entry.name)) files.push({ path: filename, bytes: statSync(filename).size });
+            }
+          };
+          visit(root);
+          if (!files.length) throw new Error('No macOS installer artifacts found');
+          const lines = ['### macOS development package footprint', '', '| Artifact | Bytes | MiB |', '| --- | ---: | ---: |'];
+          for (const file of files.sort((a, b) => a.path.localeCompare(b.path))) {
+            lines.push(`| ${file.path} | ${file.bytes} | ${(file.bytes / 1024 / 1024).toFixed(1)} |`);
+            console.log(`${file.path}: ${file.bytes} bytes (${(file.bytes / 1024 / 1024).toFixed(1)} MiB)`);
+          }
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
+          NODE
+      - name: Upload unsigned macOS development packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-mac-development-${{ github.sha }}
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+          if-no-files-found: error
+  desktop-macos-notarized:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: prepare-desktop
+    runs-on: macos-15
+    environment: macos-notarization
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Bootstrap pinned package manager
+        shell: bash
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+      - name: Install frozen packaging dependencies
+        shell: bash
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Validate protected notarization inputs
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Required macos-notarization environment secret $name is not configured"
+              exit 1
+            fi
+          done
+          if ! node --input-type=module -e 'const p12 = Buffer.from(process.env.CSC_LINK, "base64"); if (p12.length < 100 || p12[0] !== 0x30) process.exit(1);' >/dev/null 2>&1; then
+            echo "::error::CSC_LINK must contain a base64-encoded PKCS#12 certificate"
+            exit 1
+          fi
+      - name: Download verified desktop JavaScript
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: desktop-compiled-${{ github.sha }}
+          path: apps/desktop/dist
+      - name: Build, sign, and notarize macOS packages
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          KANBUN_MAC_NOTARIZE: "true"
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm --filter @kanbun/desktop exec electron-builder --config electron-builder.config.cjs --mac --publish never
+      - name: Verify signed and notarized app
+        shell: bash
+        run: |
+          app="$(find apps/desktop/release -type d -name '*.app' -print -quit)"
+          test -n "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          spctl --assess --type execute --verbose=2 "$app"
+          xcrun stapler validate "$app"
+      - name: Smoke test packaged session hooks
+        shell: bash
+        run: |
+          if [[ "$(uname -m)" == "arm64" ]]; then
+            package_arch=arm64
+            package_directory=mac-arm64
+          else
+            package_arch=x86_64
+            package_directory=mac
+          fi
+          executable="apps/desktop/release/$package_directory/Kanbun.app/Contents/MacOS/kanbun"
+          test -x "$executable"
+          file "$executable"
+          lipo "$executable" -verify_arch "$package_arch"
+          KANBUN_DESKTOP_EXECUTABLE="$executable" node apps/desktop/test/packaged-hooks-smoke.mjs
+      - name: Report notarized macOS package footprint
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readdirSync, statSync } from 'node:fs';
+          import path from 'node:path';
+          const root = 'apps/desktop/release';
+          const files = [];
+          const visit = (directory) => {
+            for (const entry of readdirSync(directory, { withFileTypes: true })) {
+              const filename = path.join(directory, entry.name);
+              if (entry.isDirectory()) visit(filename);
+              else if (/\.(dmg|zip)$/iu.test(entry.name)) files.push({ path: filename, bytes: statSync(filename).size });
+            }
+          };
+          visit(root);
+          if (!files.length) throw new Error('No notarized macOS installer artifacts found');
+          const lines = ['### Notarized macOS package footprint', '', '| Artifact | Bytes | MiB |', '| --- | ---: | ---: |'];
+          for (const file of files.sort((a, b) => a.path.localeCompare(b.path))) {
+            lines.push(`| ${file.path} | ${file.bytes} | ${(file.bytes / 1024 / 1024).toFixed(1)} |`);
+            console.log(`${file.path}: ${file.bytes} bytes (${(file.bytes / 1024 / 1024).toFixed(1)} MiB)`);
+          }
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
+          NODE
+      - name: Upload notarized macOS packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-mac-notarized-${{ github.sha }}
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
           if-no-files-found: error
