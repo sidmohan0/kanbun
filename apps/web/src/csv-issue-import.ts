@@ -2,6 +2,8 @@ import type { Row } from "@kanbun/model";
 
 export const MAX_IMPORT_ROWS = 1_000;
 export const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+export const MAX_LABEL_FIELD_LENGTH = 512;
+export const MAX_LABEL_PARTS = 25;
 
 export const importFields = [
   "sourceIdentifier",
@@ -230,35 +232,47 @@ export function previewCsvImport(
     if (labelsValue) {
       const labelIds: string[] = [];
       const singleSelectGroups = new Set<string>();
-      const cells = labelsValue.split(",").map((part) => part.trim());
-      const paths: Row<"issueLabel">[][] = [];
-      const findPaths = (start: number, path: Row<"issueLabel">[]) => {
-        if (paths.length > 1) return;
-        if (start === cells.length) {
-          paths.push(path);
-          return;
-        }
-        for (let end = start; end < cells.length; end += 1) {
-          const name = cells.slice(start, end + 1).join(", ");
-          for (const label of labelsByName.get(normalized(name)) ?? []) findPaths(end + 1, [...path, label]);
-        }
-      };
-      findPaths(0, []);
-      if (paths.length !== 1) {
+      const exceedsLimit =
+        labelsValue.length > MAX_LABEL_FIELD_LENGTH || labelsValue.split(",").length > MAX_LABEL_PARTS;
+      if (exceedsLimit) {
         errors.push(
-          paths.length > 1
-            ? `Labels “${labelsValue}” are ambiguous; adjust the CSV value so it maps to one unique set of labels.`
-            : `Label “${labelsValue}” is not available in this team.`,
+          `Labels must fit within ${MAX_LABEL_FIELD_LENGTH.toLocaleString()} characters and ${MAX_LABEL_PARTS} comma-separated parts.`,
         );
       } else {
-        for (const label of paths[0]!) {
-          if (labelIds.includes(label.id)) continue;
-          const group = label.parentId ? labels.find((candidate) => candidate.id === label.parentId) : undefined;
-          if (group?.groupType === "single" && singleSelectGroups.has(group.id))
-            errors.push(`Only one label from “${group.name}” can be applied.`);
-          else {
-            if (group?.groupType === "single") singleSelectGroups.add(group.id);
-            labelIds.push(label.id);
+        const cells = labelsValue.split(",").map((part) => part.trim());
+        const pathsByEnd: Row<"issueLabel">[][][] = Array.from({ length: cells.length + 1 }, () => []);
+        pathsByEnd[0] = [[]];
+        for (let start = 0; start < cells.length; start += 1) {
+          if (!pathsByEnd[start]!.length) continue;
+          for (let end = start; end < cells.length; end += 1) {
+            if (pathsByEnd[end + 1]!.length >= 2) continue;
+            const name = cells.slice(start, end + 1).join(", ");
+            const matches = labelsByName.get(normalized(name)) ?? [];
+            for (const prefix of pathsByEnd[start]!) {
+              for (const label of matches) {
+                if (pathsByEnd[end + 1]!.length >= 2) break;
+                pathsByEnd[end + 1]!.push([...prefix, label]);
+              }
+            }
+          }
+        }
+        const paths = pathsByEnd[cells.length]!;
+        if (paths.length !== 1) {
+          errors.push(
+            paths.length > 1
+              ? `Labels “${labelsValue}” are ambiguous; adjust the CSV value so it maps to one unique set of labels.`
+              : `Label “${labelsValue}” is not available in this team.`,
+          );
+        } else {
+          for (const label of paths[0]!) {
+            if (labelIds.includes(label.id)) continue;
+            const group = label.parentId ? labels.find((candidate) => candidate.id === label.parentId) : undefined;
+            if (group?.groupType === "single" && singleSelectGroups.has(group.id))
+              errors.push(`Only one label from “${group.name}” can be applied.`);
+            else {
+              if (group?.groupType === "single") singleSelectGroups.add(group.id);
+              labelIds.push(label.id);
+            }
           }
         }
       }

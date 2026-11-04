@@ -202,4 +202,23 @@ describe("issue CSV import preview", () => {
     expect(preview[0]).toMatchObject({ record: { labelIds: ["one-comma", "customer"] }, errors: [] });
     expect(preview[1]?.errors[0]).toMatch(/are ambiguous/);
   });
+
+  it("rejects label fields above the bounded reconciliation limits before segmentation", () => {
+    const tooManyParts = Array.from({ length: 26 }, (_, index) => `label${index}`).join(", ");
+    const oversizedValue = "x".repeat(513);
+    for (const value of [tooManyParts, oversizedValue]) {
+      const parsed = parseCsv(`Title,Labels\nTask,"${value}"\n`);
+      const preview = previewCsvImport(
+        parsed,
+        proposeColumnMapping(parsed.headers),
+        { id: "team", key: "KAN" } as Row<"team">,
+        [],
+        [],
+        [],
+      );
+
+      expect(preview[0]?.errors).toContain("Labels must fit within 512 characters and 25 comma-separated parts.");
+      expect(preview[0]?.record?.labelIds).toBeUndefined();
+    }
+  });
 });

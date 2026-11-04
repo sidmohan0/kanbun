@@ -14,7 +14,8 @@ The supported issue fields are title (required), description, status, priority, 
 labels. Status names must resolve uniquely in the selected team's active workflow. Priority accepts `0`–`4`, `none`,
 `urgent`, `high`, `medium`, or `low`. Due dates use `YYYY-MM-DD`. Assignees and labels must resolve uniquely to active
 workspace records available to the selected team. Unrecognized values are called out in the preview; rows with errors
-are skipped. Blank optional values use Kanbun's normal defaults.
+are skipped. Each labels cell is limited to 512 characters and 25 comma-separated parts so label reconciliation stays
+bounded; label names containing commas count as multiple parts. Blank optional values use Kanbun's normal defaults.
 
 An `ID`, `Identifier`, or `Issue ID` column can be mapped as a source identifier. If that identifier matches an
 existing issue identifier in the selected team, or repeats earlier in this file, that row is skipped as a duplicate.
