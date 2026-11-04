@@ -61,7 +61,16 @@ The independent `Desktop packaging` workflow runs on pull requests and main push
 its own run. Linux packaging runs in the devcontainer; native Mac and Windows jobs download that output,
 install frozen dependencies without lifecycle scripts, and package without recompiling repository
 source. Native jobs only package the compiled output. Mac jobs use macOS 15; Windows jobs use
-Windows Server 2025. CI uploads the packages as workflow artifacts, with no release publication.
+Windows Server 2025. Pull-request macOS jobs produce unsigned development artifacts without
+notarization credentials. A push to `main` runs a separate macOS job in the `macos-notarization`
+GitHub Actions environment. That job signs with a Developer ID Application certificate, notarizes
+and staples the app, verifies the signature and ticket, then uploads the DMG and ZIP as workflow
+artifacts. It does not publish a release. Configure the environment to allow `main` deployments and
+require a reviewer. Store `CSC_LINK` (a base64-encoded Developer ID Application PKCS#12
+certificate), `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`
+as environment secrets. Remove any repository-level `APPLE_APP_SPECIFIC_PASSWORD` secret after
+the environment secret is in place so pull-request workflows cannot access it. CI continues to
+upload development and notarized packages only as workflow artifacts, with no release publication.
 
 On native macOS and Windows runners, packaging also smoke-tests the packaged hook entry point using
 the packaged Electron executable. macOS dispatches hook events through an early main-process command
@@ -78,12 +87,11 @@ Web deployment waits only for core `ci`, which retains the full verifier and pub
 packaging failures do not block web deployment, test-qualification reuse, or web health reporting.
 Desktop packages remain separate checks; inspect them before distributing desktop builds.
 
-Native jobs disable automatic signing-identity discovery. Unsigned artifacts are development
-builds, not public releases: Mac users will encounter Gatekeeper restrictions and Windows users
-may encounter publisher/reputation warnings. Public Mac distribution needs a Developer ID
-certificate and Apple notarization credentials; public Windows distribution needs a signing
-identity. No signing credentials are stored in the repository. Automatic updates, public download
-hosting and store distribution remain separate work.
+Native jobs disable automatic signing-identity discovery. Pull-request Mac artifacts and Windows
+artifacts remain unsigned development builds; Windows users may encounter publisher/reputation
+warnings. The protected main-branch Mac job uses explicit environment secrets for Developer ID
+signing and Apple notarization. No signing credentials are checked into the repository. Automatic
+updates, public download hosting and store distribution remain separate work.
 
 ## Sessions and navigation
 
