@@ -182,8 +182,17 @@ jobs:
       - name: Smoke test packaged session hooks
         shell: bash
         run: |
-          executable="$(find apps/desktop/release -path '*/Contents/MacOS/*' -iname 'kanbun' -type f -print -quit)"
-          test -n "$executable"
+          if [[ "$(uname -m)" == "arm64" ]]; then
+            package_arch=arm64
+            package_directory=mac-arm64
+          else
+            package_arch=x86_64
+            package_directory=mac
+          fi
+          executable="apps/desktop/release/$package_directory/Kanbun.app/Contents/MacOS/kanbun"
+          test -x "$executable"
+          file "$executable"
+          lipo "$executable" -verify_arch "$package_arch"
           KANBUN_DESKTOP_EXECUTABLE="$executable" node apps/desktop/test/packaged-hooks-smoke.mjs
       - name: Report native package footprint
         shell: bash
@@ -280,8 +289,17 @@ jobs:
       - name: Smoke test packaged session hooks
         shell: bash
         run: |
-          executable="$(find apps/desktop/release -path '*/Contents/MacOS/*' -iname 'kanbun' -type f -print -quit)"
-          test -n "$executable"
+          if [[ "$(uname -m)" == "arm64" ]]; then
+            package_arch=arm64
+            package_directory=mac-arm64
+          else
+            package_arch=x86_64
+            package_directory=mac
+          fi
+          executable="apps/desktop/release/$package_directory/Kanbun.app/Contents/MacOS/kanbun"
+          test -x "$executable"
+          file "$executable"
+          lipo "$executable" -verify_arch "$package_arch"
           KANBUN_DESKTOP_EXECUTABLE="$executable" node apps/desktop/test/packaged-hooks-smoke.mjs
       - name: Report notarized macOS package footprint
         shell: bash
