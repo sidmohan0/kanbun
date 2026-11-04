@@ -660,9 +660,31 @@ export async function githubRoute(request: Request, env: Env, principal: HostedP
   if (url.pathname === prefix + "/pull-requests/linkback") {
     const { linkId } = await body(z.strictObject({ linkId: z.uuidv7() }), request);
     const link = await githubRpcValue(authority.githubPullRequestLinkback(principal, linkId));
+    if (link.claim !== "claimed")
+      return response({ created: false, ...(link.claim === "pending" ? { pending: true } : {}) });
     const comment = githubLinkbackBody(link);
-    const result = await postPullRequestLinkback(env, principal.workspaceId, link.source, link.number, comment);
-    return response(result);
+    try {
+      const result = await postPullRequestLinkback(env, principal.workspaceId, link.source, link.number, comment);
+      await githubRpcValue(
+        authority.settleGitHubPullRequestLinkback(principal, {
+          linkId: link.linkId,
+          incarnation: link.incarnation,
+          claimId: link.claimId,
+          completed: true,
+        }),
+      );
+      return response(result);
+    } catch (error) {
+      await githubRpcValue(
+        authority.settleGitHubPullRequestLinkback(principal, {
+          linkId: link.linkId,
+          incarnation: link.incarnation,
+          claimId: link.claimId,
+          completed: false,
+        }),
+      ).catch(() => undefined);
+      throw error;
+    }
   }
   return response({ error: "Not found" }, 404);
 }

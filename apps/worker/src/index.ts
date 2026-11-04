@@ -540,22 +540,23 @@ export class WorkspaceDO extends DurableObject<Env> {
     });
   }
 
-  async githubPullRequestLinkback(principal: HostedPrincipal, linkId: string) {
-    return githubRpc(async () => {
-      const context = await this.githubPerson(principal);
-      const row = this.server!.store.get("issuePullRequest", z.uuidv7().parse(linkId));
-      if (!row) throw new RequestError("Pull request link is unavailable", 404);
-      const { issue, binding } = this.githubIssue(context, {
-        issueId: row.issueId,
-        issueIncarnation: row.issueIncarnation,
-        repositoryBindingId: row.repositoryBindingId,
-      });
-      if (row.teamId !== issue.teamId || row.archivedAt)
-        throw new RequestError("Pull request link is unavailable", 404);
-      const team = this.server!.store.get("team", issue.teamId);
-      if (!team || team.archivedAt || team.retiredAt)
-        throw new RequestError("Issue or repository connection is unavailable", 403);
-      return {
+  private githubPullRequestLinkbackContext(context: WorkspaceContext, linkId: string) {
+    const row = this.server!.store.get("issuePullRequest", z.uuidv7().parse(linkId));
+    if (!row) throw new RequestError("Pull request link is unavailable", 404);
+    const { issue, binding } = this.githubIssue(context, {
+      issueId: row.issueId,
+      issueIncarnation: row.issueIncarnation,
+      repositoryBindingId: row.repositoryBindingId,
+    });
+    if (row.teamId !== issue.teamId || row.archivedAt) throw new RequestError("Pull request link is unavailable", 404);
+    const team = this.server!.store.get("team", issue.teamId);
+    if (!team || team.archivedAt || team.retiredAt)
+      throw new RequestError("Issue or repository connection is unavailable", 403);
+    return {
+      row,
+      issue,
+      binding,
+      context: {
         source: githubSource(binding),
         number: row.number,
         issueId: issue.id,
@@ -567,7 +568,44 @@ export class WorkspaceDO extends DurableObject<Env> {
           .filter((attachment) => !attachment.archivedAt)
           .map(({ title, url }) => ({ title, url })),
         issueUrl: `${configuration(this.env).appOrigin}/#issues/${issue.id}`,
-      };
+      },
+    };
+  }
+
+  async githubPullRequestLinkback(principal: HostedPrincipal, linkId: string) {
+    return githubRpc(async () => {
+      const context = await this.githubPerson(principal);
+      const { row, issue, context: linkback } = this.githubPullRequestLinkbackContext(context, linkId);
+      const key = `github-linkback:${row.id}:${issueIncarnation(issue)}`;
+      const claimId = uuidv7();
+      const claim = await this.ctx.storage.transaction(async (transaction) => {
+        const current = await transaction.get<{ claimId?: string; expiresAt?: number; completed?: boolean }>(key);
+        if (current?.completed) return "completed" as const;
+        if (current?.claimId && (current.expiresAt ?? 0) > Date.now()) return "pending" as const;
+        await transaction.put(key, { claimId, expiresAt: Date.now() + 10 * 60_000 });
+        return "claimed" as const;
+      });
+      if (claim !== "claimed") return { claim };
+      return { ...linkback, claim, claimId, linkId: row.id };
+    });
+  }
+
+  async settleGitHubPullRequestLinkback(
+    principal: HostedPrincipal,
+    input: { linkId: string; incarnation: string; claimId: string; completed: boolean },
+  ) {
+    return githubRpc(async () => {
+      const actor = await this.githubPerson(principal);
+      const { row, issue } = this.githubPullRequestLinkbackContext(actor, input.linkId);
+      if (issueIncarnation(issue) !== input.incarnation) return { settled: false };
+      const key = `github-linkback:${row.id}:${input.incarnation}`;
+      return this.ctx.storage.transaction(async (transaction) => {
+        const current = await transaction.get<{ claimId?: string; completed?: boolean }>(key);
+        if (current?.claimId !== input.claimId) return { settled: false };
+        if (input.completed) await transaction.put(key, { completed: true, completedAt: Date.now() });
+        else await transaction.delete(key);
+        return { settled: true };
+      });
     });
   }
 

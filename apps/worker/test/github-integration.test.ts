@@ -131,10 +131,25 @@ it("posts explicit, idempotent issue context to a linked PR after checking curre
         path: "/repos/example/pilot/issues/42/comments",
         authorization: `Bearer ${GITHUB_INSTALLATION_TOKEN}`,
         body: { id: 7001 },
+        gate: "linkback-post",
       },
     ]);
     const linked = (await bootstrap()).rows.issuePullRequest![0]!;
-    const first = await owner.json("/api/integrations/github/pull-requests/linkback", { linkId: linked.id });
+    const firstPromise = owner.json("/api/integrations/github/pull-requests/linkback", { linkId: linked.id });
+    let firstPostObserved = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      firstPostObserved = (await runtime.githubRequests()).some(
+        (request) => request.method === "POST" && request.url.endsWith("/issues/42/comments"),
+      );
+      if (firstPostObserved) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(firstPostObserved).toBe(true);
+    const concurrent = await owner.json("/api/integrations/github/pull-requests/linkback", { linkId: linked.id });
+    expect(concurrent.status).toBe(200);
+    expect(await concurrent.json()).toEqual({ created: false, pending: true });
+    await runtime.releaseGithubResponse("linkback-post");
+    const first = await firstPromise;
     expect(first.status).toBe(200);
     const firstResult = (await first.json()) as { created: boolean };
     expect(firstResult).toEqual({ created: true });
@@ -150,6 +165,11 @@ it("posts explicit, idempotent issue context to a linked PR after checking curre
     expect(post?.body).not.toContain("Private title omitted from GitHub");
     expect(post?.body).toContain("Decision thread");
     expect(post?.body).toContain("https://example.slack.com/archives/C123/p1234567890123456");
+    expect(
+      (await runtime.githubRequests()).filter(
+        (request) => request.method === "POST" && request.url.endsWith("/issues/42/comments"),
+      ),
+    ).toHaveLength(1);
     const providerComment = JSON.parse(post!.body).body as string;
     await runtime.setGithubResponses(
       githubResponses().map((response) =>
@@ -163,7 +183,7 @@ it("posts explicit, idempotent issue context to a linked PR after checking curre
     expect(repeated.status).toBe(200);
     expect(await repeated.json()).toEqual({ created: false });
     const afterRepeat = await runtime.githubRequests();
-    expect(afterRepeat.length).toBe(beforeRepeat + 2);
+    expect(afterRepeat.length).toBe(beforeRepeat);
     expect(
       afterRepeat.some((request) => request.method === "POST" && request.url.endsWith("/issues/42/comments")),
     ).toBe(true);
