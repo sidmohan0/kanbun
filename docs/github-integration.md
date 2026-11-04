@@ -34,10 +34,14 @@ Use selected-repository installation and read-only repository permissions for **
 who approved or requested changes on the current PR head, using the existing Pull requests: read
 permission. Reviewer names are read-only context; Kanbun does not submit reviews or expose review
 actions. Existing installations need no permission change or reauthorization for reviewer identities.
-The implementation requests no source-code
-write permission and imports no PR bodies, diffs or code. Subscribe to `pull_request`,
-`pull_request_review`, `check_run`, `check_suite` and `status`. The handler also consumes App
-installation and installation-repository revocation deliveries. Keep webhook TLS verification enabled. Follow GitHub's
+Linked PRs also show selected HTTPS Markdown links labeled with a name ending in `Preview`, read
+from the PR description and comments by the PR author or GitHub bots. Kanbun stores only the selected
+link metadata, never the full PR description or comment text; links expire from the UI after 30 days
+without activity. Subscribe to `issue_comment` so a comment edit or deletion refreshes the linked PR.
+The integration remains read-only and requests no source-code write permission or diff access. Subscribe
+to `pull_request`, `pull_request_review`, `issue_comment`, `check_run`, `check_suite` and `status`.
+The handler also consumes App installation and installation-repository revocation deliveries. Keep
+webhook TLS verification enabled. Follow GitHub's
 [App registration guidance](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app)
 for the provider settings; do not expand permissions to work around a failed connection.
 

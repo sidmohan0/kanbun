@@ -1,12 +1,22 @@
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
+import { Cloud, ExternalLink, Network, Server, Triangle } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { GITHUB_PREVIEW_MAX_AGE_MS } from "@kanbun/events";
 import type { Row } from "@kanbun/model";
 import { branchName, DEFAULT_GIT_BRANCH_FORMAT, issueIdentifier } from "@kanbun/mutators";
 import { issueIncarnation } from "@kanbun/sync";
 import { membershipRequest } from "./membership";
 import { workspace, type WorkspaceSnapshot } from "./workspace";
-import { checksLabel, checksStatus, githubUrl, pullRequestLocation, reviewLabel, reviewStatus } from "./github";
+import {
+  activePreviewLinks,
+  checksLabel,
+  checksStatus,
+  githubUrl,
+  pullRequestLocation,
+  reviewLabel,
+  reviewStatus,
+} from "./github";
 import "./styles/github.css";
 
 export function issuePullRequests(
@@ -55,6 +65,43 @@ function PullRequestReviewers({ pr, label }: { pr: Row<"issuePullRequest">; labe
         </li>
       ))}
     </ul>
+  );
+}
+
+function PullRequestPreviews({ pr, label }: { pr: Row<"issuePullRequest">; label: string }) {
+  const [now, setNow] = useState(Date.now);
+  const expiryAt = Math.min(
+    ...pr.previewLinks
+      .map((preview) => Date.parse(preview.updatedAt) + GITHUB_PREVIEW_MAX_AGE_MS)
+      .filter(Number.isFinite),
+    Number.POSITIVE_INFINITY,
+  );
+  useEffect(() => {
+    if (!Number.isFinite(expiryAt) || expiryAt <= now) return;
+    const delay = Math.max(0, Math.min(expiryAt - now + 1, 2_147_483_647));
+    const timer = window.setTimeout(() => setNow(Date.now()), delay);
+    return () => window.clearTimeout(timer);
+  }, [expiryAt, now]);
+  const links = activePreviewLinks(pr.previewLinks, now);
+  if (!links.length) return null;
+  const icons = { cloud: Cloud, network: Network, server: Server, triangle: Triangle, external: ExternalLink };
+  return (
+    <details className="github-previews">
+      <summary aria-label={label}>Preview links ({links.length})</summary>
+      <ul>
+        {links.map((preview) => {
+          const Icon = icons[preview.icon];
+          return (
+            <li key={preview.url}>
+              <a href={preview.url} target="_blank" rel="noreferrer">
+                <Icon aria-hidden="true" size={14} />
+                <span>{preview.label}</span>
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
   );
 }
 
@@ -271,6 +318,10 @@ export function IssueDevelopment({ issue, snapshot }: { issue: Row<"issue">; sna
               <PullRequestReviewers
                 pr={pr}
                 label={`Current-head reviewers for ${repository.owner}/${repository.name} #${pr.number}`}
+              />
+              <PullRequestPreviews
+                pr={pr}
+                label={`Preview links for ${repository.owner}/${repository.name} #${pr.number}`}
               />
               <p className="github-observation">
                 Last confirmed <time dateTime={pr.observedAt}>{new Date(pr.observedAt).toLocaleString()}</time>

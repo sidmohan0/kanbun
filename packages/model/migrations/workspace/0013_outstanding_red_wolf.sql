@@ -1,0 +1,1 @@
+ALTER TABLE `issue_pull_request` ADD `preview_links` text DEFAULT '[]' NOT NULL;

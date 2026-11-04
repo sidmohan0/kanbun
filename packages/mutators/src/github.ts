@@ -69,6 +69,11 @@ export function canonicalGitHubSnapshot(
     )
       throw new MutationError("Checks link does not match its repository", "invalid");
   }
+  for (const preview of snapshot.previewLinks) {
+    const url = new URL(preview.url);
+    if (url.protocol !== "https:" || !url.hostname || url.username || url.password)
+      throw new MutationError("Preview links must use safe HTTPS URLs", "invalid");
+  }
   return {
     ...snapshot,
     reviewStatus: snapshot.reviewHeadSha === snapshot.headSha ? snapshot.reviewStatus : "unknown",

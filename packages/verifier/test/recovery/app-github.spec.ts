@@ -78,8 +78,14 @@ test("links real GitHub PR context and converges after signed webhook updates in
     await first.goto(`${app.origin}/#issues/${issueId}`);
     await loginEmail(second, app, app.runtime.ownerEmail, `#issues/${issueId}`);
     const development = (page: typeof first) => page.getByRole("region", { name: "Development", exact: true });
+    const previewActivity = new Date().toISOString();
     await app.runtime.setGithubResponses(
-      githubResponses().map((response) =>
+      githubResponses(
+        githubPullRequest({
+          body: "[Staging Preview](https://kanbun-staging.vercel.app)",
+          updated_at: previewActivity,
+        }),
+      ).map((response) =>
         response.path.includes("/reviews?")
           ? {
               ...response,
@@ -93,7 +99,25 @@ test("links real GitHub PR context and converges after signed webhook updates in
                 },
               ],
             }
-          : response,
+          : response.path.includes("/issues/42/comments?")
+            ? {
+                ...response,
+                body: [
+                  {
+                    body: "[Author Preview](https://kanbun-author.netlify.app)",
+                    created_at: previewActivity,
+                    updated_at: previewActivity,
+                    user: { login: "contributor", type: "User" },
+                  },
+                  {
+                    body: "[Bot Preview](https://kanbun-bot.pages.dev)",
+                    created_at: previewActivity,
+                    updated_at: previewActivity,
+                    user: { login: "deploy-preview[bot]", type: "Bot" },
+                  },
+                ],
+              }
+            : response,
       ),
     );
     await development(first)
@@ -108,6 +132,15 @@ test("links real GitHub PR context and converges after signed webhook updates in
     await expect(card).toContainText("feature/pilot");
     await expect(card).toContainText(/reviewer-one\s*Approved/);
     await expect(card).toContainText(/reviewer-two\s*Changes requested/);
+    const previews = card.getByText("Preview links (3)", { exact: true });
+    await expect(previews).toBeVisible();
+    await previews.click();
+    await expect(card.getByRole("link", { name: "Staging Preview", exact: true })).toHaveAttribute(
+      "href",
+      "https://kanbun-staging.vercel.app/",
+    );
+    await expect(card.getByRole("link", { name: "Author Preview", exact: true })).toBeVisible();
+    await expect(card.getByRole("link", { name: "Bot Preview", exact: true })).toBeVisible();
     await app.runtime.setGithubResponses(
       githubResponses(
         githubPullRequest({
