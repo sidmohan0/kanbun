@@ -9,6 +9,8 @@ import { linuxAutostart } from "./autostart.js";
 import type { MenuItemConstructorOptions } from "electron";
 import { appUrl, browserSettingsDestination, linkAction, signInDestination } from "./policy.js";
 
+if (process.env.KANBUN_HOOK_DIAGNOSTICS === "1")
+  process.stderr.write(`Kanbun main entry loaded; hook=${process.env.KANBUN_SESSION_HOOK === "1" ? "yes" : "no"}\n`);
 const application = appUrl(process.env.KANBUN_DESKTOP_URL);
 app.setName("kanbun");
 let window: BrowserWindow | null = null;
@@ -296,10 +298,9 @@ function createWindow(destination = pendingSignIn ?? application.href) {
 }
 
 const hookArgumentIndex = process.argv.indexOf("--kanbun-session-hook");
-if (hookArgumentIndex >= 0) {
-  const provider = process.argv[hookArgumentIndex + 1] ?? "";
-  const directory = process.argv[hookArgumentIndex + 2] ?? "";
-  if (process.env.KANBUN_HOOK_DIAGNOSTICS === "1") process.stderr.write("Kanbun hook command recognized\n");
+if (process.env.KANBUN_SESSION_HOOK === "1" || hookArgumentIndex >= 0) {
+  const provider = process.env.KANBUN_SESSION_HOOK_PROVIDER ?? process.argv[hookArgumentIndex + 1] ?? "";
+  const directory = process.env.KANBUN_SESSION_HOOK_DIRECTORY ?? process.argv[hookArgumentIndex + 2] ?? "";
   void runHookFromStdin(provider, directory).finally(() => app.exit(0));
 } else if (!app.requestSingleInstanceLock()) {
   app.quit();

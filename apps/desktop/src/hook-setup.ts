@@ -25,7 +25,8 @@ export function hookCommand(
   spool: string,
   platform = process.platform,
 ): string {
-  if (platform === "darwin") return `${quote(executable)} --kanbun-session-hook ${provider} ${quote(spool)}`;
+  if (platform === "darwin")
+    return `KANBUN_SESSION_HOOK=1 KANBUN_SESSION_HOOK_PROVIDER=${quote(provider)} KANBUN_SESSION_HOOK_DIRECTORY=${quote(spool)} ${quote(executable)}`;
   const command = `${quote(executable)} ${quote(script)} ${provider} ${quote(spool)}`;
   return platform === "win32"
     ? `cmd /d /s /c "set ELECTRON_RUN_AS_NODE=1&& ${command}"`
@@ -69,7 +70,9 @@ export async function configureHooks(
         const command = item && typeof item === "object" ? (item as Record<string, unknown>).command : null;
         return !(
           typeof command === "string" &&
-          ((command.includes(marker) && command.includes("hook.js")) || command.includes("--kanbun-session-hook"))
+          ((command.includes(marker) && command.includes("hook.js")) ||
+            command.includes("--kanbun-session-hook") ||
+            command.includes("KANBUN_SESSION_HOOK=1"))
         );
       });
       return remaining.length ? [{ ...group, hooks: remaining }] : [];

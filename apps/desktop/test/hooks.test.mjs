@@ -82,6 +82,9 @@ test("macOS packaged hook command runs in the application main process", () => {
     "/tmp/observer",
     "darwin",
   );
-  assert.equal(command, "'/Applications/Kanbun.app/Contents/MacOS/kanbun' --kanbun-session-hook codex '/tmp/observer'");
-  assert.doesNotMatch(command, /ELECTRON_RUN_AS_NODE|hook\.js/);
+  assert.equal(
+    command,
+    "KANBUN_SESSION_HOOK=1 KANBUN_SESSION_HOOK_PROVIDER='codex' KANBUN_SESSION_HOOK_DIRECTORY='/tmp/observer' '/Applications/Kanbun.app/Contents/MacOS/kanbun'",
+  );
+  assert.doesNotMatch(command, /ELECTRON_RUN_AS_NODE|hook\.js|--kanbun-session-hook/);
 });
