@@ -188,20 +188,23 @@ describe("complete SQLite backups", () => {
   });
 });
 
-it("does not revive Google export authorization when restoring the directory", async () => {
+it("omits provider app credentials and does not revive Google export authorization during restore", async () => {
   const source = new DatabaseSync(":memory:"),
     target = new DatabaseSync(":memory:");
   try {
     for (const db of [source, target])
       db.exec(
-        "CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO d1_migrations VALUES(1,'fixture'); CREATE TABLE accounts(id TEXT PRIMARY KEY); CREATE TABLE google_sheets_connections(workspace_id TEXT PRIMARY KEY, refresh_token TEXT)",
+        "CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO d1_migrations VALUES(1,'fixture'); CREATE TABLE accounts(id TEXT PRIMARY KEY); CREATE TABLE google_sheets_connections(workspace_id TEXT PRIMARY KEY, refresh_token TEXT); CREATE TABLE integration_app_credentials(workspace_id TEXT, provider TEXT, credentials_ciphertext TEXT, configured_at TEXT, updated_at TEXT, revision TEXT)",
       );
     source.exec(
-      "INSERT INTO accounts VALUES('owner'); INSERT INTO google_sheets_connections VALUES('workspace','encrypted-refresh-credential')",
+      "INSERT INTO accounts VALUES('owner'); INSERT INTO google_sheets_connections VALUES('workspace','encrypted-refresh-credential'); INSERT INTO integration_app_credentials VALUES('workspace','slack','encrypted-app-secret','now','now','revision')",
     );
-    await restoreDirectory(directory(target), await captureDirectory(directory(source)));
+    const backup = await captureDirectory(directory(source));
+    expect(backup.tables.find((table) => table.name === "integration_app_credentials")?.rows).toEqual([]);
+    await restoreDirectory(directory(target), backup);
     expect(target.prepare("SELECT id FROM accounts").all()).toEqual([{ id: "owner" }]);
     expect(target.prepare("SELECT * FROM google_sheets_connections").all()).toEqual([]);
+    expect(target.prepare("SELECT * FROM integration_app_credentials").all()).toEqual([]);
   } finally {
     source.close();
     target.close();

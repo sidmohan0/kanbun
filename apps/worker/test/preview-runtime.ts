@@ -37,6 +37,8 @@ export async function startPreviewRuntime({
   githubConfig,
   slackConfig,
   sheetsConfig,
+  integrationCredentialsMode,
+  integrationCredentialsKey,
 }: {
   ownerEmail?: string;
   subject?: string;
@@ -51,6 +53,8 @@ export async function startPreviewRuntime({
   githubConfig?: Record<string, string>;
   slackConfig?: Record<string, string>;
   sheetsConfig?: Record<string, string>;
+  integrationCredentialsMode?: "workspace";
+  integrationCredentialsKey?: string;
 } = {}) {
   const instance = randomUUID().slice(0, 8);
   const certWorker = `preview-test-certs-${instance}`;
@@ -110,6 +114,8 @@ export async function startPreviewRuntime({
             ...githubConfig,
             ...slackConfig,
             ...sheetsConfig,
+            ...(integrationCredentialsMode ? { INTEGRATION_CREDENTIALS_MODE: integrationCredentialsMode } : {}),
+            ...(integrationCredentialsKey ? { INTEGRATION_CREDENTIALS_ENCRYPTION_KEY: integrationCredentialsKey } : {}),
             ...(isolatedRestore ? { BACKUP_RESTORE_ISOLATED: "true" } : {}),
           },
           ...(backups ? { r2_buckets: [{ binding: "BACKUPS", bucket_name: `preview-test-backups-${instance}` }] } : {}),
@@ -374,6 +380,9 @@ export async function startPreviewRuntime({
       },
       async slackCredentials() {
         return (await environment.ACCOUNTS.prepare("SELECT * FROM slack_connections").all()).results;
+      },
+      async integrationAppCredentials() {
+        return (await environment.ACCOUNTS.prepare("SELECT * FROM integration_app_credentials").all()).results;
       },
       async slackControl(action: "alarm" | "snapshot" | "gate" | "pending" | "release") {
         const response = await harness

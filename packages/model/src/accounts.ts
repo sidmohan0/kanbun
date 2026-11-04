@@ -150,6 +150,21 @@ export const oauthStates = sqliteTable("oauth_states", {
   expiresAt: text("expires_at").notNull(),
 });
 
+/** Provider app registration details, encrypted per workspace and never exposed to browsers. */
+export const integrationAppCredentials = sqliteTable(
+  "integration_app_credentials",
+  {
+    workspaceId: text("workspace_id").notNull(),
+    provider: text("provider", { enum: ["github", "slack", "google-sheets"] }).notNull(),
+    credentialsCiphertext: text("credentials_ciphertext").notNull(),
+    configuredAt: text("configured_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    verifiedAt: text("verified_at"),
+    revision: text("revision").notNull(),
+  },
+  (t) => [uniqueIndex("integration_app_credentials_workspace_provider").on(t.workspaceId, t.provider)],
+);
+
 /** Owner/session-bound repository catalog. OAuth bearer tokens are never retained. */
 export const githubSetups = sqliteTable("github_setups", {
   workspaceId: text("workspace_id").primaryKey(),

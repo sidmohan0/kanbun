@@ -38,6 +38,11 @@ spreadsheet and its sharing intact. The owner can also revoke the app in Google 
 
 ## Installer configuration
 
+The hosted service uses its deployment-managed OAuth client. Self-hosted installations can configure
+a workspace-owned client from **Provider app setup**; see the
+[BYO provider app guide](provider-app-credentials.md) for the required mode, encryption key and
+callback URL.
+
 Enable the [Google Sheets API](https://developers.google.com/workspace/sheets/api/quickstart/js) in
 the OAuth application's Google Cloud project. Configure a **Web application** OAuth client with this
 exact authorized redirect URI, replacing the origin for independent installations:

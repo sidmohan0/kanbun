@@ -27,11 +27,15 @@ export class MembershipError extends Error {
 }
 
 /** Browser requests carry the current authenticated session; invitations remain in request bodies. */
-export async function membershipRequest(path: string, input?: object): Promise<unknown> {
+export async function membershipRequest(
+  path: string,
+  input?: object,
+  method: "GET" | "POST" | "PUT" | "DELETE" = input === undefined ? "GET" : "POST",
+): Promise<unknown> {
   let response: Response;
   try {
     response = await fetch(path, {
-      method: input === undefined ? "GET" : "POST",
+      method,
       credentials: "include",
       cache: "no-store",
       redirect: "manual",

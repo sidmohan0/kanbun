@@ -30,6 +30,7 @@ import {
   githubLinkSchema,
   githubRepositoryConfigureSchema,
 } from "./github-rpc";
+import { integrationAppsRoute, type IntegrationAppsEnvironment } from "./integration-apps";
 import {
   GITHUB_JOB,
   githubSource,
@@ -116,7 +117,13 @@ import {
 export { localActors } from "./local";
 
 export interface Env
-  extends AuthEnvironment, DirectoryEnvironment, GithubEnvironment, SlackEnvironment, GoogleSheetsEnvironment {
+  extends
+    AuthEnvironment,
+    DirectoryEnvironment,
+    GithubEnvironment,
+    SlackEnvironment,
+    GoogleSheetsEnvironment,
+    IntegrationAppsEnvironment {
   WORKSPACES: DurableObjectNamespace<WorkspaceDO>;
   DOCUMENTS: DurableObjectNamespace<DocumentDO>;
   ASSETS?: Fetcher;
@@ -775,7 +782,7 @@ export class WorkspaceDO extends DurableObject<Env> {
         if (job["kind"] === GITHUB_JOB) {
           try {
             await consumeGitHubJob(this.driver, this.server!, job, (source, number) =>
-              readGitHubPullRequest(this.env, source, number),
+              readGitHubPullRequest(this.env, configuration(this.env).workspaceId, source, number),
             );
           } catch {
             console.error("workspace_github_observer_failed");
@@ -1274,6 +1281,8 @@ export default {
         const expected = request.headers.get("X-Kanbun-Admission");
         if (expected !== null && expected !== principal.admissionId)
           throw new RequestError("Workspace admission has changed; reload this page", 403);
+        const appSetup = await integrationAppsRoute(request, env, principal);
+        if (appSetup) return appSetup;
         const slack = await slackRoute(request, env, principal);
         if (slack) return slack;
         const integration = await githubRoute(request, env, principal);

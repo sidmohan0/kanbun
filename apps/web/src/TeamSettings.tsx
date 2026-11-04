@@ -11,6 +11,7 @@ import { SlackSettings } from "./SlackSettings";
 import { GitHubSettings } from "./GitHubSettings";
 import { GitBranchSettings } from "./GitBranchSettings";
 import { GoogleSheetsSettings } from "./GoogleSheetsSettings";
+import { IntegrationAppSetup } from "./IntegrationAppSetup";
 import { WorkspaceExportSettings } from "./WorkspaceExportSettings";
 import { CodeSettings } from "./CodeSettings";
 
@@ -400,6 +401,7 @@ export function TeamSettings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
       )}
       <div hidden={section !== "integrations"}>
         <WorkspaceExportSettings snapshot={snapshot} />
+        <IntegrationAppSetup />
         <p>
           <a href="#analytics">Open analytics starter</a>
         </p>

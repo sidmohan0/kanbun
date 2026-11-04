@@ -62,6 +62,8 @@ export function startEmailRuntime(
     githubConfig?: Record<string, string>;
     slackConfig?: Record<string, string>;
     sheetsConfig?: Record<string, string>;
+    integrationCredentialsMode?: "workspace";
+    integrationCredentialsKey?: string;
   } = {},
 ) {
   return startPreviewRuntime({ ownerEmail: "owner@example.com", emailAuth: true, ...options });
