@@ -299,10 +299,8 @@ const hookArgumentIndex = process.argv.indexOf("--kanbun-session-hook");
 if (hookArgumentIndex >= 0) {
   const provider = process.argv[hookArgumentIndex + 1] ?? "";
   const directory = process.argv[hookArgumentIndex + 2] ?? "";
-  void app.whenReady().then(async () => {
-    await runHookFromStdin(provider, directory);
-    app.exit(0);
-  });
+  if (process.env.KANBUN_HOOK_DIAGNOSTICS === "1") process.stderr.write("Kanbun hook command recognized\n");
+  void runHookFromStdin(provider, directory).finally(() => app.exit(0));
 } else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else if (process.platform === "darwin" && process.argv.includes("--remove-startup")) {

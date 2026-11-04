@@ -37,6 +37,9 @@ try {
     );
 
     const command = hookCommand(provider, executable, script, spool);
+    const hookEnvironment = { ...process.env, KANBUN_HOOK_DIAGNOSTICS: "1" };
+    if (process.platform === "darwin") delete hookEnvironment.ELECTRON_RUN_AS_NODE;
+    else hookEnvironment.ELECTRON_RUN_AS_NODE = "1";
     const delivered = spawnSync(command, {
       shell: true,
       input: JSON.stringify({
@@ -46,9 +49,13 @@ try {
       }),
       encoding: "utf8",
       timeout: 30000,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      env: hookEnvironment,
     });
-    assert.equal(delivered.status, 0, delivered.stderr || delivered.stdout || String(delivered.error));
+    assert.equal(
+      delivered.status,
+      0,
+      JSON.stringify({ error: delivered.error?.message, stdout: delivered.stdout, stderr: delivered.stderr }),
+    );
     const statuses = await readHookStatuses(spool);
     assert.equal(statuses.get(`${provider}:packaged-${provider}`), "running");
     const names = await (await import("node:fs/promises")).readdir(spool);
