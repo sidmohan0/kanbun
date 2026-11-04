@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { _electron as electron, expect } from "@playwright/test";
 import executablePath from "electron";
+import { readHookStatuses } from "../dist/hook-store.js";
 
 test("an email callback delivered by the OS returns to the requesting desktop session", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "kanbun-desktop-signin-"));
@@ -62,6 +63,37 @@ test("an email callback delivered by the OS returns to the requesting desktop se
     await desktop?.close();
     await new Promise((resolve) => server.close(resolve));
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("the early hook bootstrap handles events without waiting for stdin EOF", async () => {
+  const spool = await mkdtemp(path.join(tmpdir(), "kanbun-desktop-hook-"));
+  const child = spawn(executablePath, ["--no-sandbox", fileURLToPath(new URL("../dist/main.js", import.meta.url))], {
+    env: {
+      ...process.env,
+      KANBUN_SESSION_HOOK: "1",
+      KANBUN_SESSION_HOOK_PROVIDER: "codex",
+      KANBUN_SESSION_HOOK_DIRECTORY: spool,
+    },
+    stdio: ["pipe", "ignore", "pipe"],
+  });
+  const stderr = [];
+  child.stderr.setEncoding("utf8").on("data", (chunk) => stderr.push(chunk));
+  child.stdin.write(JSON.stringify({ session_id: "early-hook", hook_event_name: "UserPromptSubmit" }));
+  try {
+    let timeout;
+    const result = await Promise.race([
+      new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code, signal }))),
+      new Promise((resolve) => (timeout = setTimeout(() => resolve("timeout"), 5000))),
+    ]);
+    clearTimeout(timeout);
+    if (result === "timeout") child.kill("SIGKILL");
+    assert.notEqual(result, "timeout", `hook bootstrap did not exit: ${stderr.join("")}`);
+    assert.deepEqual(result, { code: 0, signal: null }, stderr.join(""));
+    assert.equal((await readHookStatuses(spool)).get("codex:early-hook"), "running");
+  } finally {
+    child.kill("SIGKILL");
+    await rm(spool, { recursive: true, force: true });
   }
 });
 
