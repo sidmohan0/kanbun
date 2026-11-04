@@ -34,7 +34,7 @@ export function hookCommand(
       `trap 'rm -rf "$input_dir"' EXIT`,
       `mkfifo "$input_dir/input" || exit 1`,
       diagnostic("fifo created"),
-      `KANBUN_SESSION_HOOK=1 KANBUN_SESSION_HOOK_PROVIDER=${quote(provider)} KANBUN_SESSION_HOOK_DIRECTORY=${quote(spool)} KANBUN_SESSION_HOOK_INPUT_FILE="$input_dir/input" ${quote(executable)} & hook_pid=$!`,
+      `${quote(executable)} --kanbun-session-hook ${quote(provider)} ${quote(spool)} "$input_dir/input" & hook_pid=$!`,
       diagnostic("app launched"),
       `cat > "$input_dir/input"`,
       `input_status=$?`,

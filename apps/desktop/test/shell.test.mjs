@@ -105,7 +105,7 @@ test("the macOS generated command streams hook input through a temporary FIFO", 
   const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
   const main = fileURLToPath(new URL("../dist/main.js", import.meta.url));
   try {
-    await writeFile(launcher, `#!/bin/sh\nexec ${quote(executablePath)} --no-sandbox ${quote(main)}\n`);
+    await writeFile(launcher, `#!/bin/sh\nexec ${quote(executablePath)} --no-sandbox ${quote(main)} "$@"\n`);
     await chmod(launcher, 0o700);
     const command = hookCommand("codex", launcher, "unused", spool, "darwin");
     const result = spawnSync(command, {

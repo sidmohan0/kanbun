@@ -6,7 +6,9 @@ if (process.env.KANBUN_SESSION_HOOK === "1" || hookArgumentIndex >= 0) {
   if (process.env.KANBUN_HOOK_DIAGNOSTICS === "1") process.stderr.write("hook dispatcher entered\n");
   const provider = process.env.KANBUN_SESSION_HOOK_PROVIDER ?? process.argv[hookArgumentIndex + 1] ?? "";
   const directory = process.env.KANBUN_SESSION_HOOK_DIRECTORY ?? process.argv[hookArgumentIndex + 2] ?? "";
-  const inputFile = process.env.KANBUN_SESSION_HOOK_INPUT_FILE;
+  const inputFile =
+    process.env.KANBUN_SESSION_HOOK_INPUT_FILE ??
+    (hookArgumentIndex >= 0 ? process.argv[hookArgumentIndex + 3] : undefined);
   if (process.env.KANBUN_HOOK_DIAGNOSTICS === "1")
     process.stderr.write(`hook input source: ${inputFile ? "fifo" : "stdin"}\n`);
   const hook = inputFile ? runHookFromFile(provider, directory, inputFile) : runHookFromStdin(provider, directory);
