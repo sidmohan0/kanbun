@@ -73,11 +73,23 @@ fallback summary. The report is operational evidence and is not a required PR ch
   repeated sign-in does not restore removed access. See the [email flow](ux/email-sign-in.md).
 - **D1 connectivity:** inspect the accounts database binding and Cloudflare D1 status. The health
   query reads no account or issue rows. Do not recreate the database or apply unreviewed migrations.
+- **Release guard blocks deployment after a schema change:** the automatic releaser refuses a
+  candidate whose `packages/model/migrations` differ from the deployed version's source, and asks
+  for a separate compatible rollout. Run the manual compatible rollout with
+  `gh workflow run deploy-preview.yml`, which applies pending accounts migrations through
+  `wrangler d1 migrations apply` and deploys the reviewed main head, then rerun the health
+  workflow. Do not bypass the guard by deploying an unreviewed candidate or rolling back across
+  the schema boundary. After the rollout succeeds, automatic deployments resume on their own.
+- **Merge commit has no CI run:** a lost GitHub push event leaves main without a `ci` run for the
+  merged commit, so the health gate reports the deployed source as not CI-verified even though the
+  deployment itself is healthy. Direct pushes to main are declined by branch protection; re-trigger
+  verification with a trivial pull request and let its automatic deploy follow.
 - **Unknown or stale deployed source:** inspect the latest successful main CI and
   [Deploy preview runs](https://github.com/sidmohan0/kanbun/actions/workflows/deploy-preview.yml).
   Follow the release receipt and [deployment recovery instructions](hosted-preview.md#recovery).
   Schema/storage rollouts require compatibility review; a failed automatic preflight must not be
-  bypassed with an unsafe rollback.
+  bypassed with an unsafe rollback. If a release has been blocked by the guard, use the manual
+  compatible rollout described above.
 - **Version changed during the check:** inspect active deployments and rerun after the release or
   manual operation finishes. Automatic release and health jobs serialize; avoid concurrent manual
   deployments.
