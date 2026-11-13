@@ -79,6 +79,8 @@ identity. Add an installer-owned GitHub App when your team needs repository cont
 - **Workspace administration**: Invite eligible people, manage members and teams, configure
   workflows, and create private backup bundles for restoration.
 
+See [workspace and team permissions](docs/workspace-permissions.md) for role and access details.
+
 ## Current boundaries
 
 Kanbun is growing toward a broader collaborative workflow. Here's where things stand today:
