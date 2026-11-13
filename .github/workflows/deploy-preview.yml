@@ -4,6 +4,7 @@ on:
     workflows: [ci]
     branches: [main]
     types: [completed]
+  workflow_dispatch:
 permissions:
   contents: read
   packages: read
@@ -13,7 +14,7 @@ concurrency:
   queue: max
 jobs:
   deploy:
-    if: (github.repository == 'sidmohan0/kanbun' || vars.KANBUN_PREVIEW_ENABLED == 'true') && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository
+    if: (github.repository == 'sidmohan0/kanbun' || vars.KANBUN_PREVIEW_ENABLED == 'true') && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -26,7 +27,7 @@ jobs:
       - name: Skip superseded commits
         id: current
         env:
-          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           current=$(git ls-remote origin refs/heads/main | cut -f1)
           if [ "$current" = "$RELEASE_SHA" ]; then echo 'deploy=true' >> "$GITHUB_OUTPUT"; fi
@@ -40,7 +41,13 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: ./scripts/devcontainer.sh exec --remote-env CI=true --remote-env "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN" --remote-env "GITHUB_TOKEN=$GITHUB_TOKEN" --remote-env "GITHUB_REPOSITORY=$GITHUB_REPOSITORY" node scripts/preview-release.mjs "$RELEASE_SHA"
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            # Manual compatible schema rollout: apply D1 migrations, then deploy the reviewed main head.
+            ./scripts/devcontainer.sh exec --remote-env CI=true --remote-env "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN" node scripts/deploy-preview.mjs "$RELEASE_SHA"
+          else
+            ./scripts/devcontainer.sh exec --remote-env CI=true --remote-env "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN" --remote-env "GITHUB_TOKEN=$GITHUB_TOKEN" --remote-env "GITHUB_REPOSITORY=$GITHUB_REPOSITORY" node scripts/preview-release.mjs "$RELEASE_SHA"
+          fi
       - name: Retain deployment receipt
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

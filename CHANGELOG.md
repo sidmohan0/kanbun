@@ -5,6 +5,7 @@ preparation moves them to a dated version heading.
 
 ## [Unreleased]
 
+- Add a manual dispatch lane to the preview deployment workflow that applies pending D1 migrations and deploys the reviewed main head, so a schema rollout can resume automatic releases after the release guard blocks them.
 - Explain that GitHub, Slack and Google provider app credentials stay with the Kanbun service while workspace owners authorize access in integration settings, including from the downloaded desktop app.
 - Add an owner-only CSV issue import with browser-side schema matching, row preview, validation, duplicate-ID skipping, and team-authorized issue creation.
 - Add opt-in self-hosted setup for workspace-owned GitHub, Slack and Google OAuth app credentials, encrypted server-side and configured from integrations settings.
