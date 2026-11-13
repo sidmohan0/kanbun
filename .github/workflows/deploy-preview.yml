@@ -44,7 +44,7 @@ jobs:
         run: |
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             # Manual compatible schema rollout: apply D1 migrations, then deploy the reviewed main head.
-            ./scripts/devcontainer.sh exec --remote-env CI=true --remote-env "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN" node scripts/deploy-preview.mjs "$RELEASE_SHA"
+            ./scripts/devcontainer.sh exec --remote-env CI=true --remote-env "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN" node scripts/deploy-preview.mjs --sha "$RELEASE_SHA"
           else
             ./scripts/devcontainer.sh exec --remote-env CI=true --remote-env "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN" --remote-env "GITHUB_TOKEN=$GITHUB_TOKEN" --remote-env "GITHUB_REPOSITORY=$GITHUB_REPOSITORY" node scripts/preview-release.mjs "$RELEASE_SHA"
           fi
